@@ -177,10 +177,34 @@ psql "$DATABASE_URL" -f sql/queries/QRY_034__search_examples.sql
 
 | View | Used By |
 |------|---------|
-| `trapper.v_person_detail` | `/api/people/[id]` |
-| `trapper.v_place_detail` | `/api/places/[id]` |
-| `trapper.v_person_list` | `/api/people` (listing) |
+| `trapper.v_person_detail` | `/api/people/[id]` (with validity flag) |
+| `trapper.v_place_detail_v2` | `/api/places/[id]` |
+| `trapper.v_person_list_v2` | `/api/people` (listing, filtered) |
 | `trapper.v_place_list` | `/api/places` (listing) |
+
+### People Quality Filtering (ATLAS_023)
+
+The v2 views filter people to only show valid names:
+- Requires 2+ name tokens (first + last)
+- Rejects HTML content, URLs, image links
+- Rejects cat identifiers misinterpreted as names
+- Rejects very long strings
+
+Check if a name is valid:
+```sql
+SELECT trapper.is_valid_person_name('John Smith');  -- true
+SELECT trapper.is_valid_person_name('John');        -- false (single token)
+SELECT trapper.is_valid_person_name('<img src=...>'); -- false (HTML)
+```
+
+See filtered vs unfiltered counts:
+```sql
+SELECT
+    COUNT(*) AS total,
+    COUNT(*) FILTER (WHERE trapper.is_valid_person_name(display_name)) AS valid
+FROM trapper.sot_people
+WHERE merged_into_person_id IS NULL;
+```
 
 ---
 

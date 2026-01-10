@@ -12,6 +12,7 @@ interface PersonDetailRow {
   person_relationships: object[] | null;
   cat_count: number;
   place_count: number;
+  is_valid_name: boolean;
 }
 
 export async function GET(
@@ -28,6 +29,8 @@ export async function GET(
   }
 
   try {
+    // Use original v_person_detail (all people) so direct links work,
+    // but add is_valid_name flag so UI can show warning for suspect entries
     const sql = `
       SELECT
         person_id,
@@ -39,7 +42,8 @@ export async function GET(
         places,
         person_relationships,
         cat_count,
-        place_count
+        place_count,
+        trapper.is_valid_person_name(display_name) AS is_valid_name
       FROM trapper.v_person_detail
       WHERE person_id = $1
     `;

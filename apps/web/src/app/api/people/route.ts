@@ -9,6 +9,7 @@ interface PersonListRow {
   cat_names: string | null;
   primary_place: string | null;
   created_at: string;
+  source_quality: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -39,8 +40,9 @@ export async function GET(request: NextRequest) {
         place_count,
         cat_names,
         primary_place,
-        created_at
-      FROM trapper.v_person_list
+        created_at,
+        source_quality
+      FROM trapper.v_person_list_v2
       ${whereClause}
       ORDER BY display_name ASC
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     const countSql = `
       SELECT COUNT(*) as total
-      FROM trapper.v_person_list
+      FROM trapper.v_person_list_v2
       ${whereClause}
     `;
 

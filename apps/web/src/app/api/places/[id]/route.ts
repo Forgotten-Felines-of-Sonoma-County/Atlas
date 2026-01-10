@@ -54,7 +54,7 @@ export async function GET(
         place_relationships,
         cat_count,
         person_count
-      FROM trapper.v_place_detail
+      FROM trapper.v_place_detail_v2
       WHERE place_id = $1
     `;
 

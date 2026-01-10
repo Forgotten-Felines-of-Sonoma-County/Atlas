@@ -213,6 +213,91 @@ else
 fi
 echo ""
 
+# -------- Test 9: is_valid_person_name function exists (ATLAS_023)
+echo "Test 9: Checking is_valid_person_name function exists..."
+fn_exists="$(psqlq "SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='trapper' AND p.proname='is_valid_person_name' LIMIT 1;" || true)"
+if [[ "$fn_exists" == "1" ]]; then
+    pass "Function trapper.is_valid_person_name exists"
+else
+    fail "Function trapper.is_valid_person_name is missing"
+fi
+echo ""
+
+# -------- Test 10: v_person_list_v2 view exists (ATLAS_023)
+echo "Test 10: Checking v_person_list_v2 view exists..."
+vw_exists="$(psqlq "SELECT 1 FROM information_schema.views WHERE table_schema='trapper' AND table_name='v_person_list_v2' LIMIT 1;" || true)"
+if [[ "$vw_exists" == "1" ]]; then
+    pass "View trapper.v_person_list_v2 exists"
+else
+    fail "View trapper.v_person_list_v2 is missing"
+fi
+echo ""
+
+# -------- Test 11: v_place_detail_v2 view exists (ATLAS_023)
+echo "Test 11: Checking v_place_detail_v2 view exists..."
+vw_exists="$(psqlq "SELECT 1 FROM information_schema.views WHERE table_schema='trapper' AND table_name='v_place_detail_v2' LIMIT 1;" || true)"
+if [[ "$vw_exists" == "1" ]]; then
+    pass "View trapper.v_place_detail_v2 exists"
+else
+    fail "View trapper.v_place_detail_v2 is missing"
+fi
+echo ""
+
+# -------- Test 12: No HTML in v_person_list_v2 (regression guard)
+echo "Test 12: Checking no HTML in v_person_list_v2 display names..."
+html_count="$(psqlq "SELECT COUNT(*) FROM trapper.v_person_list_v2 WHERE display_name ILIKE '%<img%' OR display_name ILIKE '%airtableusercontent%' OR display_name ~ '<[^>]+>';" || echo "0")"
+if [[ "${html_count}" =~ ^[0-9]+$ ]] && [[ "${html_count}" -eq 0 ]]; then
+    pass "No HTML found in v_person_list_v2 display names"
+else
+    fail "Found ${html_count} entries with HTML in v_person_list_v2 (regression!)"
+fi
+echo ""
+
+# -------- Test 13: All v_person_list_v2 entries have 2+ name tokens
+echo "Test 13: Checking all v_person_list_v2 entries have multi-token names..."
+single_token="$(psqlq "SELECT COUNT(*) FROM trapper.v_person_list_v2 WHERE trapper.name_token_count(display_name) < 2;" || echo "0")"
+if [[ "${single_token}" =~ ^[0-9]+$ ]] && [[ "${single_token}" -eq 0 ]]; then
+    pass "All entries in v_person_list_v2 have 2+ name tokens"
+else
+    fail "Found ${single_token} entries with single-token names in v_person_list_v2 (regression!)"
+fi
+echo ""
+
+# -------- Test 14: combine_first_last_name function exists (ATLAS_024)
+echo "Test 14: Checking combine_first_last_name function exists..."
+fn_exists="$(psqlq "SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='trapper' AND p.proname='combine_first_last_name' LIMIT 1;" || true)"
+if [[ "$fn_exists" == "1" ]]; then
+    pass "Function trapper.combine_first_last_name exists"
+else
+    fail "Function trapper.combine_first_last_name is missing (MIG_030 not applied)"
+fi
+echo ""
+
+# -------- Test 15: is_valid_person_name_for_canonical function exists (ATLAS_024)
+echo "Test 15: Checking is_valid_person_name_for_canonical function exists..."
+fn_exists="$(psqlq "SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='trapper' AND p.proname='is_valid_person_name_for_canonical' LIMIT 1;" || true)"
+if [[ "$fn_exists" == "1" ]]; then
+    pass "Function trapper.is_valid_person_name_for_canonical exists"
+else
+    fail "Function trapper.is_valid_person_name_for_canonical is missing (MIG_030 not applied)"
+fi
+echo ""
+
+# -------- Test 16: Name extraction produces full names (not split First/Last)
+echo "Test 16: Checking name extraction produces combined full names..."
+# This test verifies the observation field_name is "Full Name" type, not separate "First Name"/"Last Name"
+split_names="$(psqlq "SELECT COUNT(*) FROM trapper.observations WHERE observation_type = 'name_signal' AND field_name IN ('First Name', 'Last Name', 'Owner First Name', 'Owner Last Name');" || echo "-1")"
+if [[ "${split_names}" =~ ^[0-9]+$ ]] && [[ "${split_names}" -eq 0 ]]; then
+    pass "No split First/Last Name observations found (extraction is correct)"
+else
+    if [[ "${split_names}" == "-1" ]]; then
+        warn "Could not check observations table (may not exist yet)"
+    else
+        warn "Found ${split_names} split First/Last Name observations (run rebuild after MIG_030)"
+    fi
+fi
+echo ""
+
 # ============================================
 # Summary
 # ============================================
