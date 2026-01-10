@@ -222,6 +222,186 @@ Cat matching is **review-queue only** by default. No automatic merges.
 | Shared owner | +0.20 | Strong contextual signal |
 | Shared place | +0.15 | Contextual signal |
 
+## ClinicHQ People Pipeline
+
+ClinicHQ owner data is extracted into canonical people through a multi-step pipeline.
+
+### One-Command Population
+
+```bash
+# Set environment and run
+set -a && source .env && set +a
+./scripts/populate_clinichq_people.sh
+
+# Preview mode (no changes)
+./scripts/populate_clinichq_people.sh --dry-run
+
+# Skip stuck run repair
+./scripts/populate_clinichq_people.sh --no-repair
+```
+
+### SQL-Only Population
+
+```sql
+-- Preview what would happen
+SELECT trapper.populate_clinichq_people(TRUE, TRUE);
+
+-- Actually populate
+SELECT trapper.populate_clinichq_people();
+
+-- Or step-by-step:
+-- 1. Repair stuck runs
+SELECT * FROM trapper.repair_stuck_ingest_runs('clinichq', 30, FALSE);
+
+-- 2. Check for completed run
+SELECT trapper.get_latest_completed_run('clinichq', 'owner_info');
+
+-- 3. Populate observations
+SELECT trapper.populate_observations_for_latest_run('owner_info');
+
+-- 4. Create canonical people
+SELECT * FROM trapper.upsert_people_from_observations('owner_info');
+
+-- 5. Populate aliases
+SELECT trapper.populate_aliases_from_name_signals('owner_info');
+
+-- 6. Update display names
+SELECT trapper.update_all_person_display_names();
+```
+
+### Expected Counts
+
+After a full ClinicHQ ingest:
+- Staged records: ~8,500 owner_info rows
+- Observations: ~33,000 (phone, email, name signals)
+- Canonical people: ~1,900-2,000 unique people
+- Aliases: ~8,700 name variants with phonetic codes
+
+```sql
+-- Verify counts
+SELECT
+    (SELECT COUNT(*) FROM trapper.staged_records
+     WHERE source_system = 'clinichq' AND source_table = 'owner_info') AS staged,
+    (SELECT COUNT(*) FROM trapper.observations
+     WHERE source_system = 'clinichq') AS observations,
+    (SELECT COUNT(DISTINCT person_id) FROM trapper.person_aliases
+     WHERE source_system = 'clinichq') AS people;
+```
+
+## Stuck Ingest Runs
+
+Ingest runs can get stuck in "running" state due to script crashes or timeouts.
+
+### Detecting Stuck Runs
+
+```sql
+-- View all stuck runs (running > 30 minutes)
+SELECT * FROM trapper.v_stuck_ingest_runs;
+
+-- Check specific source
+SELECT * FROM trapper.v_stuck_ingest_runs
+WHERE source_system = 'clinichq';
+```
+
+### Repairing Stuck Runs
+
+```sql
+-- Preview repairs (safe - no changes)
+SELECT * FROM trapper.repair_stuck_ingest_runs('clinichq', 30, TRUE);
+
+-- Actually repair (use with caution)
+SELECT * FROM trapper.repair_stuck_ingest_runs('clinichq', 30, FALSE);
+
+-- Repair all sources
+SELECT * FROM trapper.repair_stuck_ingest_runs(NULL, 30, FALSE);
+```
+
+### Repair Logic
+
+The repair function uses evidence-based decisions:
+
+| Evidence | Action | Reason |
+|----------|--------|--------|
+| rows_linked > 0 OR rows_inserted > 0 | Mark `completed` | Data was processed |
+| All rows marked suspect | Mark `completed` | Processed with issues |
+| No data processed | Mark `failed` | Nothing happened |
+| Unclear state | Mark `failed` | Conservative fallback |
+
+All repairs are recorded in `trapper.ingest_run_repairs` for audit:
+
+```sql
+-- View repair history
+SELECT repair_id, source_system, source_table,
+       old_status, new_status, repair_reason, repaired_at
+FROM trapper.ingest_run_repairs
+ORDER BY repaired_at DESC;
+```
+
+## Phonetic Support
+
+Atlas uses double metaphone for phonetic name matching. The implementation is portable across different PostgreSQL configurations.
+
+### Verifying Phonetic Backend
+
+```sql
+-- Check backend status
+SELECT trapper.phonetic_backend_status();
+
+-- Returns:
+-- {
+--   "available": true,
+--   "schema": "tiger",           -- or "public" or "extensions"
+--   "mode": "enabled",
+--   "test_dmetaphone": "TST",
+--   "message": "Phonetic matching enabled via tiger schema."
+-- }
+```
+
+### Phonetic Functions
+
+```sql
+-- Direct metaphone encoding
+SELECT trapper.dmetaphone('Smith');    -- SM0
+SELECT trapper.dmetaphone('Smyth');    -- SM0 (same!)
+
+-- Soundex similarity (0-4, 4 = identical)
+SELECT trapper.difference('Smith', 'Smyth');  -- 4
+
+-- Full name similarity with breakdown
+SELECT trapper.phonetic_name_similarity('Susan Smith', 'Susana Smyth');
+```
+
+### Graceful Degradation
+
+If fuzzystrmatch extension is not installed, phonetic matching degrades gracefully:
+
+- `trapper.dmetaphone()` returns NULL
+- `trapper.difference()` returns 0
+- Name matching still works using trigram similarity only
+- Lower accuracy but no errors
+
+```sql
+-- Test degradation behavior
+SELECT
+    trapper.phonetic_backend_status()->>'available' AS phonetics_available,
+    trapper.phonetic_name_similarity('John Smith', 'Jon Smyth')->>'phonetics_enabled' AS phonetics_in_matching;
+```
+
+### Installing Phonetic Support
+
+If phonetics are unavailable and you want to enable them:
+
+```sql
+-- Check if extension is available
+SELECT * FROM pg_available_extensions WHERE name = 'fuzzystrmatch';
+
+-- Install (requires superuser)
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+
+-- Verify
+SELECT trapper.phonetic_backend_status();
+```
+
 ## Statistics and Monitoring
 
 ```sql
