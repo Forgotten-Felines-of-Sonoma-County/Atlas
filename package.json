@@ -1,12 +1,12 @@
 {
   "name": "atlas",
   "version": "1.0.0",
-  "description": "**Trapper Operations Data Platform** — A stable, trustworthy system for managing trapping locations, requests, and clinic schedules.",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "private": true,
+  "description": "Trapper Operations Data Platform - A stable, trustworthy system for managing trapping locations, requests, and clinic schedules.",
   "scripts": {
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "start": "npm --prefix apps/web run start",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
