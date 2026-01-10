@@ -46,6 +46,8 @@ ON trapper.identifier_blocklist (id_type, pattern_type);
 \echo 'Populating initial blocklist...'
 
 -- FFSC organizational identifiers
+-- Note: Keep blocklist narrow - only truly organizational identifiers
+-- Generic patterns like info@, admin@ can be legitimate business emails for real people
 INSERT INTO trapper.identifier_blocklist (id_type, pattern, pattern_type, reason) VALUES
 -- Main FFSC phone
 ('phone', '7075767999', 'exact', 'FFSC main organizational phone'),
@@ -53,14 +55,8 @@ INSERT INTO trapper.identifier_blocklist (id_type, pattern, pattern_type, reason
 -- FFSC domain emails
 ('email', '@forgottenfelines.com', 'suffix', 'FFSC staff email domain - not client identifiers'),
 
--- Specific staff emails to blocklist (even if domain changes)
-('email', 'info@', 'prefix', 'Generic info@ addresses - not personal'),
-('email', 'noreply@', 'prefix', 'No-reply addresses - not personal'),
-('email', 'admin@', 'prefix', 'Generic admin@ addresses - not personal'),
-('email', 'support@', 'prefix', 'Generic support@ addresses - not personal'),
-('email', 'contact@', 'prefix', 'Generic contact@ addresses - not personal'),
-('email', 'hello@', 'prefix', 'Generic hello@ addresses - not personal'),
-('email', 'office@', 'prefix', 'Generic office@ addresses - not personal')
+-- No-reply addresses (truly not personal)
+('email', 'noreply@', 'prefix', 'No-reply addresses - not personal')
 
 ON CONFLICT DO NOTHING;
 
