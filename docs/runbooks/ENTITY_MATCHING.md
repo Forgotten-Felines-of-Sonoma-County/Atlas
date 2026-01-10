@@ -288,6 +288,73 @@ SELECT
      WHERE source_system = 'clinichq') AS people;
 ```
 
+## VolunteerHub People Pipeline
+
+VolunteerHub volunteer data uses smart name combining to merge first/last name fields.
+
+### One-Command Population
+
+```bash
+# Set environment and run
+set -a && source .env && set +a
+./scripts/populate_volunteerhub_people.sh
+
+# Preview mode (no changes)
+./scripts/populate_volunteerhub_people.sh --dry-run
+
+# Skip stuck run repair
+./scripts/populate_volunteerhub_people.sh --no-repair
+```
+
+### SQL-Only Population
+
+```sql
+-- Step-by-step:
+-- 1. Repair stuck runs
+SELECT * FROM trapper.repair_stuck_ingest_runs('volunteerhub', 30, FALSE);
+
+-- 2. Check for completed run
+SELECT trapper.get_latest_completed_run('volunteerhub', 'users');
+
+-- 3. Populate observations (uses v2 extraction with name combining)
+SELECT trapper.populate_observations_for_latest_run('users');
+
+-- 4. Create canonical people
+SELECT * FROM trapper.upsert_people_from_observations('users');
+
+-- 5. Populate aliases
+SELECT trapper.populate_aliases_from_name_signals('users');
+
+-- 6. Update display names
+SELECT trapper.update_all_person_display_names();
+```
+
+### Name Field Handling
+
+VolunteerHub uses split name fields that are combined during extraction:
+- `Name - FirstName` + `Name - LastName` → `Volunteer Full Name`
+
+The extraction (MIG_041) automatically combines these into full names for proper person matching.
+
+### Expected Counts
+
+After a full VolunteerHub ingest:
+- Staged records: ~1,300 user rows
+- Observations: ~6,400 (phone, email, name, address signals)
+- Canonical people: ~1,200-1,300 unique volunteers
+- Aliases: ~1,300 name variants with phonetic codes
+
+```sql
+-- Verify counts
+SELECT
+    (SELECT COUNT(*) FROM trapper.staged_records
+     WHERE source_system = 'volunteerhub' AND source_table = 'users') AS staged,
+    (SELECT COUNT(*) FROM trapper.observations
+     WHERE source_system = 'volunteerhub') AS observations,
+    (SELECT COUNT(DISTINCT person_id) FROM trapper.person_aliases
+     WHERE source_system = 'volunteerhub') AS people;
+```
+
 ## Stuck Ingest Runs
 
 Ingest runs can get stuck in "running" state due to script crashes or timeouts.
