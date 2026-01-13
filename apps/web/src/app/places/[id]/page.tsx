@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import JournalSection, { JournalEntry } from "@/components/JournalSection";
+import { BackButton } from "@/components/BackButton";
 
 interface Cat {
   cat_id: string;
@@ -304,7 +305,7 @@ export default function PlaceDetailPage() {
   if (error) {
     return (
       <div>
-        <a href="/places">&larr; Back to places</a>
+        <BackButton fallbackHref="/places" />
         <div className="empty" style={{ marginTop: "2rem" }}>
           <h2 style={{ color: "#dc3545" }}>{error}</h2>
           <p className="text-muted" style={{ marginTop: "0.5rem" }}>
@@ -331,7 +332,7 @@ export default function PlaceDetailPage() {
 
   return (
     <div>
-      <a href="/places">&larr; Back to places</a>
+      <BackButton fallbackHref="/places" />
 
       {/* Header */}
       <div className="detail-header" style={{ marginTop: "1rem" }}>

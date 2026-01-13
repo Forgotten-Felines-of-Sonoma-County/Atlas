@@ -98,7 +98,7 @@ function RequestMapPreview({ requestId, latitude, longitude }: {
 
     const fetchMap = async () => {
       try {
-        const response = await fetch(`/api/requests/${requestId}/map?width=300&height=180&zoom=14`);
+        const response = await fetch(`/api/requests/${requestId}/map?width=400&height=200&zoom=15&scale=2`);
         if (response.ok) {
           const data = await response.json();
           setMapUrl(data.map_url);

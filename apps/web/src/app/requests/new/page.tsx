@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { BackButton } from "@/components/BackButton";
 
 interface SearchResult {
   entity_type: string;
@@ -485,7 +486,7 @@ function NewRequestForm() {
 
   return (
     <div>
-      <a href="/requests">&larr; Back to requests</a>
+      <BackButton fallbackHref="/requests" />
 
       <h1 style={{ marginTop: "1rem", marginBottom: "1.5rem" }}>New TNR Request</h1>
 

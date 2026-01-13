@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { BackButton } from "@/components/BackButton";
 
 interface MediaItem {
   media_id: string;
@@ -327,7 +328,7 @@ export default function RequestDetailPage() {
   if (loading) {
     return (
       <div>
-        <a href="/requests">&larr; Back to requests</a>
+        <BackButton fallbackHref="/requests" />
         <div className="loading" style={{ marginTop: "2rem" }}>Loading request...</div>
       </div>
     );
@@ -336,7 +337,7 @@ export default function RequestDetailPage() {
   if (error && !request) {
     return (
       <div>
-        <a href="/requests">&larr; Back to requests</a>
+        <BackButton fallbackHref="/requests" />
         <div className="empty" style={{ marginTop: "2rem" }}>
           <p>{error}</p>
         </div>
@@ -350,7 +351,7 @@ export default function RequestDetailPage() {
 
   return (
     <div>
-      <a href="/requests">&larr; Back to requests</a>
+      <BackButton fallbackHref="/requests" />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: "1rem", marginBottom: "1.5rem" }}>
         <div>

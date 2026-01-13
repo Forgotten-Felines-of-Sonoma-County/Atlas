@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { BackButton } from "@/components/BackButton";
 
 interface PlaceDetails {
   place_id: string;
@@ -143,7 +144,7 @@ export default function NewPlacePage() {
   if (createdPlaceId) {
     return (
       <div>
-        <a href="/places">&larr; Back to places</a>
+        <BackButton fallbackHref="/places" />
         <div style={{ marginTop: "2rem", textAlign: "center" }}>
           <h2 style={{ color: "#28a745" }}>Place Created!</h2>
           <p style={{ marginTop: "1rem" }}>
@@ -159,7 +160,7 @@ export default function NewPlacePage() {
 
   return (
     <div>
-      <a href="/places">&larr; Back to places</a>
+      <BackButton fallbackHref="/places" />
       <h1 style={{ marginTop: "1rem", marginBottom: "1.5rem" }}>New Place</h1>
 
       {/* Step 1: Address */}

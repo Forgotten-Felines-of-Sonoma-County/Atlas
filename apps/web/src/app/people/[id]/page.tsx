@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import JournalSection, { JournalEntry } from "@/components/JournalSection";
+import { BackButton } from "@/components/BackButton";
 
 interface Cat {
   cat_id: string;
@@ -457,7 +458,7 @@ export default function PersonDetailPage() {
   if (error) {
     return (
       <div>
-        <a href="/people">&larr; Back to people</a>
+        <BackButton fallbackHref="/people" />
         <div className="empty" style={{ marginTop: "2rem" }}>
           <h2 style={{ color: "#dc3545" }}>{error}</h2>
           <p className="text-muted" style={{ marginTop: "0.5rem" }}>
@@ -474,7 +475,7 @@ export default function PersonDetailPage() {
 
   return (
     <div>
-      <a href="/people">&larr; Back to people</a>
+      <BackButton fallbackHref="/people" />
 
       {/* Header */}
       <div className="detail-header" style={{ marginTop: "1rem" }}>

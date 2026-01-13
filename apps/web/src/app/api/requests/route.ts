@@ -140,6 +140,11 @@ export async function GET(request: NextRequest) {
       requests,
       limit,
       offset,
+    }, {
+      headers: {
+        // Short cache for list data - refresh every 30 seconds
+        "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+      },
     });
   } catch (error) {
     console.error("Error fetching requests:", error);

@@ -42,8 +42,10 @@ const MARKER_SIZES = {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const searchParams = request.nextUrl.searchParams;
-  const width = parseInt(searchParams.get("width") || "300");
-  const height = parseInt(searchParams.get("height") || "200");
+  // Default to 2x resolution for retina displays
+  const scale = parseInt(searchParams.get("scale") || "2");
+  const width = parseInt(searchParams.get("width") || "400");
+  const height = parseInt(searchParams.get("height") || "250");
   const zoom = parseInt(searchParams.get("zoom") || "14");
 
   // Get request coordinates
@@ -82,6 +84,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     `center=${requestData.latitude},${requestData.longitude}`,
     `zoom=${zoom}`,
     `size=${width}x${height}`,
+    `scale=${scale}`,
     `maptype=roadmap`,
     `key=${apiKey}`,
   ];
@@ -119,7 +122,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const mapUrl = `${baseUrl}?${params_list.join("&")}`;
 
-  // Return the data
+  // Return the data with cache headers
   return NextResponse.json({
     map_url: mapUrl,
     center: {
@@ -132,6 +135,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       medium: markerGroups.medium.length,
       small: markerGroups.small.length,
       tiny: markerGroups.tiny.length,
+    },
+  }, {
+    headers: {
+      // Cache map URLs for 1 hour (coordinates don't change often)
+      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
     },
   });
 }
