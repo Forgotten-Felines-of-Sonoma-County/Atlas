@@ -19,6 +19,8 @@ interface RequestListRow {
   place_city: string | null;
   requester_person_id: string | null;
   requester_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
   linked_cat_count: number;
 }
 
@@ -121,6 +123,8 @@ export async function GET(request: NextRequest) {
         place_city,
         requester_person_id,
         requester_name,
+        latitude,
+        longitude,
         linked_cat_count
       FROM trapper.v_request_list
       ${whereClause}

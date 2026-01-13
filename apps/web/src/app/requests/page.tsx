@@ -16,6 +16,8 @@ interface Request {
   place_address: string | null;
   place_city: string | null;
   requester_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -59,10 +61,232 @@ function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
+function ColonySizeBadge({ count }: { count: number | null }) {
+  const catCount = count ?? 0;
+  let style: { bg: string; color: string; label: string };
+
+  if (catCount >= 20) {
+    style = { bg: "#dc3545", color: "#fff", label: `${catCount}+ cats` };
+  } else if (catCount >= 7) {
+    style = { bg: "#fd7e14", color: "#000", label: `${catCount} cats` };
+  } else if (catCount >= 2) {
+    style = { bg: "#0d6efd", color: "#fff", label: `${catCount} cats` };
+  } else {
+    style = { bg: "#6c757d", color: "#fff", label: catCount ? `${catCount} cat` : "?" };
+  }
+
+  return (
+    <span
+      className="badge"
+      style={{ background: style.bg, color: style.color, fontSize: "0.75rem" }}
+    >
+      {style.label}
+    </span>
+  );
+}
+
+function RequestMapPreview({ requestId, latitude, longitude }: {
+  requestId: string;
+  latitude: number | null;
+  longitude: number | null;
+}) {
+  const [mapUrl, setMapUrl] = useState<string | null>(null);
+  const [nearbyCount, setNearbyCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!latitude || !longitude) return;
+
+    const fetchMap = async () => {
+      try {
+        const response = await fetch(`/api/requests/${requestId}/map?width=300&height=180&zoom=14`);
+        if (response.ok) {
+          const data = await response.json();
+          setMapUrl(data.map_url);
+          setNearbyCount(data.nearby_count);
+        }
+      } catch (err) {
+        console.error("Failed to fetch map:", err);
+      }
+    };
+
+    fetchMap();
+  }, [requestId, latitude, longitude]);
+
+  if (!latitude || !longitude) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "180px",
+          background: "var(--card-border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: "8px",
+          color: "var(--text-muted)",
+          fontSize: "0.875rem",
+        }}
+      >
+        No location
+      </div>
+    );
+  }
+
+  if (!mapUrl) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "180px",
+          background: "var(--card-border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: "8px",
+        }}
+      >
+        <div className="loading-spinner" />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "relative" }}>
+      <img
+        src={mapUrl}
+        alt="Location map"
+        style={{
+          width: "100%",
+          height: "180px",
+          objectFit: "cover",
+          borderRadius: "8px",
+        }}
+      />
+      {nearbyCount > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "8px",
+            right: "8px",
+            background: "rgba(0,0,0,0.7)",
+            color: "#fff",
+            padding: "2px 8px",
+            borderRadius: "4px",
+            fontSize: "0.75rem",
+          }}
+        >
+          {nearbyCount} nearby
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RequestCard({ request }: { request: Request }) {
+  return (
+    <a
+      href={`/requests/${request.request_id}`}
+      style={{
+        display: "block",
+        textDecoration: "none",
+        color: "inherit",
+      }}
+    >
+      <div
+        className="card"
+        style={{
+          border: "1px solid var(--card-border)",
+          borderRadius: "12px",
+          overflow: "hidden",
+          transition: "transform 0.15s, box-shadow 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "translateY(-2px)";
+          e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "none";
+          e.currentTarget.style.boxShadow = "none";
+        }}
+      >
+        {/* Map Preview */}
+        <RequestMapPreview
+          requestId={request.request_id}
+          latitude={request.latitude}
+          longitude={request.longitude}
+        />
+
+        {/* Card Content */}
+        <div style={{ padding: "12px" }}>
+          {/* Status & Priority Row */}
+          <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+            <StatusBadge status={request.status} />
+            <PriorityBadge priority={request.priority} />
+            <ColonySizeBadge count={request.estimated_cat_count} />
+            {request.has_kittens && (
+              <span
+                className="badge"
+                style={{ background: "#fd7e14", color: "#000", fontSize: "0.7rem" }}
+              >
+                +kittens
+              </span>
+            )}
+          </div>
+
+          {/* Summary */}
+          <div
+            style={{
+              fontWeight: 600,
+              fontSize: "1rem",
+              marginBottom: "4px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {request.summary || "Untitled Request"}
+          </div>
+
+          {/* Location */}
+          {request.place_name && (
+            <div
+              style={{
+                fontSize: "0.875rem",
+                color: "var(--text-muted)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {request.place_name}
+              {request.place_city && ` • ${request.place_city}`}
+            </div>
+          )}
+
+          {/* Requester & Date */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: "0.75rem",
+              color: "var(--text-muted)",
+              marginTop: "8px",
+            }}
+          >
+            <span>{request.requester_name || "Unknown requester"}</span>
+            <span>{new Date(request.created_at).toLocaleDateString()}</span>
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
 export default function RequestsPage() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
   useEffect(() => {
     const fetchRequests = async () => {
@@ -105,7 +329,7 @@ export default function RequestsPage() {
         </a>
       </div>
 
-      <div style={{ marginBottom: "1rem" }}>
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", alignItems: "center" }}>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -120,6 +344,37 @@ export default function RequestsPage() {
           <option value="cancelled">Cancelled</option>
           <option value="on_hold">On Hold</option>
         </select>
+
+        {/* View Toggle */}
+        <div style={{ display: "flex", gap: "4px", marginLeft: "auto" }}>
+          <button
+            onClick={() => setViewMode("cards")}
+            style={{
+              padding: "6px 12px",
+              border: "1px solid var(--card-border)",
+              borderRadius: "4px 0 0 4px",
+              background: viewMode === "cards" ? "var(--foreground)" : "transparent",
+              color: viewMode === "cards" ? "var(--background)" : "inherit",
+              cursor: "pointer",
+            }}
+          >
+            Cards
+          </button>
+          <button
+            onClick={() => setViewMode("table")}
+            style={{
+              padding: "6px 12px",
+              border: "1px solid var(--card-border)",
+              borderLeft: "none",
+              borderRadius: "0 4px 4px 0",
+              background: viewMode === "table" ? "var(--foreground)" : "transparent",
+              color: viewMode === "table" ? "var(--background)" : "inherit",
+              cursor: "pointer",
+            }}
+          >
+            Table
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -128,6 +383,18 @@ export default function RequestsPage() {
         <div className="empty">
           <p>No requests found</p>
           <a href="/requests/new">Create your first request</a>
+        </div>
+      ) : viewMode === "cards" ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: "1rem",
+          }}
+        >
+          {requests.map((req) => (
+            <RequestCard key={req.request_id} request={req} />
+          ))}
         </div>
       ) : (
         <div className="table-container">
