@@ -223,6 +223,11 @@ export default function RequestDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Rename state (quick inline rename)
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [savingRename, setSavingRename] = useState(false);
+
   // Edit mode state
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -276,6 +281,10 @@ export default function RequestDetailPage() {
 
   // Tab state for Details vs Legacy Info
   const [activeTab, setActiveTab] = useState<"details" | "legacy">("details");
+
+  // Map state
+  const [mapUrl, setMapUrl] = useState<string | null>(null);
+  const [mapNearbyCount, setMapNearbyCount] = useState<number>(0);
 
   const fetchMedia = async () => {
     setLoadingMedia(true);
@@ -394,6 +403,24 @@ export default function RequestDetailPage() {
     fetchJournalEntries();
   }, [requestId, fetchJournalEntries]);
 
+  // Fetch map when request has coordinates
+  useEffect(() => {
+    const fetchMap = async () => {
+      if (!request?.place_coordinates) return;
+      try {
+        const response = await fetch(`/api/requests/${requestId}/map?width=600&height=300&zoom=15&scale=2`);
+        if (response.ok) {
+          const data = await response.json();
+          setMapUrl(data.map_url);
+          setMapNearbyCount(data.nearby_count || 0);
+        }
+      } catch (err) {
+        console.error("Failed to fetch map:", err);
+      }
+    };
+    fetchMap();
+  }, [requestId, request?.place_coordinates]);
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -459,6 +486,45 @@ export default function RequestDetailPage() {
       });
     }
     setEditing(false);
+  };
+
+  const handleRename = async () => {
+    if (!renameValue.trim()) {
+      setRenaming(false);
+      return;
+    }
+
+    setSavingRename(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/requests/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summary: renameValue.trim() }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || "Failed to rename request");
+        return;
+      }
+
+      // Update local state
+      if (request) {
+        setRequest({ ...request, summary: renameValue.trim() });
+      }
+      setRenaming(false);
+    } catch (err) {
+      setError("Failed to rename request");
+    } finally {
+      setSavingRename(false);
+    }
+  };
+
+  const startRename = () => {
+    setRenameValue(request?.summary || request?.place_name || "");
+    setRenaming(true);
   };
 
   const handleSaveKittens = async () => {
@@ -549,6 +615,78 @@ export default function RequestDetailPage() {
 
   const isResolved = request.status === "completed" || request.status === "cancelled";
 
+  // Quick status change handler (without entering edit mode)
+  const handleQuickStatusChange = async (newStatus: string) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/requests/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || "Failed to update status");
+        return;
+      }
+      // Reload the request data
+      const refreshResponse = await fetch(`/api/requests/${requestId}`);
+      if (refreshResponse.ok) {
+        const data = await refreshResponse.json();
+        setRequest(data);
+        setEditForm(prev => ({ ...prev, status: data.status }));
+      }
+    } catch (err) {
+      setError("Failed to update status");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Get next logical status options based on current status
+  const getQuickStatusOptions = () => {
+    switch (request.status) {
+      case "new":
+        return [
+          { value: "triaged", label: "Triage", color: "#6610f2" },
+          { value: "scheduled", label: "Schedule", color: "#198754" },
+          { value: "cancelled", label: "Cancel", color: "#6c757d" },
+        ];
+      case "triaged":
+        return [
+          { value: "scheduled", label: "Schedule", color: "#198754" },
+          { value: "in_progress", label: "Start", color: "#fd7e14" },
+          { value: "on_hold", label: "Hold", color: "#ffc107" },
+        ];
+      case "scheduled":
+        return [
+          { value: "in_progress", label: "Start", color: "#fd7e14" },
+          { value: "on_hold", label: "Hold", color: "#ffc107" },
+          { value: "completed", label: "Complete", color: "#20c997" },
+        ];
+      case "in_progress":
+        return [
+          { value: "completed", label: "Complete", color: "#20c997" },
+          { value: "on_hold", label: "Hold", color: "#ffc107" },
+          { value: "partial", label: "Partial", color: "#17a2b8" },
+        ];
+      case "on_hold":
+        return [
+          { value: "triaged", label: "Resume", color: "#6610f2" },
+          { value: "in_progress", label: "Start", color: "#fd7e14" },
+          { value: "cancelled", label: "Cancel", color: "#6c757d" },
+        ];
+      case "completed":
+      case "cancelled":
+        return [
+          { value: "new", label: "Reopen", color: "#0d6efd" },
+        ];
+      default:
+        return [];
+    }
+  };
+
   return (
     <div>
       <BackButton fallbackHref="/requests" />
@@ -556,9 +694,78 @@ export default function RequestDetailPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: "1rem", marginBottom: "1.5rem" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <h1 style={{ margin: 0 }}>
-              {request.summary || request.place_name || "TNR Request"}
-            </h1>
+            {renaming ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <input
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRename();
+                    if (e.key === "Escape") setRenaming(false);
+                  }}
+                  autoFocus
+                  style={{
+                    fontSize: "1.5rem",
+                    fontWeight: 700,
+                    padding: "0.25rem 0.5rem",
+                    border: "2px solid var(--primary, #0d6efd)",
+                    borderRadius: "4px",
+                    width: "300px",
+                  }}
+                  placeholder="Request name..."
+                />
+                <button
+                  onClick={handleRename}
+                  disabled={savingRename}
+                  style={{
+                    padding: "0.35rem 0.75rem",
+                    background: "var(--primary, #0d6efd)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: savingRename ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {savingRename ? "..." : "Save"}
+                </button>
+                <button
+                  onClick={() => setRenaming(false)}
+                  style={{
+                    padding: "0.35rem 0.75rem",
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <>
+                <h1 style={{ margin: 0 }}>
+                  {request.summary || request.place_name || "TNR Request"}
+                </h1>
+                {!editing && (
+                  <button
+                    onClick={startRename}
+                    title="Rename request"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "0.25rem",
+                      fontSize: "0.9rem",
+                      color: "var(--muted, #6c757d)",
+                      opacity: 0.7,
+                    }}
+                  >
+                    ✏️
+                  </button>
+                )}
+              </>
+            )}
             {request.source_system === "airtable" && <LegacyBadge />}
           </div>
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
@@ -570,6 +777,31 @@ export default function RequestDetailPage() {
               </span>
             )}
           </div>
+          {/* Quick Actions - always visible without edit mode */}
+          {!editing && (
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: "0.85rem", color: "var(--muted)", marginRight: "0.25rem" }}>Quick:</span>
+              {getQuickStatusOptions().map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => handleQuickStatusChange(opt.value)}
+                  disabled={saving}
+                  style={{
+                    padding: "0.35rem 0.75rem",
+                    fontSize: "0.85rem",
+                    background: opt.color,
+                    color: ["#ffc107", "#20c997", "#fd7e14"].includes(opt.color) ? "#000" : "#fff",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: saving ? "not-allowed" : "pointer",
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {!editing && (
           <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -1026,6 +1258,76 @@ export default function RequestDetailPage() {
                     {request.place_safety_notes && (
                       <div style={{ fontSize: "0.9rem" }}>{request.place_safety_notes}</div>
                     )}
+                  </div>
+                )}
+
+                {/* Map Preview */}
+                {request.place_coordinates && (
+                  <div style={{ marginTop: "1rem" }}>
+                    {mapUrl ? (
+                      <div style={{ position: "relative" }}>
+                        <img
+                          src={mapUrl}
+                          alt="Location map"
+                          style={{
+                            width: "100%",
+                            height: "200px",
+                            objectFit: "cover",
+                            borderRadius: "8px",
+                            border: "1px solid var(--border)",
+                          }}
+                        />
+                        {mapNearbyCount > 0 && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: "8px",
+                              left: "8px",
+                              background: "rgba(0,0,0,0.7)",
+                              color: "#fff",
+                              padding: "4px 8px",
+                              borderRadius: "4px",
+                              fontSize: "0.75rem",
+                            }}
+                          >
+                            {mapNearbyCount} nearby request{mapNearbyCount > 1 ? "s" : ""}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "200px",
+                          background: "var(--card-border)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: "8px",
+                        }}
+                      >
+                        <div className="loading-spinner" />
+                      </div>
+                    )}
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${request.place_coordinates.lat},${request.place_coordinates.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        marginTop: "0.75rem",
+                        padding: "0.5rem 1rem",
+                        background: "#4285F4",
+                        color: "#fff",
+                        borderRadius: "6px",
+                        textDecoration: "none",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      View in Google Maps
+                    </a>
                   </div>
                 )}
               </div>

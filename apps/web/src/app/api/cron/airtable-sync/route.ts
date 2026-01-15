@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryOne, queryRows, query } from "@/lib/db";
 
-/**
- * Airtable Sync Cron Job
- *
- * Runs every 30 minutes on Vercel to sync intake submissions from
- * the Atlas Sync Airtable base into Atlas.
- *
- * Vercel Cron: Add to vercel.json:
- *   "crons": [{ "path": "/api/cron/airtable-sync", "schedule": "*/30 * * * *" }]
- *
- * Environment Variables Required:
- *   - AIRTABLE_PAT: Airtable Personal Access Token
- *   - CRON_SECRET: Optional secret for manual trigger security
- */
+// Airtable Sync Cron Job
+//
+// Runs every 30 minutes on Vercel to sync intake submissions from
+// the Atlas Sync Airtable base into Atlas.
+//
+// Vercel Cron: Add to vercel.json:
+//   "crons": [{ "path": "/api/cron/airtable-sync", "schedule": "every-30-min" }]
+//
+// Environment Variables Required:
+//   - AIRTABLE_PAT: Airtable Personal Access Token
+//   - CRON_SECRET: Optional secret for manual trigger security
 
 const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
 const ATLAS_SYNC_BASE_ID = "appwFuRddph1krmcd";

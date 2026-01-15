@@ -87,13 +87,14 @@ export async function GET(request: NextRequest) {
     if (mode === "attention") {
       // "Needs Attention" tab: Actionable items only
       // Include: New submissions OR legacy that's NOT done (Booked/Complete/Declined)
+      // EXCLUDE: Legacy submissions before 2026-01-01 (shown in Recent/All tabs instead)
       conditions.push(`status IN ('new', 'triaged')`);
       conditions.push(`(
         -- New submissions (not legacy)
         is_legacy = FALSE
         OR
-        -- Legacy that still needs action (Pending Review or contacted but waiting)
-        (is_legacy = TRUE AND (
+        -- Legacy that still needs action AND is from 2026 onwards
+        (is_legacy = TRUE AND submitted_at >= '2026-01-01' AND (
           legacy_submission_status IS NULL
           OR legacy_submission_status = 'Pending Review'
           OR (legacy_submission_status NOT IN ('Booked', 'Complete', 'Declined'))

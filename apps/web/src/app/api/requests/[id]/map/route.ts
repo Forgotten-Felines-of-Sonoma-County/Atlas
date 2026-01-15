@@ -48,11 +48,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const height = parseInt(searchParams.get("height") || "250");
   const zoom = parseInt(searchParams.get("zoom") || "14");
 
-  // Get request coordinates
+  // Get request coordinates (join with places to get coordinates)
   const requestData = await queryOne<RequestCoords>(
-    `SELECT latitude, longitude, summary
-     FROM trapper.sot_requests
-     WHERE request_id = $1`,
+    `SELECT
+       ST_Y(p.location::geometry) as latitude,
+       ST_X(p.location::geometry) as longitude,
+       r.summary
+     FROM trapper.sot_requests r
+     LEFT JOIN trapper.places p ON r.place_id = p.place_id
+     WHERE r.request_id = $1`,
     [id]
   );
 

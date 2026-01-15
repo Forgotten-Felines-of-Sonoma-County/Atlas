@@ -134,14 +134,17 @@ export const AIRTABLE_SCHEMA = {
   tableName: "Public Intake Submissions",
   baseId: "appwFuRddph1krmcd",
   tableId: "tblGQDVELZBhnxvUm",
-  fields: Object.entries(FIELD_MAPPING).map(([key, config]) => ({
-    name: config.airtable,
-    formField: key,
-    dbColumn: config.db,
-    type: config.type || "text",
-    required: config.required || false,
-    beacon: (config as { beacon?: boolean }).beacon || false,
-  })),
+  fields: Object.entries(FIELD_MAPPING).map(([key, config]) => {
+    const c = config as { airtable: string; db: string; type?: string; required?: boolean; beacon?: boolean };
+    return {
+      name: c.airtable,
+      formField: key,
+      dbColumn: c.db,
+      type: c.type || "text",
+      required: c.required || false,
+      beacon: c.beacon || false,
+    };
+  }),
 };
 
 // === VALIDATION ===

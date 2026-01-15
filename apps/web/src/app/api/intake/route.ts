@@ -222,6 +222,11 @@ export async function POST(request: NextRequest) {
       .then(() => {})
       .catch((err: unknown) => console.error("Person matching error:", err));
 
+    // Link to place and queue for geocoding (async, don't wait)
+    Promise.resolve(supabase.rpc("link_intake_submission_to_place", { p_submission_id: data.submission_id }))
+      .then(() => {})
+      .catch((err: unknown) => console.error("Place linking error:", err));
+
     // Return success with submission ID and triage info
     return NextResponse.json({
       success: true,

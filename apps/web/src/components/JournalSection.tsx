@@ -203,7 +203,7 @@ export default function JournalSection({
             style={{
               padding: "0.5rem",
               borderRadius: "4px",
-              border: "1px solid #dee2e6",
+              border: "1px solid var(--border)",
               minWidth: "160px"
             }}
           >
@@ -249,11 +249,12 @@ export default function JournalSection({
                 onClick={() => isLong && toggleExpanded(entry.id)}
                 style={{
                   padding: isExpanded ? "1rem" : "0.75rem",
-                  background: entry.is_pinned ? "#e3f2fd" : "#f8f9fa",
+                  background: entry.is_pinned ? "var(--accent-bg, #e3f2fd)" : "var(--card-bg, #f8f9fa)",
                   borderRadius: "6px",
                   borderLeft: `3px solid ${kindStyle.bg}`,
                   cursor: isLong ? "pointer" : "default",
                   transition: "all 0.15s ease",
+                  color: "var(--foreground)",
                 }}
               >
                 {/* Compact header */}
@@ -299,19 +300,19 @@ export default function JournalSection({
 
                   {/* Pinned indicator */}
                   {entry.is_pinned && (
-                    <span style={{ fontSize: "0.7rem", color: "#6c757d" }}>
+                    <span style={{ fontSize: "0.7rem", color: "var(--muted)" }}>
                       pinned
                     </span>
                   )}
 
                   {/* Date */}
-                  <span style={{ fontSize: "0.75rem", color: "#6c757d" }}>
+                  <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
                     {dateStr}
                   </span>
 
                   {/* Edited indicator */}
                   {entry.edit_count > 0 && (
-                    <span style={{ fontSize: "0.7rem", color: "#6c757d", fontStyle: "italic" }}>
+                    <span style={{ fontSize: "0.7rem", color: "var(--muted)", fontStyle: "italic" }}>
                       edited
                     </span>
                   )}
@@ -324,7 +325,7 @@ export default function JournalSection({
                     <span style={{
                       marginLeft: "auto",
                       fontSize: "0.7rem",
-                      color: "#6c757d"
+                      color: "var(--muted)"
                     }}>
                       {isExpanded ? "▲" : "▼"}
                     </span>
@@ -363,9 +364,9 @@ export default function JournalSection({
                   <div style={{
                     marginTop: "0.75rem",
                     paddingTop: "0.5rem",
-                    borderTop: "1px solid #dee2e6",
+                    borderTop: "1px solid var(--border)",
                     fontSize: "0.75rem",
-                    color: "#6c757d"
+                    color: "var(--muted)"
                   }}>
                     Created: {new Date(entry.created_at).toLocaleString()}
                     {entry.updated_at !== entry.created_at && (

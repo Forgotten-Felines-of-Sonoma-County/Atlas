@@ -183,7 +183,7 @@ export async function GET(
     );
 
     return NextResponse.json({
-      current: current?.colony_override_count !== null ? {
+      current: current && current.colony_override_count !== null ? {
         count: current.colony_override_count,
         altered: current.colony_override_altered,
         note: current.colony_override_note,

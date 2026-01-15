@@ -25,6 +25,12 @@ interface AssignmentHistory {
   status: string;
 }
 
+interface AvailableTrapper {
+  person_id: string;
+  display_name: string;
+  trapper_type: string;
+}
+
 interface Props {
   requestId: string;
   compact?: boolean;
@@ -35,29 +41,173 @@ export function TrapperAssignments({ requestId, compact = false }: Props) {
   const [history, setHistory] = useState<AssignmentHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [availableTrappers, setAvailableTrappers] = useState<AvailableTrapper[]>([]);
+  const [selectedTrapperId, setSelectedTrapperId] = useState("");
+  const [isPrimary, setIsPrimary] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      const response = await fetch(
+        `/api/requests/${requestId}/trappers?history=true`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setTrappers(data.trappers || []);
+        setHistory(data.history || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch trappers:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAvailableTrappers = async () => {
+    try {
+      // Fetch all trappers (no active filter - show everyone with a trapper role)
+      const response = await fetch("/api/trappers?limit=200&sort=display_name");
+      if (response.ok) {
+        const data = await response.json();
+        // Filter out already assigned trappers
+        const assignedIds = new Set(trappers.map(t => t.trapper_person_id));
+        setAvailableTrappers(
+          (data.trappers || []).filter((t: AvailableTrapper) => !assignedIds.has(t.person_id))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to fetch available trappers:", err);
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!selectedTrapperId) return;
+    setAssigning(true);
+    try {
+      const response = await fetch(`/api/requests/${requestId}/trappers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trapper_person_id: selectedTrapperId,
+          is_primary: isPrimary,
+          reason: "manual_assignment",
+        }),
+      });
+      if (response.ok) {
+        setShowAddForm(false);
+        setSelectedTrapperId("");
+        setIsPrimary(false);
+        fetchData();
+      }
+    } catch (err) {
+      console.error("Failed to assign trapper:", err);
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   useEffect(() => {
-    async function fetchTrappers() {
-      try {
-        const response = await fetch(
-          `/api/requests/${requestId}/trappers?history=true`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setTrappers(data.trappers || []);
-          setHistory(data.history || []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch trappers:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchTrappers();
+    fetchData();
   }, [requestId]);
+
+  useEffect(() => {
+    if (showAddForm) {
+      fetchAvailableTrappers();
+    }
+  }, [showAddForm, trappers]);
 
   if (loading) {
     return <span className="text-muted">Loading...</span>;
+  }
+
+  // Add trapper form UI
+  const addTrapperForm = showAddForm && (
+    <div style={{
+      padding: "1rem",
+      background: "var(--card-bg, #f8f9fa)",
+      borderRadius: "6px",
+      marginBottom: "1rem",
+      border: "1px solid var(--border)"
+    }}>
+      <div style={{ marginBottom: "0.75rem" }}>
+        <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.875rem" }}>
+          Select Trapper
+        </label>
+        <select
+          value={selectedTrapperId}
+          onChange={(e) => setSelectedTrapperId(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "0.5rem",
+            borderRadius: "4px",
+            border: "1px solid var(--border)",
+            background: "var(--background)",
+            color: "var(--foreground)",
+          }}
+        >
+          <option value="">Choose a trapper...</option>
+          {availableTrappers.map((t) => (
+            <option key={t.person_id} value={t.person_id}>
+              {t.display_name} ({t.trapper_type || "trapper"})
+            </option>
+          ))}
+        </select>
+      </div>
+      <div style={{ marginBottom: "0.75rem" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={isPrimary}
+            onChange={(e) => setIsPrimary(e.target.checked)}
+          />
+          <span style={{ fontSize: "0.875rem" }}>Make primary (lead) trapper</span>
+        </label>
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button
+          onClick={handleAssign}
+          disabled={!selectedTrapperId || assigning}
+          className="btn btn-primary btn-sm"
+        >
+          {assigning ? "Assigning..." : "Assign"}
+        </button>
+        <button
+          onClick={() => { setShowAddForm(false); setSelectedTrapperId(""); setIsPrimary(false); }}
+          className="btn btn-secondary btn-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+
+  if (trappers.length === 0 && !compact) {
+    return (
+      <div>
+        {addTrapperForm}
+        {!showAddForm && (
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <span className="text-muted">No trappers assigned</span>
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="btn btn-sm"
+              style={{
+                background: "var(--accent)",
+                color: "#fff",
+                padding: "0.25rem 0.75rem",
+                borderRadius: "4px",
+                border: "none",
+                cursor: "pointer",
+                fontSize: "0.8rem"
+              }}
+            >
+              + Add Trapper
+            </button>
+          </div>
+        )}
+      </div>
+    );
   }
 
   if (trappers.length === 0) {
@@ -141,6 +291,27 @@ export function TrapperAssignments({ requestId, compact = false }: Props) {
           </div>
         ))}
       </div>
+
+      {/* Add trapper button and form */}
+      {addTrapperForm}
+      {!showAddForm && (
+        <button
+          onClick={() => setShowAddForm(true)}
+          style={{
+            marginTop: "0.75rem",
+            background: "var(--accent, #0d6efd)",
+            color: "#fff",
+            padding: "0.35rem 0.85rem",
+            borderRadius: "4px",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "0.8rem",
+            fontWeight: 500,
+          }}
+        >
+          + Add Trapper
+        </button>
+      )}
 
       {/* History toggle */}
       {history.length > trappers.length && (

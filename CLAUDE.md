@@ -28,6 +28,27 @@ Atlas is a TNR (Trap-Neuter-Return) management system for Forgotten Felines of S
 
 ## Critical Rules
 
+### MANDATORY: Centralized Functions for Entity Creation
+
+**NEVER create inline INSERT statements for core entities.** Always use these SQL functions:
+
+| Entity | Function | Usage |
+|--------|----------|-------|
+| Person | `trapper.find_or_create_person(email, phone, first, last, addr, source)` | For all person creation |
+| Place | `trapper.find_or_create_place_deduped(address, name, lat, lng, source)` | For all place creation |
+| Cat | `trapper.find_or_create_cat_by_microchip(chip, name, sex, breed, ...)` | For all cat creation |
+
+**Why:**
+- These functions handle normalization, deduplication, identity matching, merged entities, and geocoding queue
+- Direct INSERTs bypass critical business logic and create duplicates
+
+**source_system values (use EXACTLY):**
+- `'airtable'` - All Airtable data (not 'airtable_staff' or 'airtable_project75')
+- `'clinichq'` - All ClinicHQ data
+- `'web_intake'` - Web intake form submissions
+
+**See `docs/INGEST_GUIDELINES.md` for complete documentation.**
+
 ### Attribution Windows (MIG_208)
 
 When linking cats to requests, use the **rolling window system**:
@@ -231,9 +252,14 @@ Trappers are linked to appointments directly for accurate stats:
 
 ## Don't Do
 
-- Don't match people by name only
+- **Don't INSERT directly into sot_people** - Use `find_or_create_person()`
+- **Don't INSERT directly into places** - Use `find_or_create_place_deduped()`
+- **Don't INSERT directly into sot_cats** - Use `find_or_create_cat_by_microchip()`
+- **Don't use custom source_system values** - Use 'airtable', 'clinichq', or 'web_intake'
+- Don't match people by name only - Email/phone only
 - Don't create fixed time windows for new features
 - Don't skip `entity_edits` logging for important changes
 - Don't hardcode phone/email patterns (use normalization functions)
 - Don't assume single trapper per request (use `request_trapper_assignments`)
 - Don't confuse colony size (estimate) with cats caught (verified clinic data)
+- Don't return 404 for merged entities - Check `merged_into_place_id` and redirect

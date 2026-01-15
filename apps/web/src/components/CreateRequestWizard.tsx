@@ -88,7 +88,7 @@ export default function CreateRequestWizard({
 
   // Auto-generate summary
   useEffect(() => {
-    const parts = [];
+    const parts: string[] = [];
     if (submission.cat_count_estimate) {
       parts.push(`${submission.cat_count_estimate} cat${submission.cat_count_estimate > 1 ? "s" : ""}`);
     }

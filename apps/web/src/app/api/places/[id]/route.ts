@@ -35,6 +35,15 @@ export async function GET(
   }
 
   try {
+    // First check if this place was merged into another
+    const mergeCheck = await queryOne<{ merged_into_place_id: string | null }>(
+      `SELECT merged_into_place_id FROM trapper.places WHERE place_id = $1`,
+      [id]
+    );
+
+    // If place was merged, use the canonical place ID
+    const placeId = mergeCheck?.merged_into_place_id || id;
+
     const sql = `
       SELECT
         place_id,
@@ -58,13 +67,22 @@ export async function GET(
       WHERE place_id = $1
     `;
 
-    const place = await queryOne<PlaceDetailRow>(sql, [id]);
+    const place = await queryOne<PlaceDetailRow>(sql, [placeId]);
 
     if (!place) {
       return NextResponse.json(
         { error: "Place not found" },
         { status: 404 }
       );
+    }
+
+    // Include redirect info if the original ID was merged
+    if (mergeCheck?.merged_into_place_id) {
+      return NextResponse.json({
+        ...place,
+        _merged_from: id,
+        _canonical_id: placeId,
+      });
     }
 
     return NextResponse.json(place);
@@ -187,24 +205,26 @@ export async function PATCH(
         return NextResponse.json({ error: "Place not found" }, { status: 404 });
       }
 
-      // Log changes to place_changes table
-      const auditInserts: string[] = [];
+      // Log changes to place_changes table using parameterized queries (prevents SQL injection)
+      const auditChanges: { field: string; oldVal: string | null; newVal: string }[] = [];
 
       if (body.formatted_address !== undefined && body.formatted_address !== current.formatted_address) {
-        auditInserts.push(`
-          INSERT INTO trapper.place_changes (place_id, field_name, old_value, new_value, change_reason, change_notes, changed_by)
-          VALUES ('${id}', 'formatted_address', ${current.formatted_address ? `'${current.formatted_address.replace(/'/g, "''")}'` : 'NULL'}, '${body.formatted_address.replace(/'/g, "''")}', '${change_reason}', ${change_notes ? `'${change_notes.replace(/'/g, "''")}'` : 'NULL'}, '${changed_by}')
-        `);
+        auditChanges.push({
+          field: 'formatted_address',
+          oldVal: current.formatted_address,
+          newVal: body.formatted_address
+        });
         updates.push(`formatted_address = $${paramIndex}`);
         values.push(body.formatted_address);
         paramIndex++;
       }
 
       if (body.locality !== undefined && body.locality !== current.locality) {
-        auditInserts.push(`
-          INSERT INTO trapper.place_changes (place_id, field_name, old_value, new_value, change_reason, change_notes, changed_by)
-          VALUES ('${id}', 'locality', ${current.locality ? `'${current.locality.replace(/'/g, "''")}'` : 'NULL'}, '${body.locality.replace(/'/g, "''")}', '${change_reason}', ${change_notes ? `'${change_notes.replace(/'/g, "''")}'` : 'NULL'}, '${changed_by}')
-        `);
+        auditChanges.push({
+          field: 'locality',
+          oldVal: current.locality,
+          newVal: body.locality
+        });
         updates.push(`locality = $${paramIndex}`);
         values.push(body.locality);
         paramIndex++;
@@ -226,20 +246,25 @@ export async function PATCH(
       if (body.latitude !== undefined && body.longitude !== undefined) {
         const coordChanged = current.lat !== body.latitude || current.lng !== body.longitude;
         if (coordChanged) {
-          auditInserts.push(`
-            INSERT INTO trapper.place_changes (place_id, field_name, old_value, new_value, change_reason, change_notes, changed_by)
-            VALUES ('${id}', 'coordinates', '${current.lat},${current.lng}', '${body.latitude},${body.longitude}', '${change_reason}', ${change_notes ? `'${change_notes.replace(/'/g, "''")}'` : 'NULL'}, '${changed_by}')
-          `);
+          auditChanges.push({
+            field: 'coordinates',
+            oldVal: current.lat !== null && current.lng !== null ? `${current.lat},${current.lng}` : null,
+            newVal: `${body.latitude},${body.longitude}`
+          });
           updates.push(`location = ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex + 1}), 4326)`);
           values.push(body.longitude, body.latitude);
           paramIndex += 2;
         }
       }
 
-      // Execute audit inserts
-      for (const auditSql of auditInserts) {
+      // Execute audit inserts with parameterized queries (secure)
+      const auditSql = `
+        INSERT INTO trapper.place_changes (place_id, field_name, old_value, new_value, change_reason, change_notes, changed_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `;
+      for (const change of auditChanges) {
         try {
-          await query(auditSql, []);
+          await query(auditSql, [id, change.field, change.oldVal, change.newVal, change_reason, change_notes, changed_by]);
         } catch (err) {
           console.error("Audit log error:", err);
           // Continue even if audit fails

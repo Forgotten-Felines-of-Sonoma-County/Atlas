@@ -31,7 +31,7 @@ const AIRTABLE_PAT = process.env.AIRTABLE_PAT || 'patcjKFzC852FH3sI.ac4874470b70
 const BASE_ID = 'appl6zLrRFDvsz0dh';
 const TABLE_ID = 'tbltFEFUPMS6KZU8Y';  // Appointment Requests
 
-const SOURCE_SYSTEM = 'airtable_sync';
+const SOURCE_SYSTEM = 'airtable';
 const SOURCE_TABLE = 'appointment_requests';
 
 // ============================================
@@ -323,83 +323,25 @@ async function main() {
     // 2. Name doesn't look like an address
     // 3. Has at least one valid contact method
     if (nameIsValid && !nameIsAddressLike && hasValidContact) {
-      // Try to find existing person by email via person_identifiers
-      if (isValidEmail(email)) {
-        const existing = await client.query(`
-          SELECT p.person_id FROM trapper.sot_people p
-          JOIN trapper.person_identifiers pi ON pi.person_id = p.person_id
-          WHERE pi.id_type = 'email'
-            AND pi.id_value_norm = $1
-            AND p.merged_into_person_id IS NULL
-          LIMIT 1
-        `, [email]);
+      // Use the centralized find_or_create_person SQL function
+      // This function handles:
+      // - Email/phone normalization using trapper.norm_phone_us()
+      // - Lookup via person_identifiers table
+      // - Phone blacklist checking
+      // - Canonical person resolution (handles merged persons)
+      // - Creating person and identifiers if not found
+      const personResult = await client.query(`
+        SELECT trapper.find_or_create_person($1, $2, $3, $4, NULL, 'airtable') as person_id
+      `, [
+        isValidEmail(email) ? email : null,
+        isValidPhone(phone) ? phone : null,
+        firstName,
+        lastName
+      ]);
 
-        if (existing.rows.length > 0) {
-          personId = existing.rows[0].person_id;
-          stats.people.matched++;
-        }
-      }
-
-      // Try phone if no email match
-      if (!personId && isValidPhone(phone)) {
-        const phoneNorm = phone.replace(/\D/g, '').slice(-10);  // Last 10 digits
-        const existing = await client.query(`
-          SELECT p.person_id FROM trapper.sot_people p
-          JOIN trapper.person_identifiers pi ON pi.person_id = p.person_id
-          WHERE pi.id_type = 'phone'
-            AND pi.id_value_norm = $1
-            AND p.merged_into_person_id IS NULL
-          LIMIT 1
-        `, [phoneNorm]);
-
-        if (existing.rows.length > 0) {
-          personId = existing.rows[0].person_id;
-          stats.people.matched++;
-        }
-      }
-
-      // Create person if not found
-      if (!personId) {
-        // Create person in sot_people
-        const personResult = await client.query(`
-          INSERT INTO trapper.sot_people (
-            display_name, account_type, data_source
-          ) VALUES ($1, 'person', 'airtable_sync')
-          RETURNING person_id
-        `, [displayName]);
-
-        personId = personResult.rows[0]?.person_id;
-
-        if (personId) {
-          stats.people.created++;
-
-          // Add email identifier
-          if (isValidEmail(email)) {
-            await client.query(`
-              INSERT INTO trapper.person_identifiers (person_id, id_type, id_value_raw, id_value_norm, source_system, source_table, source_row_id)
-              VALUES ($1, 'email', $2, $3, 'airtable_sync', $4, $5)
-              ON CONFLICT DO NOTHING
-            `, [personId, email, email.toLowerCase(), SOURCE_TABLE, recordId]);
-          }
-
-          // Add phone identifier
-          if (isValidPhone(phone)) {
-            const phoneNorm = phone.replace(/\D/g, '').slice(-10);
-            await client.query(`
-              INSERT INTO trapper.person_identifiers (person_id, id_type, id_value_raw, id_value_norm, source_system, source_table, source_row_id)
-              VALUES ($1, 'phone', $2, $3, 'airtable_sync', $4, $5)
-              ON CONFLICT DO NOTHING
-            `, [personId, phone, phoneNorm, SOURCE_TABLE, recordId]);
-          }
-
-          // Add source alias (for name tracking)
-          const nameKey = displayName.toLowerCase().replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
-          await client.query(`
-            INSERT INTO trapper.person_aliases (person_id, name_raw, name_key, source_system, source_table, source_row_id)
-            VALUES ($1, $2, $3, 'airtable_sync', $4, $5)
-            ON CONFLICT DO NOTHING
-          `, [personId, displayName, nameKey, SOURCE_TABLE, recordId]);
-        }
+      personId = personResult.rows[0]?.person_id;
+      if (personId) {
+        stats.people.created++;  // Could be matched or created - function handles both
       }
     } else {
       stats.people.skipped++;
@@ -416,7 +358,7 @@ async function main() {
     if (address) {
       // Use smart merge function and find/create place
       const placeResult = await client.query(`
-        SELECT trapper.find_or_create_place_deduped($1, NULL, NULL, NULL, 'airtable_sync') as place_id
+        SELECT trapper.find_or_create_place_deduped($1, NULL, NULL, NULL, 'airtable') as place_id
       `, [address]);
 
       placeId = placeResult.rows[0]?.place_id;
@@ -433,7 +375,7 @@ async function main() {
       await client.query(`
         INSERT INTO trapper.person_place_relationships (
           person_id, place_id, role, confidence, source_system, source_table
-        ) VALUES ($1, $2, 'requester', 0.75, 'airtable_sync', 'appointment_requests')
+        ) VALUES ($1, $2, 'requester', 0.75, 'airtable', 'appointment_requests')
         ON CONFLICT DO NOTHING
       `, [personId, placeId]);
     }

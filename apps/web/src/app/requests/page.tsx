@@ -12,6 +12,7 @@ interface Request {
   scheduled_date: string | null;
   assigned_to: string | null;
   created_at: string;
+  source_created_at: string | null; // Original Airtable date for legacy data
   place_name: string | null;
   place_address: string | null;
   place_city: string | null;
@@ -274,7 +275,7 @@ function RequestCard({ request }: { request: Request }) {
             }}
           >
             <span>{request.requester_name || "Unknown requester"}</span>
-            <span>{new Date(request.created_at).toLocaleDateString()}</span>
+            <span>{new Date(request.source_created_at || request.created_at).toLocaleDateString()}</span>
           </div>
         </div>
       </div>
@@ -289,6 +290,8 @@ export default function RequestsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  const [sortBy, setSortBy] = useState<"created" | "status" | "priority">("status");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
   // Debounce search input
   useEffect(() => {
@@ -305,6 +308,8 @@ export default function RequestsPage() {
         const params = new URLSearchParams();
         if (statusFilter) params.set("status", statusFilter);
         if (debouncedSearch) params.set("q", debouncedSearch);
+        params.set("sort_by", sortBy);
+        params.set("sort_order", sortOrder);
         params.set("limit", "100");
 
         const response = await fetch(`/api/requests?${params.toString()}`);
@@ -320,7 +325,7 @@ export default function RequestsPage() {
     };
 
     fetchRequests();
-  }, [statusFilter, debouncedSearch]);
+  }, [statusFilter, debouncedSearch, sortBy, sortOrder]);
 
   return (
     <div>
@@ -396,6 +401,30 @@ export default function RequestsPage() {
           <option value="cancelled">Cancelled</option>
           <option value="on_hold">On Hold</option>
         </select>
+
+        {/* Sort controls */}
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as "created" | "status" | "priority")}
+          style={{ minWidth: "130px" }}
+        >
+          <option value="created">Sort by Date</option>
+          <option value="status">Sort by Status</option>
+          <option value="priority">Sort by Priority</option>
+        </select>
+        <button
+          onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+          style={{
+            padding: "0.5rem 0.75rem",
+            border: "1px solid var(--border)",
+            borderRadius: "4px",
+            background: "transparent",
+            cursor: "pointer",
+          }}
+          title={sortOrder === "desc" ? "Newest first" : "Oldest first"}
+        >
+          {sortOrder === "desc" ? "↓" : "↑"}
+        </button>
 
         {/* View Toggle */}
         <div style={{ display: "flex", gap: "4px", marginLeft: "auto" }}>
@@ -504,7 +533,7 @@ export default function RequestsPage() {
                     )}
                   </td>
                   <td className="text-sm text-muted">
-                    {new Date(req.created_at).toLocaleDateString()}
+                    {new Date(req.source_created_at || req.created_at).toLocaleDateString()}
                   </td>
                 </tr>
               ))}

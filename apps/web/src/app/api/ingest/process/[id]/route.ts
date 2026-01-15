@@ -134,8 +134,8 @@ export async function POST(
         .substring(0, 16);
 
       // Check if exists
-      const existing = await queryOne<{ staged_record_id: string; row_hash: string }>(
-        `SELECT staged_record_id, row_hash FROM trapper.staged_records
+      const existing = await queryOne<{ id: string; row_hash: string }>(
+        `SELECT id, row_hash FROM trapper.staged_records
          WHERE source_system = $1 AND source_table = $2 AND source_row_id = $3`,
         [upload.source_system, upload.source_table, sourceRowId]
       );
@@ -146,8 +146,8 @@ export async function POST(
           await query(
             `UPDATE trapper.staged_records
              SET payload = $1, row_hash = $2, updated_at = NOW()
-             WHERE staged_record_id = $3`,
-            [JSON.stringify(row), rowHash, existing.staged_record_id]
+             WHERE id = $3`,
+            [JSON.stringify(row), rowHash, existing.id]
           );
           updated++;
         } else {
@@ -230,54 +230,127 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
   }
 
   if (sourceTable === 'owner_info') {
-    // Create/update people from owner_info
-    // First, find people by email match or create new
-    const peopleUpdates = await query(`
+    // Step 1: Create people using find_or_create_person SQL function (consistent with other ingests)
+    // This finds existing people by email/phone OR creates new ones
+    const peopleCreated = await query(`
       WITH owner_data AS (
-        SELECT DISTINCT ON (LOWER(TRIM(payload->>'Owner Email')))
+        SELECT DISTINCT ON (COALESCE(NULLIF(LOWER(TRIM(payload->>'Owner Email')), ''), trapper.norm_phone_us(COALESCE(payload->>'Owner Cell Phone', payload->>'Owner Phone'))))
           payload->>'Owner First Name' as first_name,
           payload->>'Owner Last Name' as last_name,
-          LOWER(TRIM(payload->>'Owner Email')) as email,
-          payload->>'Owner Phone' as phone,
-          payload->>'Owner Cell Phone' as cell_phone,
-          payload->>'Owner Address' as address,
-          payload->>'Microchip Number' as microchip
+          NULLIF(LOWER(TRIM(payload->>'Owner Email')), '') as email,
+          trapper.norm_phone_us(COALESCE(NULLIF(payload->>'Owner Cell Phone', ''), payload->>'Owner Phone')) as phone,
+          NULLIF(TRIM(payload->>'Owner Address'), '') as address,
+          payload->>'Number' as appointment_number
         FROM trapper.staged_records
         WHERE source_system = 'clinichq'
           AND source_table = 'owner_info'
-          AND payload->>'Owner Email' IS NOT NULL
-          AND TRIM(payload->>'Owner Email') != ''
-        ORDER BY LOWER(TRIM(payload->>'Owner Email')), payload->>'Date' DESC
+          AND (
+            (payload->>'Owner Email' IS NOT NULL AND TRIM(payload->>'Owner Email') != '')
+            OR (payload->>'Owner Phone' IS NOT NULL AND TRIM(payload->>'Owner Phone') != '')
+            OR (payload->>'Owner Cell Phone' IS NOT NULL AND TRIM(payload->>'Owner Cell Phone') != '')
+          )
+          AND (payload->>'Owner First Name' IS NOT NULL AND TRIM(payload->>'Owner First Name') != '')
+        ORDER BY COALESCE(NULLIF(LOWER(TRIM(payload->>'Owner Email')), ''), trapper.norm_phone_us(COALESCE(payload->>'Owner Cell Phone', payload->>'Owner Phone'))),
+                 (payload->>'Date')::date DESC NULLS LAST
+      ),
+      created_people AS (
+        SELECT
+          od.*,
+          trapper.find_or_create_person(
+            od.email,
+            od.phone,
+            od.first_name,
+            od.last_name,
+            od.address,
+            'clinichq'
+          ) as person_id
+        FROM owner_data od
+        WHERE od.first_name IS NOT NULL
       )
-      UPDATE trapper.sot_people p
-      SET
-        phone = COALESCE(NULLIF(od.cell_phone, ''), NULLIF(od.phone, ''), p.phone),
-        updated_at = NOW()
-      FROM owner_data od
-      WHERE LOWER(TRIM(p.email)) = od.email
-        AND od.email IS NOT NULL
-      RETURNING p.person_id
+      SELECT COUNT(*) as cnt FROM created_people WHERE person_id IS NOT NULL
     `);
-    results.people_updated = peopleUpdates.rowCount || 0;
+    results.people_created_or_matched = parseInt(peopleCreated.rows?.[0]?.cnt || '0');
 
-    // Link people to appointments via microchip
+    // Step 2: Create places from owner addresses using find_or_create_place_deduped
+    // This auto-queues for geocoding
+    const placesCreated = await query(`
+      WITH owner_addresses AS (
+        SELECT DISTINCT ON (TRIM(payload->>'Owner Address'))
+          TRIM(payload->>'Owner Address') as address,
+          NULLIF(LOWER(TRIM(payload->>'Owner Email')), '') as email,
+          trapper.norm_phone_us(COALESCE(NULLIF(payload->>'Owner Cell Phone', ''), payload->>'Owner Phone')) as phone
+        FROM trapper.staged_records
+        WHERE source_system = 'clinichq'
+          AND source_table = 'owner_info'
+          AND payload->>'Owner Address' IS NOT NULL
+          AND TRIM(payload->>'Owner Address') != ''
+          AND LENGTH(TRIM(payload->>'Owner Address')) > 10
+        ORDER BY TRIM(payload->>'Owner Address'), (payload->>'Date')::date DESC NULLS LAST
+      ),
+      created_places AS (
+        SELECT
+          oa.*,
+          trapper.find_or_create_place_deduped(
+            oa.address,
+            NULL,
+            NULL,
+            NULL,
+            'clinichq'
+          ) as place_id
+        FROM owner_addresses oa
+      )
+      SELECT COUNT(*) as cnt FROM created_places WHERE place_id IS NOT NULL
+    `);
+    results.places_created_or_matched = parseInt(placesCreated.rows?.[0]?.cnt || '0');
+
+    // Step 3: Link people to places via person_place_relationships
+    const personPlaceLinks = await query(`
+      INSERT INTO trapper.person_place_relationships (person_id, place_id, relationship_type, confidence, source_system, source_table)
+      SELECT DISTINCT
+        pi.person_id,
+        p.place_id,
+        'residence',
+        'medium',
+        'clinichq',
+        'owner_info'
+      FROM trapper.staged_records sr
+      JOIN trapper.person_identifiers pi ON (
+        (pi.id_type = 'email' AND pi.id_value_norm = NULLIF(LOWER(TRIM(sr.payload->>'Owner Email')), ''))
+        OR (pi.id_type = 'phone' AND pi.id_value_norm = trapper.norm_phone_us(COALESCE(NULLIF(sr.payload->>'Owner Cell Phone', ''), sr.payload->>'Owner Phone')))
+      )
+      JOIN trapper.places p ON p.normalized_address = trapper.normalize_address(sr.payload->>'Owner Address')
+        AND p.merged_into_place_id IS NULL
+      WHERE sr.source_system = 'clinichq'
+        AND sr.source_table = 'owner_info'
+        AND sr.payload->>'Owner Address' IS NOT NULL
+        AND TRIM(sr.payload->>'Owner Address') != ''
+        AND NOT EXISTS (
+          SELECT 1 FROM trapper.person_place_relationships ppr
+          WHERE ppr.person_id = pi.person_id AND ppr.place_id = p.place_id
+        )
+      ON CONFLICT DO NOTHING
+    `);
+    results.person_place_links = personPlaceLinks.rowCount || 0;
+
+    // Step 4: Link people to appointments via email/phone match through person_identifiers
     const personLinks = await query(`
       UPDATE trapper.sot_appointments a
-      SET person_id = p.person_id
+      SET person_id = pi.person_id
       FROM trapper.staged_records sr
-      JOIN trapper.sot_people p ON LOWER(TRIM(p.email)) = LOWER(TRIM(sr.payload->>'Owner Email'))
+      JOIN trapper.person_identifiers pi ON (
+        (pi.id_type = 'email' AND pi.id_value_norm = NULLIF(LOWER(TRIM(sr.payload->>'Owner Email')), ''))
+        OR (pi.id_type = 'phone' AND pi.id_value_norm = trapper.norm_phone_us(COALESCE(NULLIF(sr.payload->>'Owner Cell Phone', ''), sr.payload->>'Owner Phone')))
+      )
       WHERE sr.source_system = 'clinichq'
         AND sr.source_table = 'owner_info'
         AND a.appointment_number = sr.payload->>'Number'
         AND a.person_id IS NULL
-        AND sr.payload->>'Owner Email' IS NOT NULL
-        AND TRIM(sr.payload->>'Owner Email') != ''
     `);
     results.appointments_linked_to_people = personLinks.rowCount || 0;
 
-    // Link cats to people via appointments
+    // Step 5: Link cats to people via appointments
     const catPersonLinks = await query(`
-      INSERT INTO trapper.cat_person_relationships (cat_id, person_id, relationship_type, confidence, source_system, source_table)
+      INSERT INTO trapper.person_cat_relationships (cat_id, person_id, relationship_type, confidence, source_system, source_table)
       SELECT DISTINCT
         a.cat_id,
         a.person_id,
@@ -289,7 +362,7 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
       WHERE a.cat_id IS NOT NULL
         AND a.person_id IS NOT NULL
         AND NOT EXISTS (
-          SELECT 1 FROM trapper.cat_person_relationships cpr
+          SELECT 1 FROM trapper.person_cat_relationships cpr
           WHERE cpr.cat_id = a.cat_id AND cpr.person_id = a.person_id
         )
       ON CONFLICT DO NOTHING
@@ -450,6 +523,14 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
       WHERE c.altered_status IS DISTINCT FROM 'neutered'
         AND EXISTS (SELECT 1 FROM trapper.cat_procedures cp WHERE cp.cat_id = c.cat_id AND cp.is_neuter = TRUE)
     `);
+
+    // Link appointments to trappers for accurate trapper stats
+    const trapperLinks = await query(`
+      SELECT * FROM trapper.link_appointments_to_trappers()
+    `);
+    if (trapperLinks.rows?.[0]) {
+      results.appointments_linked_to_trappers = trapperLinks.rows[0].linked || 0;
+    }
   }
 
   return results;

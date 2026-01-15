@@ -42,13 +42,13 @@ export async function GET(request: NextRequest) {
   let paramIndex = 1;
 
   if (status) {
-    conditions.push(`status = $${paramIndex}::trapper.request_status`);
+    conditions.push(`status = $${paramIndex}`);
     params.push(status);
     paramIndex++;
   }
 
   if (priority) {
-    conditions.push(`priority = $${paramIndex}::trapper.request_priority`);
+    conditions.push(`priority = $${paramIndex}`);
     params.push(priority);
     paramIndex++;
   }

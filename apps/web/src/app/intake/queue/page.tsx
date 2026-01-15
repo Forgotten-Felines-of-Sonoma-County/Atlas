@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import CreateRequestWizard from "@/components/CreateRequestWizard";
 
@@ -16,6 +16,8 @@ interface IntakeSubmission {
   cat_count_estimate: number | null;
   fixed_status: string;
   has_kittens: boolean | null;
+  kitten_count: number | null;
+  has_property_access: boolean | null;
   has_medical_concerns: boolean | null;
   is_emergency: boolean;
   situation_description: string | null;
@@ -223,7 +225,7 @@ function normalizeName(name: string | null): string {
   return name;
 }
 
-export default function IntakeQueuePage() {
+function IntakeQueueContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const openSubmissionId = searchParams.get("open");
@@ -1782,5 +1784,13 @@ export default function IntakeQueuePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function IntakeQueuePage() {
+  return (
+    <Suspense fallback={<div className="loading">Loading queue...</div>}>
+      <IntakeQueueContent />
+    </Suspense>
   );
 }

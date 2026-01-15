@@ -49,7 +49,7 @@ const AIRTABLE_PAT = ENV.AIRTABLE_PAT;
 const BASE_ID = 'appl6zLrRFDvsz0dh';
 const TABLE_ID = 'tblpjMKadfeunMPq7';  // Project 75
 
-const SOURCE_SYSTEM = 'airtable_project75';
+const SOURCE_SYSTEM = 'airtable';  // Use 'airtable' for consistency with other Airtable scripts
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -259,172 +259,57 @@ async function main() {
 
       // Extract contact info for person lookup
       const email = f['Email'];
-      const phone = f['Phone Number']?.replace(/[^\d]/g, '').slice(-10);
+      const phone = f['Phone Number'];  // Pass raw phone - SQL function normalizes
 
       let placeId = null;
       let matchMethod = null;
 
-      // === STRATEGY: GEOCODE FIRST ===
-      // Most survey addresses are typed differently than our DB addresses.
-      // Geocoding normalizes them to a standard format for matching.
+      // === USE CENTRALIZED FUNCTION ===
+      // find_or_create_place_deduped() handles:
+      // 1. Address normalization (consistent with all other ingests)
+      // 2. Deduplication by normalized address
+      // 3. Auto-queues geocoding if no coordinates provided
+      // 4. Creates place if not found
 
+      // First, geocode to get coordinates (improves place data)
       const geocoded = await geocodeAddress(address);
 
       if (geocoded) {
-        // Normalize geocoded address - remove ", USA" suffix and standardize
-        const geoAddr = geocoded.formattedAddress.replace(/, USA$/, '');
-        const geoAddrNorm = normalizeAddress(geoAddr);
+        // Use find_or_create_place_deduped with geocoded coordinates
+        const placeResult = await client.query(`
+          SELECT trapper.find_or_create_place_deduped($1, NULL, $2, $3, $4) AS place_id
+        `, [geocoded.formattedAddress, geocoded.lat, geocoded.lng, SOURCE_SYSTEM]);
 
-        // Extract key components for flexible matching
-        const streetMatch = geoAddr.match(/^(\d+)\s+(.+?),/);
-        const streetNum = streetMatch?.[1];
-        const streetName = streetMatch?.[2]?.toLowerCase()
-          .replace(/\b(road|rd|street|st|avenue|ave|drive|dr|lane|ln|court|ct|circle|cir|boulevard|blvd|way|place|pl)\b\.?/gi, '')
-          .trim();
-
-        // === STEP 1: Exact formatted_address match (with and without USA) ===
-        const exactGeoResult = await client.query(`
-          SELECT place_id, display_name, formatted_address
-          FROM trapper.places
-          WHERE formatted_address = $1
-             OR formatted_address = $2
-             OR formatted_address = $3
-          LIMIT 1
-        `, [geocoded.formattedAddress, geoAddr, geoAddr + ', USA']);
-
-        if (exactGeoResult.rows.length > 0) {
-          placeId = exactGeoResult.rows[0].place_id;
-          matchMethod = 'geocode_exact';
-          matchedExact++;
-          if (options.verbose) {
-            console.log(`  ✓ [GEO-EXACT] ${address} → ${exactGeoResult.rows[0].display_name}`);
-          }
-        }
-
-        // === STEP 1b: Fuzzy address match using key components ===
-        if (!placeId && streetNum && streetName) {
-          // Match: street number + partial street name + city
-          const cityMatch = geoAddr.match(/,\s*([^,]+),\s*CA/);
-          const city = cityMatch?.[1]?.toLowerCase();
-
-          const fuzzyResult = await client.query(`
-            SELECT place_id, display_name, formatted_address
-            FROM trapper.places
-            WHERE formatted_address ~* $1
-            LIMIT 1
-          `, [`^${streetNum}\\s+.*${streetName.slice(0, 8)}.*${city || ''}`]);
-
-          if (fuzzyResult.rows.length > 0) {
-            placeId = fuzzyResult.rows[0].place_id;
-            matchMethod = 'geocode_fuzzy';
-            matchedExact++;
-            if (options.verbose) {
-              console.log(`  ✓ [GEO-FUZZY] ${address} → ${fuzzyResult.rows[0].display_name}`);
-            }
-          }
-        }
-
-        // === STEP 2: Proximity match with similarity check ===
-        if (!placeId) {
-          const nearbyResult = await client.query(`
-            SELECT place_id, display_name, formatted_address,
-                   ST_Distance(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) AS distance_m
-            FROM trapper.places
-            WHERE location IS NOT NULL
-              AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
-            ORDER BY distance_m ASC
-            LIMIT 3
-          `, [geocoded.lng, geocoded.lat, MAX_DISTANCE_METERS]);
-
-          for (const row of nearbyResult.rows) {
-            const dbAddr = row.formatted_address || row.display_name;
-            const similarity = stringSimilarity(geocoded.formattedAddress, dbAddr);
-
-            // Match if very close (<30m) OR reasonable similarity
-            if (row.distance_m < 30 || similarity >= 0.6) {
-              placeId = row.place_id;
-              matchMethod = 'geocode_nearby';
-              matchedGeocode++;
-              if (options.verbose) {
-                console.log(`  ✓ [GEO-NEARBY] ${address} → ${row.display_name} (${Math.round(row.distance_m)}m, sim=${similarity.toFixed(2)})`);
-              }
-              break;
-            }
-          }
-        }
-
-        // === STEP 3: Normalized text search (for places without coordinates) ===
-        if (!placeId) {
-          const geoNorm = normalizeAddress(geocoded.formattedAddress);
-          const textResult = await client.query(`
-            SELECT place_id, display_name, formatted_address
-            FROM trapper.places
-            WHERE location IS NULL
-              AND (LOWER(REGEXP_REPLACE(formatted_address, '[^\\w\\s]', ' ', 'g')) LIKE $1
-                OR LOWER(REGEXP_REPLACE(display_name, '[^\\w\\s]', ' ', 'g')) LIKE $1)
-            LIMIT 1
-          `, [`%${geoNorm.slice(0, 40)}%`]);
-
-          if (textResult.rows.length > 0) {
-            placeId = textResult.rows[0].place_id;
-            matchMethod = 'text_match';
-            matchedGeocode++;
-            if (options.verbose) {
-              console.log(`  ✓ [TEXT] ${address} → ${textResult.rows[0].display_name}`);
-            }
-          }
-        }
-      }
-
-      // === STEP 4: Person-based match (fallback for failed geocoding) ===
-      if (!placeId && (email || phone)) {
-        const personResult = await client.query(`
-          SELECT r.place_id, pl.display_name, MAX(r.created_at) AS last_request
-          FROM trapper.person_identifiers pi
-          JOIN trapper.sot_requests r ON r.requester_person_id = pi.person_id
-          JOIN trapper.places pl ON pl.place_id = r.place_id
-          WHERE (pi.id_type = 'email' AND pi.id_value_norm = LOWER($1))
-             OR (pi.id_type = 'phone' AND pi.id_value_norm = $2)
-          GROUP BY r.place_id, pl.display_name
-          ORDER BY last_request DESC
-          LIMIT 1
-        `, [email?.toLowerCase(), phone]);
-
-        if (personResult.rows.length > 0) {
-          placeId = personResult.rows[0].place_id;
-          matchMethod = 'person';
-          matchedPerson++;
-          if (options.verbose) {
-            console.log(`  ✓ [PERSON] ${email || phone} → ${personResult.rows[0].display_name}`);
-          }
-        }
-      }
-
-      // === STEP 5: Raw text match (last resort) ===
-      if (!placeId) {
-        const addressNorm = normalizeAddress(address);
-        const rawResult = await client.query(`
-          SELECT place_id, display_name, formatted_address
-          FROM trapper.places
-          WHERE LOWER(REGEXP_REPLACE(formatted_address, '[^\\w\\s]', ' ', 'g')) LIKE $1
-             OR LOWER(REGEXP_REPLACE(display_name, '[^\\w\\s]', ' ', 'g')) LIKE $1
-          LIMIT 1
-        `, [`%${addressNorm.slice(0, 30)}%`]);
-
-        if (rawResult.rows.length > 0) {
-          placeId = rawResult.rows[0].place_id;
-          matchMethod = 'raw_text';
+        placeId = placeResult.rows[0]?.place_id;
+        if (placeId) {
+          matchMethod = 'deduped_geocoded';
           matchedGeocode++;
           if (options.verbose) {
-            console.log(`  ✓ [RAW] ${address} → ${rawResult.rows[0].display_name}`);
+            console.log(`  ✓ [DEDUPED-GEO] ${address} → ${geocoded.formattedAddress}`);
+          }
+        }
+      }
+
+      // If geocoding failed, try with raw address (will be queued for geocoding)
+      if (!placeId) {
+        const placeResult = await client.query(`
+          SELECT trapper.find_or_create_place_deduped($1, NULL, NULL, NULL, $2) AS place_id
+        `, [address, SOURCE_SYSTEM]);
+
+        placeId = placeResult.rows[0]?.place_id;
+        if (placeId) {
+          matchMethod = 'deduped_raw';
+          matchedExact++;
+          if (options.verbose) {
+            console.log(`  ✓ [DEDUPED-RAW] ${address} (queued for geocoding)`);
           }
         }
       }
 
       if (!placeId) {
-        // Could not match - log for manual review
+        // Address was invalid (empty or NULL)
         if (options.verbose) {
-          console.log(`  ? [NO MATCH] ${address}`);
+          console.log(`  ? [INVALID ADDRESS] ${address}`);
         }
         skippedNoMatch++;
         continue;

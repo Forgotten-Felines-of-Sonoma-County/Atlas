@@ -172,130 +172,68 @@ async function fetchAllRecords(tableId, fields = []) {
  */
 function mapCaseStatus(airtableStatus) {
   if (!airtableStatus) return "new";
-  const s = airtableStatus.toLowerCase();
-  if (s.includes("closed") || s.includes("complete")) return "completed";
-  if (s.includes("hold") || s.includes("wait")) return "on_hold";
+  const s = airtableStatus.toLowerCase().trim();
+
+  // Completed/closed states
+  if (s.includes("closed") || s === "complete") return "completed";
+  if (s.includes("partially complete")) return "in_progress"; // Still has work to do
+
+  // Cancelled/inactive states
+  if (s.includes("duplicate")) return "cancelled";
+  if (s.includes("denied")) return "cancelled";
+  if (s.includes("referred")) return "cancelled"; // Referred elsewhere = not our case
   if (s.includes("cancel")) return "cancelled";
+
+  // On hold / revisit
+  if (s.includes("hold") || s.includes("wait")) return "on_hold";
+  if (s.includes("revisit")) return "on_hold"; // Will revisit later
+
+  // Active states
   if (s.includes("active") || s.includes("progress")) return "in_progress";
   if (s.includes("schedule")) return "scheduled";
   if (s.includes("triage") || s.includes("review")) return "triaged";
+
+  // Only "Requested" should map to "new"
   return "new";
 }
 
 /**
  * Find or create a person from contact info
+ * Uses the centralized SQL function for consistency with other ingests
  */
 async function findOrCreatePerson(firstName, lastName, phone, email) {
   if (!firstName && !lastName) return null;
+  if (!email && !phone) return null;
 
-  // First try to find by phone or email
-  let personId = null;
-
-  if (email) {
-    const emailMatch = await pool.query(
-      `SELECT person_id FROM trapper.person_identifiers
-       WHERE id_type = 'email' AND id_value_norm = LOWER($1)`,
-      [email]
-    );
-    if (emailMatch.rows.length > 0) {
-      personId = emailMatch.rows[0].person_id;
-    }
-  }
-
-  if (!personId && phone) {
-    const normPhone = phone.replace(/\D/g, '').slice(-10);
-    if (normPhone.length === 10) {
-      const phoneMatch = await pool.query(
-        `SELECT person_id FROM trapper.person_identifiers
-         WHERE id_type = 'phone' AND id_value_norm = $1`,
-        [normPhone]
-      );
-      if (phoneMatch.rows.length > 0) {
-        personId = phoneMatch.rows[0].person_id;
-      }
-    }
-  }
-
-  // If found, return
-  if (personId) return personId;
-
-  // Create new person with display_name (sot_people doesn't have first_name/last_name)
-  const displayName = `${firstName} ${lastName}`.trim();
-  const insertResult = await pool.query(
-    `INSERT INTO trapper.sot_people (
-      display_name, created_at, updated_at
-    ) VALUES ($1, NOW(), NOW())
-    RETURNING person_id`,
-    [displayName || 'Unknown']
+  // Use the centralized find_or_create_person SQL function
+  // This function handles:
+  // - Email/phone normalization using trapper.norm_phone_us()
+  // - Lookup via person_identifiers table
+  // - Phone blacklist checking
+  // - Canonical person resolution (handles merged persons)
+  // - Creating person and identifiers if not found
+  const result = await pool.query(
+    `SELECT trapper.find_or_create_person($1, $2, $3, $4, NULL, 'airtable') as person_id`,
+    [email || null, phone || null, firstName || null, lastName || null]
   );
-  personId = insertResult.rows[0].person_id;
 
-  // Add identifiers
-  if (email) {
-    await pool.query(
-      `INSERT INTO trapper.person_identifiers (person_id, id_type, id_value_raw, id_value_norm)
-       VALUES ($1, 'email', $2, LOWER($2))
-       ON CONFLICT (id_type, id_value_norm) DO NOTHING`,
-      [personId, email]
-    );
-  }
-
-  if (phone) {
-    const normPhone = phone.replace(/\D/g, '').slice(-10);
-    if (normPhone.length === 10) {
-      await pool.query(
-        `INSERT INTO trapper.person_identifiers (person_id, id_type, id_value_raw, id_value_norm)
-         VALUES ($1, 'phone', $2, $3)
-         ON CONFLICT (id_type, id_value_norm) DO NOTHING`,
-        [personId, phone, normPhone]
-      );
-    }
-  }
-
-  return personId;
+  return result.rows[0]?.person_id || null;
 }
 
 /**
- * Find or create a place from address
+ * Find or create a place from address using the deduped SQL function
+ * This auto-queues places for geocoding if no coordinates provided
  */
 async function findOrCreatePlace(address, lat, lng) {
   if (!address) return null;
 
-  // Generate normalized address key
-  const normalizedAddress = address.toUpperCase()
-    .replace(/,\s*/g, ', ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Try to find existing place by formatted_address or display_name
-  const existing = await pool.query(
-    `SELECT place_id FROM trapper.places
-     WHERE UPPER(formatted_address) = $1 OR formatted_address = $2
-     LIMIT 1`,
-    [normalizedAddress, address]
+  // Use the SQL function that handles deduplication and auto-queues geocoding
+  const result = await pool.query(
+    `SELECT trapper.find_or_create_place_deduped($1, NULL, $2, $3, 'airtable') as place_id`,
+    [address, lat || null, lng || null]
   );
 
-  if (existing.rows.length > 0) {
-    return existing.rows[0].place_id;
-  }
-
-  // Try matching by street address only
-  const streetOnly = address.split(',')[0].trim().toUpperCase();
-  const streetMatch = await pool.query(
-    `SELECT place_id FROM trapper.places
-     WHERE UPPER(display_name) = $1
-     LIMIT 1`,
-    [streetOnly]
-  );
-
-  if (streetMatch.rows.length > 0) {
-    return streetMatch.rows[0].place_id;
-  }
-
-  // Skip creating new places - the places table has complex constraints
-  // Places will need to be created via the proper intake flow
-  // Just return null and the request will be created without a place_id
-  return null;
+  return result.rows[0]?.place_id || null;
 }
 
 /**
@@ -323,18 +261,30 @@ async function syncTrappingRequest(record) {
   const placeId = await findOrCreatePlace(address, lat, lng);
   const personId = await findOrCreatePerson(firstName, lastName, phone, email);
 
-  // Check if request already exists
+  // Check if request already exists (from any Airtable source)
   const existingResult = await pool.query(
-    `SELECT request_id FROM trapper.sot_requests
-     WHERE source_system = 'airtable_ffsc' AND source_record_id = $1`,
+    `SELECT request_id, source_system FROM trapper.sot_requests
+     WHERE source_record_id = $1
+     AND source_system IN ('airtable_ffsc', 'airtable')`,
     [record.id]
   );
 
   let requestId;
   const status = mapCaseStatus(f["Case Status"]);
-  const summary = firstName || lastName
-    ? `${firstName} ${lastName}`.trim()
-    : (f["Client Name"] || `Case #${f["Case Number"] || record.id.slice(0,8)}`);
+
+  // Build summary: prefer client name, then Client Name field, then address/place name
+  let summary;
+  if (firstName || lastName) {
+    summary = `${firstName} ${lastName}`.trim();
+  } else if (f["Client Name"]) {
+    summary = f["Client Name"];
+  } else if (address) {
+    // Use address as summary for legacy requests without client info
+    // Truncate long addresses for display
+    summary = address.length > 50 ? address.slice(0, 47) + "..." : address;
+  } else {
+    summary = `Case #${f["Case Number"] || record.id.slice(0, 8)}`;
+  }
 
   if (existingResult.rows.length > 0) {
     // Update existing request
@@ -342,12 +292,13 @@ async function syncTrappingRequest(record) {
 
     await pool.query(
       `UPDATE trapper.sot_requests SET
+        source_system = 'airtable',
         status = $1,
         estimated_cat_count = $2,
         notes = $3,
         place_id = COALESCE($4, place_id),
         requester_person_id = COALESCE($5, requester_person_id),
-        summary = COALESCE($6, summary),
+        summary = $6,
         updated_at = NOW()
        WHERE request_id = $7`,
       [
@@ -371,7 +322,7 @@ async function syncTrappingRequest(record) {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
       RETURNING request_id`,
       [
-        "airtable_ffsc",
+        "airtable",
         record.id,
         f["Case opened date"] ? new Date(f["Case opened date"]) : new Date(),
         status,
@@ -420,13 +371,11 @@ async function syncTrappingRequest(record) {
 }
 
 /**
- * Sync a single Appointment Request to Atlas
+ * Sync a single Appointment Request to Atlas as Legacy Intake Submission
+ * These go to web_intake_submissions (not sot_requests)
  */
-async function syncAppointmentRequest(record) {
+async function syncAppointmentToIntake(record) {
   const f = record.fields;
-
-  // Appointment requests don't have Internal Notes like Trapping Requests
-  const journalEntries = [];
 
   // Get contact info
   const firstName = f["First Name"] || "";
@@ -437,103 +386,93 @@ async function syncAppointmentRequest(record) {
   // Get address - appointment requests use "Clean Address (Cats)" or "Clean Address"
   const address = f["Clean Address (Cats)"] || f["Clean Address"] || "";
 
-  // Find or create place and person
+  // Find or create place using the deduped function (auto-queues geocoding)
   const placeId = await findOrCreatePlace(address, null, null);
+
+  // Find or create person
   const personId = await findOrCreatePerson(firstName, lastName, phone, email);
 
-  // Check if request already exists
+  // Map Airtable status to intake status
+  // Valid statuses: new, triaged, reviewed, request_created, redirected, client_handled, archived
+  const airtableStatus = (f["Status"] || "").toLowerCase();
+  let intakeStatus = "new";
+  if (airtableStatus.includes("complete") || airtableStatus.includes("done")) {
+    intakeStatus = "archived";
+  } else if (airtableStatus.includes("cancel")) {
+    intakeStatus = "archived";
+  } else if (airtableStatus.includes("scheduled") || airtableStatus.includes("appt")) {
+    intakeStatus = "request_created";
+  } else if (airtableStatus.includes("pending") || airtableStatus.includes("review")) {
+    intakeStatus = "new";
+  } else if (airtableStatus.includes("triage")) {
+    intakeStatus = "triaged";
+  }
+
+  // Check if already exists
   const existingResult = await pool.query(
-    `SELECT request_id FROM trapper.sot_requests
-     WHERE source_system = 'airtable_ffsc_appt' AND source_record_id = $1`,
+    `SELECT submission_id FROM trapper.web_intake_submissions
+     WHERE legacy_source_id = $1`,
     [record.id]
   );
 
-  let requestId;
-  const status = mapCaseStatus(f["Status"]);
-  const summary = firstName || lastName
-    ? `${firstName} ${lastName}`.trim()
-    : (f["Name"] || `Appointment ${record.id.slice(0,8)}`);
+  const submittedAt = f["New Submitted"] ? new Date(f["New Submitted"]) : new Date(record.createdTime);
+  const catCount = parseInt(f["Estimated number of unowned/feral/stray cats"]) || null;
+  const situationDesc = f["Describe the Situation "] || null;
 
   if (existingResult.rows.length > 0) {
-    // Update existing request
-    requestId = existingResult.rows[0].request_id;
-
+    // Update existing
+    const submissionId = existingResult.rows[0].submission_id;
     await pool.query(
-      `UPDATE trapper.sot_requests SET
-        status = $1,
-        estimated_cat_count = $2,
-        notes = $3,
-        place_id = COALESCE($4, place_id),
-        requester_person_id = COALESCE($5, requester_person_id),
-        summary = COALESCE($6, summary),
+      `UPDATE trapper.web_intake_submissions SET
+        first_name = $1,
+        last_name = $2,
+        email = $3,
+        phone = $4,
+        cats_address = $5,
+        cat_count_estimate = $6,
+        situation_description = $7,
+        place_id = COALESCE($8, place_id),
+        matched_person_id = COALESCE($9, matched_person_id),
+        status = $10,
         updated_at = NOW()
-       WHERE request_id = $7`,
-      [
-        status,
-        parseInt(f["Estimated number of unowned/feral/stray cats"]) || null,
-        f["Describe the Situation "] || null,
-        placeId,
-        personId,
-        summary,
-        requestId,
-      ]
+       WHERE submission_id = $11`,
+      [firstName, lastName, email, phone, address, catCount, situationDesc, placeId, personId, intakeStatus, submissionId]
     );
+    return { submissionId, isNew: false };
   } else {
-    // Create new request
+    // Create new intake submission
     const insertResult = await pool.query(
-      `INSERT INTO trapper.sot_requests (
-        source_system, source_record_id, source_created_at,
-        status, estimated_cat_count, notes,
-        place_id, requester_person_id, summary,
+      `INSERT INTO trapper.web_intake_submissions (
+        submitted_at, first_name, last_name, email, phone,
+        cats_address, cat_count_estimate, situation_description,
+        place_id, matched_person_id, matched_place_id,
+        is_legacy, legacy_source_id, intake_source, status,
+        ownership_status, fixed_status,
         created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-      RETURNING request_id`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
+      RETURNING submission_id`,
       [
-        "airtable_ffsc_appt",
-        record.id,
-        f["New Submitted"] ? new Date(f["New Submitted"]) : new Date(),
-        status,
-        parseInt(f["Estimated number of unowned/feral/stray cats"]) || null,
-        f["Describe the Situation "] || null,
+        submittedAt,
+        firstName,
+        lastName,
+        email,
+        phone,
+        address,
+        catCount,
+        situationDesc,
         placeId,
         personId,
-        summary,
+        placeId, // matched_place_id same as place_id
+        true, // is_legacy
+        record.id, // legacy_source_id
+        "legacy_airtable", // intake_source enum
+        intakeStatus,
+        "unknown_stray", // Default ownership_status for legacy records
+        "unknown", // Default fixed_status for legacy records
       ]
     );
-    requestId = insertResult.rows[0].request_id;
+    return { submissionId: insertResult.rows[0].submission_id, isNew: true };
   }
-
-  // Sync journal entries from Notes
-  for (const entry of journalEntries) {
-    const entryHash = Buffer.from(entry.raw).toString("base64").slice(0, 100);
-
-    const existingEntry = await pool.query(
-      `SELECT id FROM trapper.journal_entries
-       WHERE primary_request_id = $1 AND legacy_hash = $2`,
-      [requestId, entryHash]
-    );
-
-    if (existingEntry.rows.length === 0) {
-      await pool.query(
-        `INSERT INTO trapper.journal_entries (
-          primary_request_id, body, occurred_at, created_by_staff_id,
-          entry_kind, created_by, legacy_hash, tags, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-        [
-          requestId,
-          entry.text,
-          entry.date || new Date(),
-          entry.staffPersonId, // This is now staff_id
-          "note",
-          "airtable_ffsc_legacy",
-          entryHash,
-          ["legacy", "imported"],
-        ]
-      );
-    }
-  }
-
-  return { requestId, journalEntriesCount: journalEntries.length };
 }
 
 /**
@@ -572,8 +511,11 @@ async function main() {
       "Internal Notes ",
       "First Name",
       "Last Name",
+      "Client Name",
       "Client Number",
       "Email",
+      "Latitude",
+      "Longitude",
     ];
     const trappingRecords = await fetchAllRecords(TRAPPING_REQUESTS_TABLE, trappingFields);
     console.log(`Found ${trappingRecords.length} Trapping Requests`);
@@ -614,18 +556,31 @@ async function main() {
     }
     console.log(`  Synced: ${trappingSynced}, Journal entries: ${trappingJournalEntries}, Errors: ${trappingErrors}`);
 
-    // NOTE: Appointment Requests are LEGACY INTAKE submissions, not TNR requests
-    // They should be converted to modern intake format via "Make into modern request" button
-    // Skip syncing them as sot_requests
-    console.log("\nSkipping Appointment Requests sync (legacy intake - requires manual conversion)");
+    // Sync Appointment Requests as legacy intake submissions
+    console.log("\nSyncing Appointment Requests to intake submissions...");
+    let appointmentSynced = 0;
+    let appointmentErrors = 0;
+    let appointmentNew = 0;
+
+    for (const record of appointmentRecords) {
+      try {
+        const result = await syncAppointmentToIntake(record);
+        appointmentSynced++;
+        if (result.isNew) appointmentNew++;
+      } catch (err) {
+        console.error(`  Error syncing ${record.id}: ${err.message}`);
+        appointmentErrors++;
+      }
+    }
+    console.log(`  Synced: ${appointmentSynced} (${appointmentNew} new), Errors: ${appointmentErrors}`);
 
     console.log("\n=== Summary ===");
     console.log(`Trapping Requests: ${trappingSynced} synced, ${trappingJournalEntries} journal entries`);
-    console.log(`Appointment Requests: ${appointmentRecords.length} found (not synced - legacy intake format)`);
+    console.log(`Appointment Requests: ${appointmentSynced} synced to intake submissions (${appointmentNew} new)`);
 
     return {
       trapping: { synced: trappingSynced, journalEntries: trappingJournalEntries, errors: trappingErrors },
-      appointment: { total: appointmentRecords.length, synced: 0, note: "Legacy intake - not synced" },
+      appointment: { total: appointmentRecords.length, synced: appointmentSynced, new: appointmentNew, errors: appointmentErrors },
     };
   } catch (err) {
     console.error("Sync failed:", err);

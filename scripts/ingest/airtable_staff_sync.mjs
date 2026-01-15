@@ -223,7 +223,7 @@ async function main() {
           info.phone?.replace(/\D/g, '') || null,
           info.firstName,
           info.lastName || null,
-          'airtable_staff'
+          SOURCE_SYSTEM
         ]);
 
         const personId = personResult.rows[0]?.person_id;
@@ -247,12 +247,12 @@ async function main() {
           // Add staff role to person_roles
           await client.query(`
             INSERT INTO trapper.person_roles (person_id, role, role_status, source_system, notes)
-            VALUES ($1, 'staff', 'active', 'airtable_staff', $2)
+            VALUES ($1, 'staff', 'active', $3, $2)
             ON CONFLICT (person_id, role) DO UPDATE SET
               role_status = 'active',
               notes = EXCLUDED.notes,
               updated_at = NOW()
-          `, [personId, info.role]);
+          `, [personId, info.role, SOURCE_SYSTEM]);
 
           if (options.verbose) {
             console.log(`    -> Linked to person ${personId.substring(0, 8)}...`);

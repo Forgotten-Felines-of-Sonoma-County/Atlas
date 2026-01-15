@@ -34,18 +34,24 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
   const type = searchParams.get("type"); // ffsc, community, or all
+  const active = searchParams.get("active"); // true to only show active trappers
   const sortBy = searchParams.get("sort") || "total_clinic_cats";
   const limit = parseInt(searchParams.get("limit") || "50", 10);
   const offset = parseInt(searchParams.get("offset") || "0", 10);
 
   try {
     // Build WHERE clause for filtering
-    let whereClause = "";
+    const conditions: string[] = [];
     if (type === "ffsc") {
-      whereClause = "WHERE is_ffsc_trapper = TRUE";
+      conditions.push("is_ffsc_trapper = TRUE");
     } else if (type === "community") {
-      whereClause = "WHERE is_ffsc_trapper = FALSE";
+      conditions.push("is_ffsc_trapper = FALSE");
     }
+    // Active filter: show trappers with any activity
+    if (active === "true") {
+      conditions.push("(active_assignments > 0 OR total_clinic_cats > 0 OR total_cats_caught > 0)");
+    }
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     // Validate sort column to prevent SQL injection
     const validSortColumns = [

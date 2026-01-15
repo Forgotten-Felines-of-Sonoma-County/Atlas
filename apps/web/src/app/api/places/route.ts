@@ -167,99 +167,62 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let sotAddressId: string | null = null;
-
-    // If geocoded, find or create address in sot_addresses
-    if (locationType === "geocoded" && body.google_place_id && lat && lng) {
-      // Check if address already exists
-      const existingAddress = await queryOne<AddressRow>(
-        `SELECT address_id FROM trapper.sot_addresses WHERE google_place_id = $1`,
-        [body.google_place_id]
-      );
-
-      if (existingAddress) {
-        sotAddressId = existingAddress.address_id;
-      } else {
-        // Create new address
-        const newAddress = await queryOne<AddressRow>(
-          `INSERT INTO trapper.sot_addresses (
-            raw_address,
-            formatted_address,
-            google_place_id,
-            location,
-            geocode_status,
-            data_source
-          ) VALUES (
-            $1,
-            $1,
-            $2,
-            ST_SetSRID(ST_MakePoint($4, $3), 4326)::geography,
-            'ok',
-            'app'
-          )
-          RETURNING address_id`,
-          [body.formatted_address, body.google_place_id, lat, lng]
-        );
-        sotAddressId = newAddress?.address_id || null;
-      }
-    }
-
-    // Determine is_address_backed based on location type
-    const isAddressBacked = locationType === "geocoded" && sotAddressId !== null;
-
-    // Create the place
-    const locationGeog = lat && lng
-      ? `ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography`
-      : "NULL";
+    // Use centralized function for place creation/deduplication
+    // This handles: address normalization, deduplication, geocoding queue
+    const addressToUse = body.formatted_address || body.location_description || body.display_name;
 
     const result = await queryOne<PlaceRow>(
-      `INSERT INTO trapper.places (
-        sot_address_id,
-        display_name,
-        formatted_address,
-        location,
-        place_kind,
-        is_address_backed,
-        data_source,
-        location_type,
-        location_description,
-        notes,
-        parent_place_id,
-        unit_identifier,
-        has_cat_activity,
-        has_trapping_activity,
-        has_appointment_activity
-      ) VALUES (
-        $1,
-        $2,
-        $3,
-        ${locationGeog},
-        $4::trapper.place_kind,
-        $5,
-        'app'::trapper.data_source,
-        $6::trapper.location_type,
-        $7,
-        $8,
-        $9,
-        $10,
-        false,
-        false,
-        false
-      )
-      RETURNING place_id`,
+      `SELECT trapper.find_or_create_place_deduped($1, $2, $3, $4, $5) AS place_id`,
       [
-        sotAddressId,
+        addressToUse,
         body.display_name,
-        body.formatted_address || body.location_description || body.display_name,
-        body.place_kind,
-        isAddressBacked,
-        locationType,
-        body.location_description || null,
-        body.notes || null,
-        body.parent_place_id || null,
-        body.unit_identifier || null,
+        lat || null,
+        lng || null,
+        'web_app'  // source_system
       ]
     );
+
+    // If place was created/found, update additional fields not handled by centralized function
+    if (result?.place_id) {
+      // Update place_kind, notes, parent_place_id, unit_identifier if provided
+      const updates: string[] = [];
+      const updateParams: unknown[] = [];
+      let paramIdx = 1;
+
+      if (body.place_kind) {
+        updates.push(`place_kind = $${paramIdx}::trapper.place_kind`);
+        updateParams.push(body.place_kind);
+        paramIdx++;
+      }
+      if (body.notes) {
+        updates.push(`notes = $${paramIdx}`);
+        updateParams.push(body.notes);
+        paramIdx++;
+      }
+      if (body.parent_place_id) {
+        updates.push(`parent_place_id = $${paramIdx}`);
+        updateParams.push(body.parent_place_id);
+        paramIdx++;
+      }
+      if (body.unit_identifier) {
+        updates.push(`unit_identifier = $${paramIdx}`);
+        updateParams.push(body.unit_identifier);
+        paramIdx++;
+      }
+      if (body.location_description) {
+        updates.push(`location_description = $${paramIdx}`);
+        updateParams.push(body.location_description);
+        paramIdx++;
+      }
+
+      if (updates.length > 0) {
+        updateParams.push(result.place_id);
+        await query(
+          `UPDATE trapper.places SET ${updates.join(', ')}, updated_at = NOW() WHERE place_id = $${paramIdx}`,
+          updateParams
+        );
+      }
+    }
 
     if (!result) {
       return NextResponse.json(
