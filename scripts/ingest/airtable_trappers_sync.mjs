@@ -99,9 +99,12 @@ function computeRowHash(fields) {
 }
 
 // Map Airtable "Approval Status" to our trapper_type enum
+// FFSC trappers (represent FFSC):
 // - "Approved" = FFSC trappers (volunteers who became trappers)
+// - "Legacy Trapper" = FFSC trappers who were approved before current system
+// Community trappers (contract only, do NOT represent FFSC):
 // - "Community Trapper" = community trappers (only trap at specific locations)
-// - "Legacy Trapper" = experienced community trappers
+// - "Semi-Active" = less active community trappers
 function mapTrapperType(approvalStatus) {
   const status = (approvalStatus || '').toLowerCase();
 
@@ -109,7 +112,7 @@ function mapTrapperType(approvalStatus) {
   if (status.includes('head')) return 'head_trapper';
   if (status.includes('ffsc') || status.includes('staff')) return 'ffsc_trapper';
   if (status === 'approved' || status.includes('approved')) return 'ffsc_trapper'; // Approved = FFSC volunteer trappers
-  if (status.includes('legacy')) return 'community_trapper'; // Legacy = experienced community
+  if (status.includes('legacy')) return 'ffsc_trapper'; // Legacy = FFSC trappers approved before current system
   if (status.includes('community')) return 'community_trapper';
   if (status.includes('semi-active')) return 'community_trapper'; // Semi-active community trappers
 

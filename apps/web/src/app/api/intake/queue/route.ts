@@ -45,8 +45,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const category = searchParams.get("category");
   const statusFilter = searchParams.get("status_filter");
-  const sourceFilter = searchParams.get("source"); // 'legacy' or 'new'
-  const includeOld = searchParams.get("include_old") === "true"; // Include pre-October 2025 legacy
+  const sourceFilter = searchParams.get("source"); // 'legacy', 'new', or ''
+  const mode = searchParams.get("mode"); // 'attention', 'recent', 'legacy', or ''
+  const includeOld = searchParams.get("include_old") === "true";
 
   try {
     const conditions: string[] = [];
@@ -60,31 +61,61 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    // Filter by status
-    if (statusFilter === "active") {
+    // Mode-based filtering (new approach)
+    if (mode === "attention") {
+      // "Needs Attention" tab: Actionable items only
+      // Include: New submissions OR legacy that's NOT done (Booked/Complete/Declined)
       conditions.push(`status IN ('new', 'triaged')`);
-      // Exclude legacy "Complete" and "Declined" from active queue - they're done
-      conditions.push(`(is_legacy = FALSE OR legacy_submission_status IS NULL OR legacy_submission_status NOT IN ('Complete', 'Declined'))`);
-      // Exclude old legacy data (before Oct 2025) unless explicitly requested
-      if (!includeOld) {
-        conditions.push(`(is_legacy = FALSE OR submitted_at >= '2025-10-01')`);
-      }
-    } else if (statusFilter && statusFilter !== "") {
-      conditions.push(`status = $${paramIndex}`);
-      params.push(statusFilter);
-      paramIndex++;
-    }
-
-    // Filter by source (legacy vs new form)
-    if (sourceFilter === "legacy") {
+      conditions.push(`(
+        -- New submissions (not legacy)
+        is_legacy = FALSE
+        OR
+        -- Legacy that still needs action (Pending Review or contacted but waiting)
+        (is_legacy = TRUE AND (
+          legacy_submission_status IS NULL
+          OR legacy_submission_status = 'Pending Review'
+          OR (legacy_submission_status NOT IN ('Booked', 'Complete', 'Declined'))
+        ))
+      )`);
+    } else if (mode === "recent") {
+      // "All Recent" tab: Everything from recent period including booked
+      conditions.push(`(
+        is_legacy = FALSE
+        OR submitted_at >= '2025-10-01'
+        OR legacy_submission_status IN ('Pending Review', 'Booked')
+      )`);
+    } else if (mode === "all") {
+      // "All Submissions" tab: Everything, no filters
+      // Just exclude archived/request_created unless they want those too
+      conditions.push(`status NOT IN ('archived', 'request_created')`);
+    } else if (mode === "legacy") {
+      // "Legacy" tab: All legacy data
       conditions.push(`is_legacy = TRUE`);
-    } else if (sourceFilter === "new") {
-      conditions.push(`is_legacy = FALSE`);
-    }
+    } else {
+      // Fallback to old behavior for backwards compatibility
+      if (statusFilter === "active") {
+        conditions.push(`status IN ('new', 'triaged')`);
+        conditions.push(`(is_legacy = FALSE OR legacy_submission_status IS NULL OR legacy_submission_status NOT IN ('Complete', 'Declined'))`);
+        if (!includeOld) {
+          conditions.push(`(is_legacy = FALSE OR submitted_at >= '2025-10-01')`);
+        }
+      } else if (statusFilter && statusFilter !== "") {
+        conditions.push(`status = $${paramIndex}`);
+        params.push(statusFilter);
+        paramIndex++;
+      }
 
-    // When viewing all (no status filter), still hide old legacy unless requested
-    if (!statusFilter && !includeOld) {
-      conditions.push(`(is_legacy = FALSE OR submitted_at >= '2025-10-01' OR legacy_submission_status IN ('Pending Review', 'Booked'))`);
+      // Filter by source (legacy vs new form)
+      if (sourceFilter === "legacy") {
+        conditions.push(`is_legacy = TRUE`);
+      } else if (sourceFilter === "new") {
+        conditions.push(`is_legacy = FALSE`);
+      }
+
+      // When viewing all (no status filter), still hide old legacy unless requested
+      if (!statusFilter && !includeOld) {
+        conditions.push(`(is_legacy = FALSE OR submitted_at >= '2025-10-01' OR legacy_submission_status IN ('Pending Review', 'Booked'))`);
+      }
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";

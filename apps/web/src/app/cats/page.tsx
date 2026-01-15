@@ -19,6 +19,8 @@ interface Cat {
   place_kind: string | null;
   has_place: boolean;
   created_at: string;
+  last_visit_date: string | null;
+  visit_count: number;
 }
 
 interface CatsResponse {
@@ -38,6 +40,7 @@ export default function CatsPage() {
   const [sex, setSex] = useState("");
   const [alteredStatus, setAlteredStatus] = useState("");
   const [hasPlace, setHasPlace] = useState("");
+  const [sort, setSort] = useState("quality");
   const [page, setPage] = useState(0);
   const limit = 25;
 
@@ -50,6 +53,7 @@ export default function CatsPage() {
     if (sex) params.set("sex", sex);
     if (alteredStatus) params.set("altered_status", alteredStatus);
     if (hasPlace) params.set("has_place", hasPlace);
+    if (sort) params.set("sort", sort);
     params.set("limit", String(limit));
     params.set("offset", String(page * limit));
 
@@ -65,7 +69,7 @@ export default function CatsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, sex, alteredStatus, hasPlace, page]);
+  }, [search, sex, alteredStatus, hasPlace, sort, page]);
 
   useEffect(() => {
     fetchCats();
@@ -108,6 +112,12 @@ export default function CatsPage() {
           <option value="true">Has location</option>
           <option value="false">No location</option>
         </select>
+        <select value={sort} onChange={(e) => { setSort(e.target.value); setPage(0); }}>
+          <option value="quality">Sort: Data Quality</option>
+          <option value="recent_visit">Sort: Recent Visit</option>
+          <option value="name">Sort: Name</option>
+          <option value="created">Sort: Newest First</option>
+        </select>
         <button type="submit">Search</button>
       </form>
 
@@ -129,9 +139,8 @@ export default function CatsPage() {
                   <th>Confidence</th>
                   <th>Sex</th>
                   <th>Altered</th>
-                  <th>Breed</th>
                   <th>Microchip</th>
-                  <th>Owners</th>
+                  <th>Last Visit</th>
                   <th>Location</th>
                 </tr>
               </thead>
@@ -152,12 +161,11 @@ export default function CatsPage() {
                     </td>
                     <td>{cat.sex || "—"}</td>
                     <td>{cat.altered_status || "—"}</td>
-                    <td>{cat.breed || "—"}</td>
                     <td className="text-sm">{cat.microchip || "—"}</td>
-                    <td>
-                      {cat.owner_count > 0 ? (
-                        <span title={cat.owner_names || ""}>
-                          {cat.owner_count} owner{cat.owner_count !== 1 ? "s" : ""}
+                    <td className="text-sm">
+                      {cat.last_visit_date ? (
+                        <span title={`${cat.visit_count} visit${cat.visit_count !== 1 ? "s" : ""}`}>
+                          {new Date(cat.last_visit_date).toLocaleDateString()}
                         </span>
                       ) : (
                         <span className="text-muted">—</span>

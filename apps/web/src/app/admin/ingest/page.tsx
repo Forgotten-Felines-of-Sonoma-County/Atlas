@@ -25,6 +25,15 @@ interface FileUpload {
   error_message: string | null;
 }
 
+interface ProcessingResult {
+  success: boolean;
+  rows_total: number;
+  rows_inserted: number;
+  rows_updated: number;
+  rows_skipped: number;
+  post_processing?: Record<string, number>;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 Bytes";
   const k = 1024;
@@ -64,6 +73,10 @@ export default function IngestPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+
+  // Processing state
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [processResult, setProcessResult] = useState<ProcessingResult | null>(null);
 
   // Fetch sources and uploads
   const fetchData = useCallback(async () => {
@@ -144,6 +157,101 @@ export default function IngestPage() {
     }
   };
 
+  // Handle file processing
+  const handleProcess = async (uploadId: string) => {
+    setProcessingId(uploadId);
+    setProcessResult(null);
+
+    try {
+      const response = await fetch(`/api/ingest/process/${uploadId}`, {
+        method: "POST",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(result.error || "Processing failed");
+        return;
+      }
+
+      setProcessResult(result);
+      fetchData(); // Refresh list
+    } catch (err) {
+      alert("Network error during processing");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // Auto-process after successful upload
+  const handleUploadAndProcess = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUploadError(null);
+    setUploadSuccess(null);
+    setProcessResult(null);
+
+    if (!selectedFile || !selectedSource || !selectedTable) {
+      setUploadError("Please select a file, source, and table");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      // Upload
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("source_system", selectedSource);
+      formData.append("source_table", selectedTable);
+
+      const uploadResponse = await fetch("/api/ingest/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const uploadResult = await uploadResponse.json();
+
+      if (!uploadResponse.ok) {
+        setUploadError(uploadResult.error || "Upload failed");
+        return;
+      }
+
+      setUploadSuccess(`Uploaded: ${uploadResult.stored_filename}. Processing...`);
+
+      // Process
+      const processResponse = await fetch(`/api/ingest/process/${uploadResult.upload_id}`, {
+        method: "POST",
+      });
+
+      const processResultData = await processResponse.json();
+
+      if (!processResponse.ok) {
+        setUploadError(`Upload succeeded but processing failed: ${processResultData.error}`);
+        fetchData();
+        return;
+      }
+
+      setProcessResult(processResultData);
+      setUploadSuccess(
+        `Processed ${processResultData.rows_total} rows: ` +
+        `${processResultData.rows_inserted} new, ` +
+        `${processResultData.rows_updated} updated, ` +
+        `${processResultData.rows_skipped} skipped`
+      );
+
+      // Reset form
+      setSelectedFile(null);
+      const fileInput = document.getElementById("file-input") as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
+
+      fetchData();
+    } catch (err) {
+      setUploadError("Network error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div>
       <h1 style={{ marginBottom: "1.5rem" }}>Data Ingest</h1>
@@ -158,7 +266,7 @@ export default function IngestPage() {
       >
         <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Upload File</h2>
 
-        <form onSubmit={handleUpload}>
+        <form onSubmit={handleUploadAndProcess}>
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
             {/* Source Selection */}
             <div>
@@ -217,7 +325,7 @@ export default function IngestPage() {
 
             {/* Submit */}
             <button type="submit" disabled={uploading || !selectedFile}>
-              {uploading ? "Uploading..." : "Upload"}
+              {uploading ? "Processing..." : "Upload & Process"}
             </button>
           </div>
         </form>
@@ -228,6 +336,19 @@ export default function IngestPage() {
 
         {uploadSuccess && (
           <div style={{ color: "#28a745", marginTop: "1rem" }}>{uploadSuccess}</div>
+        )}
+
+        {processResult?.post_processing && Object.keys(processResult.post_processing).length > 0 && (
+          <div style={{ marginTop: "1rem", padding: "0.75rem", background: "#e7f5ff", borderRadius: "6px" }}>
+            <strong>Post-processing results:</strong>
+            <ul style={{ margin: "0.5rem 0 0 1rem", padding: 0, fontSize: "0.875rem" }}>
+              {Object.entries(processResult.post_processing).map(([key, value]) => (
+                <li key={key}>
+                  {key.replace(/_/g, " ")}: {value}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 
@@ -250,6 +371,7 @@ export default function IngestPage() {
                 <th>Status</th>
                 <th>Uploaded</th>
                 <th>Results</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -286,6 +408,34 @@ export default function IngestPage() {
                       <span className="text-muted">—</span>
                     )}
                   </td>
+                  <td>
+                    {upload.status === "pending" && (
+                      <button
+                        onClick={() => handleProcess(upload.upload_id)}
+                        disabled={processingId === upload.upload_id}
+                        style={{
+                          padding: "0.25rem 0.5rem",
+                          fontSize: "0.75rem",
+                        }}
+                      >
+                        {processingId === upload.upload_id ? "Processing..." : "Process"}
+                      </button>
+                    )}
+                    {upload.status === "failed" && (
+                      <button
+                        onClick={() => handleProcess(upload.upload_id)}
+                        disabled={processingId === upload.upload_id}
+                        style={{
+                          padding: "0.25rem 0.5rem",
+                          fontSize: "0.75rem",
+                          background: "#ffc107",
+                          color: "#000",
+                        }}
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -294,18 +444,27 @@ export default function IngestPage() {
       )}
 
       <div className="card" style={{ marginTop: "2rem", padding: "1rem" }}>
-        <h3 style={{ marginBottom: "0.5rem", fontSize: "1rem" }}>Processing</h3>
+        <h3 style={{ marginBottom: "0.5rem", fontSize: "1rem" }}>ClinicHQ Processing</h3>
         <p className="text-muted text-sm">
-          After uploading, files are stored and recorded but not yet processed.
-          Run the appropriate ingest script to process pending uploads:
+          When you upload ClinicHQ files, the system automatically processes them:
         </p>
-        <pre style={{ marginTop: "0.5rem", padding: "0.5rem", background: "var(--background)", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "0.75rem" }}>
-          {`# Process ClinicHQ uploads
-./scripts/ingest/clinichq_ingest.ts
-
-# Process VolunteerHub uploads
-./scripts/populate_volunteerhub_people.sh`}
-        </pre>
+        <div style={{ marginTop: "0.75rem" }}>
+          <strong style={{ fontSize: "0.875rem" }}>Recommended upload order:</strong>
+          <ol style={{ margin: "0.5rem 0 0 1rem", padding: 0, fontSize: "0.875rem" }}>
+            <li><strong>cat_info.xlsx</strong> - Updates cat sex data (required for correct procedure types)</li>
+            <li><strong>owner_info.xlsx</strong> - Links people to appointments, creates cat-person relationships</li>
+            <li><strong>appointment_info.xlsx</strong> - Creates procedures, links cats to places</li>
+          </ol>
+        </div>
+        <div style={{ marginTop: "0.75rem" }}>
+          <strong style={{ fontSize: "0.875rem" }}>What happens automatically:</strong>
+          <ul style={{ margin: "0.5rem 0 0 1rem", padding: 0, fontSize: "0.875rem" }}>
+            <li>Spay/neuter procedures created based on <strong>service type</strong></li>
+            <li>Procedures fixed based on cat sex (males → neuter, females → spay)</li>
+            <li>Cats linked to places via person relationships</li>
+            <li>Cat altered_status updated</li>
+          </ul>
+        </div>
       </div>
     </div>
   );

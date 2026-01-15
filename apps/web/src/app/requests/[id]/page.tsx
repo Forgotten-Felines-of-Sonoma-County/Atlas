@@ -3,6 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { BackButton } from "@/components/BackButton";
+import { EditHistory } from "@/components/EditHistory";
+import { AlterationStatsCard } from "@/components/AlterationStatsCard";
+import { LegacyUpgradeWizard } from "@/components/LegacyUpgradeWizard";
+import { TrapperAssignments } from "@/components/TrapperAssignments";
 
 interface MediaItem {
   media_id: string;
@@ -29,6 +33,9 @@ interface RequestDetail {
   cats_are_friendly: boolean | null;
   preferred_contact_method: string | null;
   assigned_to: string | null;
+  assigned_trapper_type: string | null;
+  assigned_at: string | null;
+  assignment_notes: string | null;
   scheduled_date: string | null;
   scheduled_time_range: string | null;
   resolved_at: string | null;
@@ -41,6 +48,34 @@ interface RequestDetail {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Enhanced intake fields
+  permission_status: string | null;
+  property_owner_contact: string | null;
+  access_notes: string | null;
+  traps_overnight_safe: boolean | null;
+  access_without_contact: boolean | null;
+  property_type: string | null;
+  colony_duration: string | null;
+  location_description: string | null;
+  eartip_count: number | null;
+  eartip_estimate: string | null;
+  count_confidence: string | null;
+  is_being_fed: boolean | null;
+  feeder_name: string | null;
+  feeding_schedule: string | null;
+  best_times_seen: string | null;
+  urgency_reasons: string[] | null;
+  urgency_deadline: string | null;
+  urgency_notes: string | null;
+  best_contact_times: string | null;
+  // Hold tracking
+  hold_reason: string | null;
+  hold_reason_notes: string | null;
+  hold_started_at: string | null;
+  // Activity tracking
+  last_activity_at: string | null;
+  last_activity_type: string | null;
+  // Place info
   place_id: string | null;
   place_name: string | null;
   place_address: string | null;
@@ -48,9 +83,20 @@ interface RequestDetail {
   place_city: string | null;
   place_postal_code: string | null;
   place_coordinates: { lat: number; lng: number } | null;
+  place_safety_notes: string | null;
+  place_safety_concerns: string[] | null;
+  place_service_zone: string | null;
+  // Requester info
   requester_person_id: string | null;
   requester_name: string | null;
+  // Linked cats & verification
   cats: { cat_id: string; cat_name: string; relationship: string }[] | null;
+  linked_cat_count: number | null;
+  verified_altered_count: number | null;
+  verified_intact_count: number | null;
+  // Computed scores
+  readiness_score: number | null;
+  urgency_score: number | null;
   // Kitten assessment fields
   kitten_count: number | null;
   kitten_age_weeks: number | null;
@@ -217,6 +263,15 @@ export default function RequestDetailPage() {
     kitten_urgency_factors: [] as string[],
     kitten_assessment_notes: "",
   });
+
+  // Edit history panel
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Legacy upgrade wizard
+  const [showUpgradeWizard, setShowUpgradeWizard] = useState(false);
+
+  // Tab state for Details vs Legacy Info
+  const [activeTab, setActiveTab] = useState<"details" | "legacy">("details");
 
   const fetchMedia = async () => {
     setLoadingMedia(true);
@@ -489,15 +544,50 @@ export default function RequestDetailPage() {
             </h1>
             {request.source_system === "airtable" && <LegacyBadge />}
           </div>
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
             <StatusBadge status={request.status} />
             <PriorityBadge priority={request.priority} />
+            {request.hold_reason && (
+              <span className="badge" style={{ background: "#ffc107", color: "#000" }}>
+                Hold: {request.hold_reason.replace(/_/g, " ")}
+              </span>
+            )}
           </div>
         </div>
         {!editing && (
-          <button onClick={() => setEditing(true)} style={{ padding: "0.5rem 1rem" }}>
-            Edit
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <a
+              href={`/requests/${request.request_id}/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "0.5rem 1rem",
+                background: "transparent",
+                color: "inherit",
+                border: "1px solid var(--border)",
+                borderRadius: "6px",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+            >
+              Print
+            </a>
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              style={{
+                padding: "0.5rem 1rem",
+                background: showHistory ? "var(--primary)" : "transparent",
+                color: showHistory ? "white" : "inherit",
+                border: showHistory ? "none" : "1px solid var(--border)",
+              }}
+            >
+              History
+            </button>
+            <button onClick={() => setEditing(true)} style={{ padding: "0.5rem 1rem" }}>
+              Edit
+            </button>
+          </div>
         )}
       </div>
 
@@ -507,7 +597,144 @@ export default function RequestDetailPage() {
         </div>
       )}
 
-      {editing ? (
+      {/* Tab Navigation - only show for legacy requests */}
+      {request.source_system === "airtable" && !editing && (
+        <div style={{ display: "flex", gap: "0", borderBottom: "2px solid var(--border)", marginBottom: "1.5rem" }}>
+          {[
+            { id: "details" as const, label: "Details" },
+            { id: "legacy" as const, label: "Legacy Info (Airtable)" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: "0.75rem 1.5rem",
+                background: "transparent",
+                border: "none",
+                borderBottom: activeTab === tab.id ? "2px solid var(--primary)" : "2px solid transparent",
+                marginBottom: "-2px",
+                color: activeTab === tab.id ? "var(--primary)" : "var(--muted)",
+                fontWeight: activeTab === tab.id ? 600 : 400,
+                cursor: "pointer",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Legacy Info Tab Content */}
+      {activeTab === "legacy" && request.source_system === "airtable" && !editing && (
+        <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
+          <h2 style={{ marginTop: 0, marginBottom: "1rem" }}>Legacy Airtable Data</h2>
+          <div style={{
+            background: "#f8f9fa",
+            border: "1px solid #e9ecef",
+            borderRadius: "8px",
+            padding: "1rem",
+            marginBottom: "1rem",
+            fontSize: "0.9rem",
+          }}>
+            This data was imported from Airtable on {new Date(request.created_at).toLocaleDateString()}.
+            Some fields may have been migrated to new Atlas fields.
+          </div>
+
+          <div style={{ display: "grid", gap: "1rem" }}>
+            {/* Source Info */}
+            <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: "0.5rem" }}>
+              <strong>Source System:</strong>
+              <span>{request.source_system}</span>
+              <strong>Airtable ID:</strong>
+              <span>
+                {request.source_record_id ? (
+                  <a
+                    href={`https://airtable.com/appl6zLrRFDvsz0dh/tblc1bva7jFzg8DVF/${request.source_record_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {request.source_record_id}
+                  </a>
+                ) : (
+                  "N/A"
+                )}
+              </span>
+              <strong>Data Source:</strong>
+              <span>{request.data_source || "N/A"}</span>
+              <strong>Created:</strong>
+              <span>{new Date(request.created_at).toLocaleString()}</span>
+            </div>
+
+            {/* Legacy Notes */}
+            {request.legacy_notes && (
+              <div>
+                <strong style={{ display: "block", marginBottom: "0.5rem" }}>Internal Notes (from Airtable):</strong>
+                <pre style={{
+                  background: "#2d3748",
+                  color: "#e2e8f0",
+                  padding: "1rem",
+                  borderRadius: "8px",
+                  whiteSpace: "pre-wrap",
+                  wordWrap: "break-word",
+                  fontFamily: "monospace",
+                  fontSize: "0.85rem",
+                  margin: 0,
+                  maxHeight: "400px",
+                  overflow: "auto",
+                }}>
+                  {request.legacy_notes}
+                </pre>
+              </div>
+            )}
+
+            {/* Original Place/Address Info */}
+            <div>
+              <strong style={{ display: "block", marginBottom: "0.5rem" }}>Location Info:</strong>
+              <div style={{ background: "#f8f9fa", padding: "0.75rem", borderRadius: "6px" }}>
+                <p style={{ margin: "0 0 0.25rem 0" }}><strong>Place:</strong> {request.place_name || "N/A"}</p>
+                <p style={{ margin: "0 0 0.25rem 0" }}><strong>Address:</strong> {request.place_address || "N/A"}</p>
+                <p style={{ margin: "0 0 0.25rem 0" }}><strong>City:</strong> {request.place_city || "N/A"}</p>
+                <p style={{ margin: 0 }}><strong>Requester:</strong> {request.requester_name || "N/A"}</p>
+              </div>
+            </div>
+
+            {/* Original Request Details */}
+            <div>
+              <strong style={{ display: "block", marginBottom: "0.5rem" }}>Original Request Details:</strong>
+              <div style={{ background: "#f8f9fa", padding: "0.75rem", borderRadius: "6px" }}>
+                <p style={{ margin: "0 0 0.25rem 0" }}><strong>Summary:</strong> {request.summary || "N/A"}</p>
+                <p style={{ margin: "0 0 0.25rem 0" }}><strong>Estimated Cats:</strong> {request.estimated_cat_count ?? "N/A"}</p>
+                <p style={{ margin: "0 0 0.25rem 0" }}><strong>Has Kittens:</strong> {request.has_kittens ? "Yes" : "No"}</p>
+                <p style={{ margin: 0 }}><strong>Original Notes:</strong> {request.notes || "N/A"}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ marginTop: "1.5rem", paddingTop: "1rem", borderTop: "1px solid var(--border)", display: "flex", gap: "0.5rem" }}>
+            <button
+              onClick={() => setShowUpgradeWizard(true)}
+              style={{
+                padding: "0.5rem 1rem",
+                background: "#0d6efd",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+              }}
+            >
+              Upgrade to Full Request
+            </button>
+            <button
+              onClick={() => setActiveTab("details")}
+              style={{ padding: "0.5rem 1rem" }}
+            >
+              Back to Details
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "details" && editing ? (
         <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
           <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Edit Request</h2>
 
@@ -722,7 +949,7 @@ export default function RequestDetailPage() {
             </button>
           </div>
         </div>
-      ) : (
+      ) : activeTab === "details" ? (
         <>
           {/* Location Card */}
           <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
@@ -742,10 +969,47 @@ export default function RequestDetailPage() {
                     {request.place_city}{request.place_postal_code ? `, ${request.place_postal_code}` : ""}
                   </p>
                 )}
-                {request.place_kind && (
-                  <span className="badge" style={{ marginTop: "0.5rem", display: "inline-block" }}>
-                    {request.place_kind}
-                  </span>
+                <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  {request.place_kind && (
+                    <span className="badge">
+                      {request.place_kind}
+                    </span>
+                  )}
+                  {request.place_service_zone && (
+                    <span className="badge" style={{ background: "#6f42c1", color: "#fff" }}>
+                      Zone: {request.place_service_zone}
+                    </span>
+                  )}
+                </div>
+                {/* Safety concerns */}
+                {(request.place_safety_concerns?.length || request.place_safety_notes) && (
+                  <div style={{
+                    marginTop: "1rem",
+                    padding: "0.75rem",
+                    background: "rgba(255, 193, 7, 0.15)",
+                    border: "1px solid #ffc107",
+                    borderRadius: "4px"
+                  }}>
+                    <div style={{ fontWeight: 500, color: "#856404", marginBottom: "0.5rem" }}>Safety Notes</div>
+                    {request.place_safety_concerns && request.place_safety_concerns.length > 0 && (
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: request.place_safety_notes ? "0.5rem" : 0 }}>
+                        {request.place_safety_concerns.map((concern, idx) => (
+                          <span key={idx} style={{
+                            background: "#ffc107",
+                            color: "#000",
+                            padding: "0.15rem 0.5rem",
+                            borderRadius: "3px",
+                            fontSize: "0.8rem"
+                          }}>
+                            {concern.replace(/_/g, " ")}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {request.place_safety_notes && (
+                      <div style={{ fontSize: "0.9rem" }}>{request.place_safety_notes}</div>
+                    )}
+                  </div>
                 )}
               </div>
             ) : (
@@ -763,6 +1027,12 @@ export default function RequestDetailPage() {
             ) : (
               <p className="text-muted">No requester linked</p>
             )}
+          </div>
+
+          {/* Assigned Trappers Card */}
+          <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
+            <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Assigned Trappers</h2>
+            <TrapperAssignments requestId={request.request_id} />
           </div>
 
           {/* Details Card */}
@@ -1357,6 +1627,220 @@ export default function RequestDetailPage() {
             )}
           </div>
 
+          {/* Trapping Logistics Card */}
+          {(request.permission_status || request.access_notes || request.traps_overnight_safe !== null || request.access_without_contact !== null || request.best_times_seen) && (
+            <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
+              <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Trapping Logistics</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+                {request.permission_status && (
+                  <div>
+                    <div className="text-muted text-sm">Permission Status</div>
+                    <div style={{ fontWeight: 500 }}>
+                      <span style={{
+                        padding: "0.2rem 0.5rem",
+                        borderRadius: "4px",
+                        background: request.permission_status === "granted" ? "#198754"
+                          : request.permission_status === "pending" ? "#ffc107"
+                          : request.permission_status === "not_required" ? "#6c757d"
+                          : "#dc3545",
+                        color: request.permission_status === "pending" ? "#000" : "#fff",
+                        fontSize: "0.85rem",
+                      }}>
+                        {request.permission_status.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {request.property_owner_contact && (
+                  <div>
+                    <div className="text-muted text-sm">Property Owner Contact</div>
+                    <div style={{ fontWeight: 500 }}>{request.property_owner_contact}</div>
+                  </div>
+                )}
+                {request.traps_overnight_safe !== null && (
+                  <div>
+                    <div className="text-muted text-sm">Traps Safe Overnight?</div>
+                    <div style={{ fontWeight: 500, color: request.traps_overnight_safe ? "#198754" : "#dc3545" }}>
+                      {request.traps_overnight_safe ? "Yes" : "No"}
+                    </div>
+                  </div>
+                )}
+                {request.access_without_contact !== null && (
+                  <div>
+                    <div className="text-muted text-sm">Access Without Contact?</div>
+                    <div style={{ fontWeight: 500, color: request.access_without_contact ? "#198754" : "#6c757d" }}>
+                      {request.access_without_contact ? "Yes" : "No"}
+                    </div>
+                  </div>
+                )}
+                {request.best_times_seen && (
+                  <div>
+                    <div className="text-muted text-sm">Best Times Cats Seen</div>
+                    <div style={{ fontWeight: 500 }}>{request.best_times_seen}</div>
+                  </div>
+                )}
+              </div>
+              {request.access_notes && (
+                <div style={{ marginTop: "1rem" }}>
+                  <div className="text-muted text-sm" style={{ marginBottom: "0.25rem" }}>Access Notes</div>
+                  <div style={{ whiteSpace: "pre-wrap", background: "var(--bg-muted)", padding: "0.75rem", borderRadius: "4px" }}>
+                    {request.access_notes}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Colony Information Card */}
+          {(request.property_type || request.colony_duration || request.location_description || request.eartip_count !== null || request.count_confidence || request.is_being_fed !== null) && (
+            <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
+              <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Colony Information</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+                {request.property_type && (
+                  <div>
+                    <div className="text-muted text-sm">Property Type</div>
+                    <div style={{ fontWeight: 500 }}>{request.property_type.replace(/_/g, " ")}</div>
+                  </div>
+                )}
+                {request.colony_duration && (
+                  <div>
+                    <div className="text-muted text-sm">Colony Duration</div>
+                    <div style={{ fontWeight: 500 }}>{request.colony_duration.replace(/_/g, " ")}</div>
+                  </div>
+                )}
+                {request.eartip_count !== null && (
+                  <div>
+                    <div className="text-muted text-sm">Already Eartipped</div>
+                    <div style={{ fontWeight: 500 }}>
+                      {request.eartip_count}
+                      {request.eartip_estimate && ` (${request.eartip_estimate})`}
+                    </div>
+                  </div>
+                )}
+                {request.count_confidence && (
+                  <div>
+                    <div className="text-muted text-sm">Count Confidence</div>
+                    <div style={{ fontWeight: 500 }}>{request.count_confidence}</div>
+                  </div>
+                )}
+                {request.is_being_fed !== null && (
+                  <div>
+                    <div className="text-muted text-sm">Colony Being Fed?</div>
+                    <div style={{ fontWeight: 500, color: request.is_being_fed ? "#198754" : "#6c757d" }}>
+                      {request.is_being_fed ? "Yes" : "No / Unknown"}
+                    </div>
+                  </div>
+                )}
+                {request.feeder_name && (
+                  <div>
+                    <div className="text-muted text-sm">Feeder</div>
+                    <div style={{ fontWeight: 500 }}>{request.feeder_name}</div>
+                  </div>
+                )}
+                {request.feeding_schedule && (
+                  <div>
+                    <div className="text-muted text-sm">Feeding Schedule</div>
+                    <div style={{ fontWeight: 500 }}>{request.feeding_schedule}</div>
+                  </div>
+                )}
+              </div>
+              {request.location_description && (
+                <div style={{ marginTop: "1rem" }}>
+                  <div className="text-muted text-sm" style={{ marginBottom: "0.25rem" }}>Location Description</div>
+                  <div style={{ whiteSpace: "pre-wrap", background: "var(--bg-muted)", padding: "0.75rem", borderRadius: "4px" }}>
+                    {request.location_description}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Urgency Information Card */}
+          {(request.urgency_reasons?.length || request.urgency_deadline || request.urgency_notes) && (
+            <div className="card" style={{
+              padding: "1.5rem",
+              marginBottom: "1.5rem",
+              background: "rgba(220, 53, 69, 0.1)",
+              border: "1px solid #dc3545"
+            }}>
+              <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem", color: "#dc3545" }}>Urgency Details</h2>
+              {request.urgency_reasons && request.urgency_reasons.length > 0 && (
+                <div style={{ marginBottom: "1rem" }}>
+                  <div className="text-muted text-sm" style={{ marginBottom: "0.5rem" }}>Urgency Reasons</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                    {request.urgency_reasons.map((reason, idx) => (
+                      <span
+                        key={idx}
+                        style={{
+                          background: "#dc3545",
+                          color: "#fff",
+                          padding: "0.25rem 0.5rem",
+                          borderRadius: "4px",
+                          fontSize: "0.85rem"
+                        }}
+                      >
+                        {reason.replace(/_/g, " ")}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {request.urgency_deadline && (
+                <div style={{ marginBottom: "1rem" }}>
+                  <div className="text-muted text-sm">Deadline</div>
+                  <div style={{ fontWeight: 500, color: "#dc3545" }}>
+                    {new Date(request.urgency_deadline).toLocaleDateString()}
+                  </div>
+                </div>
+              )}
+              {request.urgency_notes && (
+                <div>
+                  <div className="text-muted text-sm" style={{ marginBottom: "0.25rem" }}>Urgency Notes</div>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{request.urgency_notes}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Readiness & Urgency Scores (if computed) */}
+          {(request.readiness_score !== null || request.urgency_score !== null) && (
+            <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
+              <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Computed Scores</h2>
+              <div style={{ display: "flex", gap: "2rem" }}>
+                {request.readiness_score !== null && (
+                  <div>
+                    <div className="text-muted text-sm">Readiness Score</div>
+                    <div style={{
+                      fontSize: "1.5rem",
+                      fontWeight: 700,
+                      color: request.readiness_score >= 70 ? "#198754" : request.readiness_score >= 40 ? "#ffc107" : "#dc3545"
+                    }}>
+                      {request.readiness_score}
+                    </div>
+                  </div>
+                )}
+                {request.urgency_score !== null && (
+                  <div>
+                    <div className="text-muted text-sm">Urgency Score</div>
+                    <div style={{
+                      fontSize: "1.5rem",
+                      fontWeight: 700,
+                      color: request.urgency_score >= 70 ? "#dc3545" : request.urgency_score >= 40 ? "#ffc107" : "#198754"
+                    }}>
+                      {request.urgency_score}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Clinic Statistics (Alteration Rate) */}
+          <AlterationStatsCard
+            requestId={request.request_id}
+            onUpgradeClick={() => setShowUpgradeWizard(true)}
+          />
+
           {/* Metadata Card */}
           <div className="card" style={{ padding: "1.5rem" }}>
             <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Metadata</h2>
@@ -1379,6 +1863,15 @@ export default function RequestDetailPage() {
                   <div>{request.created_by}</div>
                 </div>
               )}
+              {request.last_activity_at && (
+                <div>
+                  <div className="text-muted text-sm">Last Activity</div>
+                  <div>
+                    {new Date(request.last_activity_at).toLocaleString()}
+                    {request.last_activity_type && ` (${request.last_activity_type})`}
+                  </div>
+                </div>
+              )}
             </div>
             <div style={{ marginTop: "1rem" }}>
               <div className="text-muted text-sm">Request ID</div>
@@ -1398,6 +1891,50 @@ export default function RequestDetailPage() {
             )}
           </div>
         </>
+      ) : null}
+
+      {/* Edit History Panel */}
+      {showHistory && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: "400px",
+          background: "var(--card-bg)",
+          borderLeft: "1px solid var(--border)",
+          padding: "1.5rem",
+          overflowY: "auto",
+          zIndex: 100,
+          boxShadow: "-4px 0 10px rgba(0,0,0,0.2)"
+        }}>
+          <EditHistory
+            entityType="request"
+            entityId={requestId}
+            limit={50}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
+      )}
+
+      {/* Legacy Upgrade Wizard */}
+      {showUpgradeWizard && request && (
+        <LegacyUpgradeWizard
+          request={{
+            request_id: request.request_id,
+            summary: request.summary,
+            place_name: request.place_name,
+            requester_name: request.requester_name,
+            estimated_cat_count: request.estimated_cat_count,
+            has_kittens: request.has_kittens,
+          }}
+          onComplete={(newRequestId) => {
+            setShowUpgradeWizard(false);
+            // Navigate to the new request
+            router.push(`/requests/${newRequestId}`);
+          }}
+          onCancel={() => setShowUpgradeWizard(false)}
+        />
       )}
     </div>
   );

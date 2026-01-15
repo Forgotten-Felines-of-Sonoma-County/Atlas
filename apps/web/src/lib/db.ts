@@ -104,4 +104,15 @@ export async function queryOne<T extends QueryResultRow = QueryResultRow>(
   return result.rows[0] || null;
 }
 
+/**
+ * Execute a statement (INSERT/UPDATE/DELETE) and return the result
+ * Useful when you need access to rowCount but not rows
+ */
+export async function execute(
+  sql: string,
+  params: unknown[] = []
+): Promise<QueryResult> {
+  return await query(sql, params);
+}
+
 export default pool;

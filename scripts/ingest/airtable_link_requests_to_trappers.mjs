@@ -5,10 +5,23 @@
  * Links trapping requests to their assigned trappers based on Airtable data.
  * Uses the "Trappers Assigned" field which contains linked record IDs.
  *
+ * MULTI-TRAPPER SUPPORT (MIG_207):
+ * --------------------------------
+ * This script populates request_trapper_assignments table which supports
+ * multiple trappers per request with history tracking. The first trapper
+ * in Airtable's list is marked as is_primary = true.
+ *
  * Special handling:
  *   - "Client Trapping" (recEp51Dwdei6cN2F) → sets no_trapper_reason = 'client_trapping'
  *   - Empty "Trappers Assigned" → no_trapper_reason = 'pending_assignment'
- *   - Actual trappers → links to person via person_roles
+ *   - Actual trappers → links to person via request_trapper_assignments
+ *
+ * ATTRIBUTION WINDOWS (MIG_208):
+ * ------------------------------
+ * Trapper statistics (v_trapper_full_stats) use v_request_alteration_stats
+ * which employs rolling attribution windows. This means:
+ *   - Active requests capture cats brought to clinic up to NOW + 6 months
+ *   - Resolved requests have 3-month buffer for late clinic visits
  *
  * Usage:
  *   export $(cat .env | grep -v '^#' | xargs)
@@ -196,10 +209,10 @@ async function main() {
 
   // Process requests
   let linked = 0;
+  let totalAssignments = 0;  // Total trapper assignments created
   let clientTrapping = 0;
   let noTrapperSet = 0;
   let notFound = 0;
-  let alreadySet = 0;
   let errors = 0;
 
   for (const record of airtableRequests) {
@@ -222,11 +235,8 @@ async function main() {
 
       const request = reqResult.rows[0];
 
-      // Skip if already has assignment
-      if (request.assigned_trapper_id || request.no_trapper_reason) {
-        alreadySet++;
-        continue;
-      }
+      // Check if already has basic assignment (but still populate multi-trapper table)
+      const hadPriorAssignment = request.assigned_trapper_id || request.no_trapper_reason;
 
       // Handle different cases
       if (trapperIds.length === 0) {
@@ -251,52 +261,118 @@ async function main() {
       } else {
         // Has real trapper(s) - filter out Client Trapping pseudo-record
         const realTrapperIds = trapperIds.filter(id => id !== CLIENT_TRAPPING_RECORD_ID);
-        // Real trapper(s) assigned - use the first one (primary)
-        // For multiple trappers, we take the first; could enhance later
-        const primaryTrapperId = realTrapperIds.length > 0 ? realTrapperIds[0] : trapperIds[0];
-        let personId = null;
 
-        // First try by source_record_id
-        if (trapperIdMap[primaryTrapperId]) {
-          personId = trapperIdMap[primaryTrapperId].personId;
-        } else {
-          // Try by name match
-          const trapperName = trapperNames[primaryTrapperId];
-          if (trapperName) {
-            personId = trappersByName[trapperName.toLowerCase().trim()];
+        // Process ALL trappers, first one is primary
+        let primarySet = false;
+        let assignedCount = 0;
+
+        for (let i = 0; i < realTrapperIds.length; i++) {
+          const trapperId = realTrapperIds[i];
+          const isPrimary = (i === 0);
+          let personId = null;
+
+          // First try by source_record_id
+          if (trapperIdMap[trapperId]) {
+            personId = trapperIdMap[trapperId].personId;
+          } else {
+            // Try by name match
+            const trapperName = trapperNames[trapperId];
+            if (trapperName) {
+              personId = trappersByName[trapperName.toLowerCase().trim()];
+            }
+          }
+
+          if (personId) {
+            // Check if assignment already exists (active)
+            const existingCheck = await client.query(`
+              SELECT assignment_id, is_primary
+              FROM trapper.request_trapper_assignments
+              WHERE request_id = $1 AND trapper_person_id = $2 AND unassigned_at IS NULL
+            `, [request.request_id, personId]);
+
+            const wasExisting = existingCheck.rows.length > 0;
+            const oldIsPrimary = wasExisting ? existingCheck.rows[0].is_primary : null;
+            const primaryChanged = wasExisting && oldIsPrimary !== isPrimary;
+
+            if (wasExisting) {
+              // Update existing assignment if is_primary changed
+              if (primaryChanged) {
+                await client.query(`
+                  UPDATE trapper.request_trapper_assignments
+                  SET is_primary = $3, updated_at = NOW()
+                  WHERE request_id = $1 AND trapper_person_id = $2 AND unassigned_at IS NULL
+                `, [request.request_id, personId, isPrimary]);
+
+                // Log the change
+                await client.query(`
+                  INSERT INTO trapper.entity_edits (
+                    entity_type, entity_id, edit_type, field_name, old_value, new_value,
+                    related_entity_type, related_entity_id, reason, edited_by, edit_source
+                  ) VALUES (
+                    'request', $1, 'update', 'trapper_is_primary',
+                    $3::jsonb, $4::jsonb,
+                    'person', $2, 'Airtable sync updated primary status',
+                    'airtable_link_script', 'airtable_sync'
+                  )
+                `, [request.request_id, personId, JSON.stringify(oldIsPrimary), JSON.stringify(isPrimary)]);
+              }
+            } else {
+              // Insert new assignment
+              await client.query(`
+                INSERT INTO trapper.request_trapper_assignments (
+                  request_id, trapper_person_id, is_primary,
+                  assignment_reason, source_system, source_record_id, created_by
+                ) VALUES ($1, $2, $3, 'airtable_sync', 'airtable', $4, 'airtable_link_script')
+              `, [request.request_id, personId, isPrimary, trapperId]);
+
+              // Log the new assignment
+              await client.query(`
+                INSERT INTO trapper.entity_edits (
+                  entity_type, entity_id, edit_type, field_name, new_value,
+                  related_entity_type, related_entity_id, reason, edited_by, edit_source
+                ) VALUES (
+                  'request', $1, 'link', 'trapper_assignment',
+                  $3::jsonb,
+                  'person', $2, 'Airtable sync added trapper',
+                  'airtable_link_script', 'airtable_sync'
+                )
+              `, [request.request_id, personId, JSON.stringify({ is_primary: isPrimary })]);
+            }
+
+            assignedCount++;
+            if (!wasExisting) totalAssignments++;
+
+            // Set primary trapper on sot_requests (first one only, if not already set)
+            if (isPrimary && !primarySet && !hadPriorAssignment) {
+              await client.query(`
+                UPDATE trapper.sot_requests
+                SET assigned_trapper_id = $2, updated_at = NOW()
+                WHERE request_id = $1
+              `, [request.request_id, personId]);
+              primarySet = true;
+            }
+          } else {
+            if (options.verbose) {
+              console.log(`    ? Trapper not found: ${trapperNames[trapperId] || trapperId}`);
+            }
           }
         }
 
-        if (personId) {
-          await client.query(`
-            UPDATE trapper.sot_requests
-            SET assigned_trapper_id = $2, updated_at = NOW()
-            WHERE request_id = $1
-          `, [request.request_id, personId]);
+        if (assignedCount > 0) {
           linked++;
           if (options.verbose) {
-            const name = trapperIdMap[primaryTrapperId]?.displayName || trapperNames[primaryTrapperId];
-            console.log(`  ✓ Case ${caseNum}: ${name}`);
+            const names = realTrapperIds.map(id => trapperNames[id] || id).join(', ');
+            console.log(`  ✓ Case ${caseNum}: ${names} (${assignedCount} trappers)`);
           }
         } else {
           notFound++;
           if (options.verbose) {
-            console.log(`  ? Case ${caseNum}: trapper not found (${trapperNames[primaryTrapperId] || primaryTrapperId})`);
+            console.log(`  ? Case ${caseNum}: no trappers found`);
           }
         }
       }
 
-      // Log the change
-      await client.query(`
-        INSERT INTO trapper.data_changes (
-          entity_type, entity_key, field_name, old_value, new_value, change_source
-        ) VALUES ('request', $1, 'trapper_assignment', NULL, $2, 'airtable_link_script')
-      `, [
-        request.request_id,
-        trapperIds.length === 0 ? 'pending_assignment'
-          : trapperIds.includes(CLIENT_TRAPPING_RECORD_ID) ? 'client_trapping'
-          : trapperNames[trapperIds[0]] || trapperIds[0]
-      ]);
+      // Change logging now handled per-assignment above
 
     } catch (err) {
       console.error(`  ✗ Error on case ${caseNum}: ${err.message}`);
@@ -308,10 +384,10 @@ async function main() {
 
   console.log('\n═══════════════════════════════════════════════════');
   console.log('Summary:');
-  console.log(`  🔗 Linked to trapper: ${linked}`);
+  console.log(`  🔗 Requests with trappers: ${linked}`);
+  console.log(`  👥 Total trapper assignments: ${totalAssignments}`);
   console.log(`  👤 Client trapping: ${clientTrapping}`);
   console.log(`  ⏳ Pending assignment: ${noTrapperSet}`);
-  console.log(`  ⏭️  Already set: ${alreadySet}`);
   if (notFound > 0) {
     console.log(`  ❓ Trapper not found: ${notFound}`);
   }

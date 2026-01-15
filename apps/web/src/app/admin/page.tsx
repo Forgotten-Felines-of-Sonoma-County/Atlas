@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { GeocodingControls } from "@/components/GeocodingControls";
 
 interface QueueStats {
   total: number;
@@ -94,22 +95,31 @@ export default function AdminPage() {
 
       {/* Quick Links */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginTop: "1.5rem" }}>
-        <a href="/intake?preview=true" className="card" style={{ textAlign: "center" }}>
-          <h3>Intake Form</h3>
-          <p className="text-muted text-sm">Preview form (no submission)</p>
-        </a>
-        <a href="/intake/print" className="card" style={{ textAlign: "center" }}>
-          <h3>Print Intake Form</h3>
-          <p className="text-muted text-sm">Printable PDF form</p>
+        <a href="/admin/ecology" className="card" style={{ textAlign: "center", background: "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)" }}>
+          <h3>Ecology Config</h3>
+          <p className="text-muted text-sm">Colony calculation parameters</p>
         </a>
         <a href="/intake/queue" className="card" style={{ textAlign: "center" }}>
           <h3>Intake Queue</h3>
           <p className="text-muted text-sm">Review and triage submissions</p>
         </a>
-        <a href="/requests" className="card" style={{ textAlign: "center" }}>
-          <h3>Trapping Requests</h3>
-          <p className="text-muted text-sm">Active trapping work</p>
+        <a href="/admin/ingest" className="card" style={{ textAlign: "center" }}>
+          <h3>Data Ingest</h3>
+          <p className="text-muted text-sm">Sync and import status</p>
         </a>
+        <a href="/trappers" className="card" style={{ textAlign: "center" }}>
+          <h3>Trappers</h3>
+          <p className="text-muted text-sm">Trapper assignments</p>
+        </a>
+      </div>
+
+      {/* Geocoding Controls */}
+      <div className="card" style={{ marginTop: "2rem" }}>
+        <h2>Place Geocoding</h2>
+        <p className="text-muted" style={{ marginBottom: "1rem" }}>
+          Geocode pending places and automatically merge duplicates detected by Google.
+        </p>
+        <GeocodingControls />
       </div>
 
       {/* Stats */}

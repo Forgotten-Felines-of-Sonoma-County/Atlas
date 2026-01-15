@@ -5,6 +5,10 @@ import { useParams } from "next/navigation";
 import JournalSection, { JournalEntry } from "@/components/JournalSection";
 import { BackButton } from "@/components/BackButton";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { EditHistory } from "@/components/EditHistory";
+import { PlaceAlterationHistory } from "@/components/PlaceAlterationHistory";
+import { ColonyEstimates } from "@/components/ColonyEstimates";
+import { SubmissionsSection } from "@/components/SubmissionsSection";
 
 interface Cat {
   cat_id: string;
@@ -191,6 +195,9 @@ export default function PlaceDetailPage() {
   const [addressInput, setAddressInput] = useState("");
   const [changeReason, setChangeReason] = useState("");
   const [changeNotes, setChangeNotes] = useState("");
+
+  // Edit history panel
+  const [showHistory, setShowHistory] = useState(false);
 
   // Place kind options
   const PLACE_KINDS = [
@@ -415,7 +422,7 @@ export default function PlaceDetailPage() {
 
       {/* Header */}
       <div className="detail-header" style={{ marginTop: "1rem" }}>
-        <h1 style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <h1 style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           {place.display_name}
           {place.place_kind && (
             <span
@@ -428,6 +435,38 @@ export default function PlaceDetailPage() {
               {place.place_kind.replace(/_/g, " ")}
             </span>
           )}
+          <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
+            <a
+              href={`/places/${place.place_id}/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "0.25rem 0.75rem",
+                fontSize: "0.875rem",
+                background: "transparent",
+                color: "inherit",
+                border: "1px solid var(--border)",
+                borderRadius: "6px",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+            >
+              Print
+            </a>
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              style={{
+                padding: "0.25rem 0.75rem",
+                fontSize: "0.875rem",
+                background: showHistory ? "var(--primary)" : "transparent",
+                color: showHistory ? "white" : "inherit",
+                border: showHistory ? "none" : "1px solid var(--border)",
+              }}
+            >
+              History
+            </button>
+          </div>
         </h1>
         {place.formatted_address && place.formatted_address !== place.display_name && (
           <p className="text-muted">{place.formatted_address}</p>
@@ -784,6 +823,21 @@ export default function PlaceDetailPage() {
         )}
       </Section>
 
+      {/* Website Submissions */}
+      <Section title="Website Submissions">
+        <SubmissionsSection entityType="place" entityId={id} />
+      </Section>
+
+      {/* Colony Size Estimates (P75 Surveys, etc.) */}
+      <Section title="Colony Size Estimates">
+        <ColonyEstimates placeId={id} />
+      </Section>
+
+      {/* TNR Activity / Alteration History */}
+      <Section title="TNR Activity">
+        <PlaceAlterationHistory placeId={id} />
+      </Section>
+
       {/* Journal / Notes */}
       <Section title="Journal">
         <JournalSection
@@ -817,6 +871,30 @@ export default function PlaceDetailPage() {
           </div>
         </div>
       </Section>
+
+      {/* Edit History Panel */}
+      {showHistory && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: "400px",
+          background: "var(--card-bg)",
+          borderLeft: "1px solid var(--border)",
+          padding: "1.5rem",
+          overflowY: "auto",
+          zIndex: 100,
+          boxShadow: "-4px 0 10px rgba(0,0,0,0.2)"
+        }}>
+          <EditHistory
+            entityType="place"
+            entityId={id}
+            limit={50}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }

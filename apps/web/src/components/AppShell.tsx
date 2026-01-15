@@ -39,8 +39,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <a href="/intake/queue" className="nav-link">
               Intake
             </a>
-            <a href="/admin/ingest" className="nav-link" style={{ opacity: 0.7 }}>
-              Ingest
+            <a href="/admin" className="nav-link" style={{ opacity: 0.7 }}>
+              Admin
             </a>
           </div>
         </div>

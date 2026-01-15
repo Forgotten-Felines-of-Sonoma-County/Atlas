@@ -170,9 +170,14 @@ export async function GET(
         -- Activity tracking
         r.last_activity_at,
         r.last_activity_type,
-        -- Place info
+        -- Place info (use address if place name matches requester name)
         r.place_id,
-        p.display_name AS place_name,
+        CASE
+          WHEN p.display_name IS NOT NULL AND per.display_name IS NOT NULL
+            AND LOWER(TRIM(p.display_name)) = LOWER(TRIM(per.display_name))
+          THEN COALESCE(SPLIT_PART(p.formatted_address, ',', 1), p.formatted_address)
+          ELSE COALESCE(p.display_name, SPLIT_PART(p.formatted_address, ',', 1))
+        END AS place_name,
         p.formatted_address AS place_address,
         p.place_kind::TEXT,
         p.safety_notes AS place_safety_notes,

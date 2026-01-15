@@ -18,7 +18,17 @@ interface CatListRow {
   place_kind: string | null;
   has_place: boolean;
   created_at: string;
+  last_visit_date: string | null;
+  visit_count: number;
 }
+
+// Valid sort options
+const SORT_OPTIONS = {
+  quality: "quality_tier ASC, display_name ASC",
+  name: "display_name ASC",
+  recent_visit: "last_visit_date DESC NULLS LAST, display_name ASC",
+  created: "created_at DESC",
+} as const;
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -29,6 +39,7 @@ export async function GET(request: NextRequest) {
   const hasPlace = searchParams.get("has_place");
   const sex = searchParams.get("sex");
   const alteredStatus = searchParams.get("altered_status");
+  const sort = searchParams.get("sort") as keyof typeof SORT_OPTIONS | null;
 
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -67,8 +78,11 @@ export async function GET(request: NextRequest) {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
+  // Determine sort order
+  const orderBy = sort && SORT_OPTIONS[sort] ? SORT_OPTIONS[sort] : SORT_OPTIONS.quality;
+
   try {
-    // Get data - order by quality tier then name (high confidence first)
+    // Get data with sort order
     const sql = `
       SELECT
         cat_id,
@@ -86,10 +100,12 @@ export async function GET(request: NextRequest) {
         primary_place_label,
         place_kind,
         has_place,
-        created_at
+        created_at,
+        last_visit_date::TEXT,
+        visit_count
       FROM trapper.v_cat_list
       ${whereClause}
-      ORDER BY quality_tier ASC, display_name ASC
+      ORDER BY ${orderBy}
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
 

@@ -33,10 +33,15 @@ interface IntakeSubmission {
   county?: string;
 
   // Triage Questions
-  ownership_status: "unknown_stray" | "community_colony" | "my_cat" | "neighbors_cat" | "unsure";
+  ownership_status: "unknown_stray" | "community_colony" | "newcomer" | "my_cat" | "neighbors_cat" | "unsure";
   cat_count_estimate?: number;
   cat_count_text?: string;
+  peak_count?: number;
+  eartip_count_observed?: number;
   fixed_status: "none_fixed" | "some_fixed" | "most_fixed" | "all_fixed" | "unknown";
+  observation_time_of_day?: string;
+  is_at_feeding_station?: boolean;
+  reporter_confidence?: string;
   has_kittens?: boolean;
   kitten_count?: number;
   kitten_age_estimate?: string;
@@ -48,9 +53,15 @@ interface IntakeSubmission {
   can_bring_in?: string;
   kitten_notes?: string;
   awareness_duration?: "under_1_week" | "under_1_month" | "1_to_6_months" | "6_to_12_months" | "over_1_year" | "unknown";
+  // Feeding behavior
+  feeds_cat?: boolean;
+  feeding_frequency?: "daily" | "few_times_week" | "occasionally" | "rarely";
+  feeding_duration?: "just_started" | "few_weeks" | "few_months" | "over_year";
+  cat_comes_inside?: "yes_regularly" | "sometimes" | "never";
   has_medical_concerns?: boolean;
   medical_description?: string;
   is_emergency?: boolean;
+  emergency_acknowledged?: boolean;
   cats_being_fed?: boolean;
   feeder_info?: string;
   has_property_access?: boolean;
@@ -127,7 +138,12 @@ export async function POST(request: NextRequest) {
         ownership_status: body.ownership_status,
         cat_count_estimate: body.cat_count_estimate || null,
         cat_count_text: body.cat_count_text || null,
+        peak_count: body.peak_count || null,
+        eartip_count_observed: body.eartip_count_observed || null,
         fixed_status: body.fixed_status,
+        observation_time_of_day: body.observation_time_of_day || null,
+        is_at_feeding_station: body.is_at_feeding_station ?? null,
+        reporter_confidence: body.reporter_confidence || null,
         has_kittens: body.has_kittens ?? null,
         kitten_count: body.kitten_count || null,
         kitten_age_estimate: body.kitten_age_estimate || null,
@@ -139,9 +155,15 @@ export async function POST(request: NextRequest) {
         can_bring_in: body.can_bring_in || null,
         kitten_notes: body.kitten_notes || null,
         awareness_duration: body.awareness_duration || null,
+        // Feeding behavior
+        feeds_cat: body.feeds_cat ?? null,
+        feeding_frequency: body.feeding_frequency || null,
+        feeding_duration: body.feeding_duration || null,
+        cat_comes_inside: body.cat_comes_inside || null,
         has_medical_concerns: body.has_medical_concerns ?? null,
         medical_description: body.medical_description || null,
         is_emergency: body.is_emergency ?? false,
+        emergency_acknowledged: body.emergency_acknowledged ?? false,
         cats_being_fed: body.cats_being_fed ?? null,
         feeder_info: body.feeder_info || null,
         has_property_access: body.has_property_access ?? null,

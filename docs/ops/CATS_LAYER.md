@@ -93,6 +93,48 @@ psql "$DATABASE_URL" -f sql/queries/QRY_021__top_owners_by_cat_count.sql
 psql "$DATABASE_URL" -f sql/queries/QRY_022__cats_missing_owner_links.sql
 ```
 
+## Cat Merging (MIG_225)
+
+Atlas supports manual merging of duplicate cat records with full stability across re-imports.
+
+### Merge Functions
+
+```sql
+-- Merge source cat INTO target cat (target becomes canonical)
+SELECT trapper.merge_cats(
+    'source_cat_uuid',
+    'target_cat_uuid',
+    'duplicate',     -- reason
+    'admin'          -- who
+);
+
+-- Undo a merge if needed
+SELECT trapper.undo_cat_merge('merged_cat_uuid');
+
+-- Get canonical cat_id (follows merge chain)
+SELECT trapper.get_canonical_cat_id('any_cat_uuid');
+
+-- Find canonical cat by microchip
+SELECT trapper.find_canonical_cat_by_microchip('981020012345678');
+```
+
+### Canonical View
+
+Use `v_canonical_cats` to exclude merged cats from UI queries:
+
+```sql
+SELECT * FROM trapper.v_canonical_cats WHERE ...;
+```
+
+### Merge Stability
+
+Merges survive re-imports because:
+1. Merged cats have `merged_into_cat_id` set
+2. Ingest uses `get_canonical_cat_id()` when linking
+3. Relationships always point to canonical cat
+
+---
+
 ## What's Intentionally Deferred
 
 ### Not Yet Implemented
@@ -101,13 +143,9 @@ psql "$DATABASE_URL" -f sql/queries/QRY_022__cats_missing_owner_links.sql
 
 2. **Shelterluv/PetLink integration** - Currently only ClinicHQ cats are processed
 
-3. **Place linkage** - Linking cats to locations via owner address or appointment location
+3. **Colony tracking** - Distinguishing owned cats from colony/community cats
 
-4. **Fuzzy cat matching** - Detecting duplicate cats with similar names/characteristics
-
-5. **Cat merge workflow** - UI for merging duplicate cat records
-
-6. **Colony tracking** - Distinguishing owned cats from colony/community cats
+4. **Cat merge UI** - Currently SQL-only, no web interface
 
 ### Why Deferred
 

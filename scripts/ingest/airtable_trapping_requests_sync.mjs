@@ -5,6 +5,16 @@
  * Syncs Trapping Requests directly from Airtable API.
  * Uses Airtable record IDs for deduplication.
  *
+ * IMPORTANT: Attribution Windows (MIG_208)
+ * -----------------------------------------
+ * Cats are linked to requests via v_request_alteration_stats using time windows:
+ *   - Legacy (before May 2025): Fixed ±6 month window from source_created_at
+ *   - Active requests: Rolling window extends to NOW + 6 months
+ *   - Resolved requests: Window closes at resolved_at + 3 months
+ *
+ * This script MUST preserve source_created_at from Airtable's "Created"
+ * field to ensure proper window calculations.
+ *
  * Usage:
  *   node scripts/ingest/airtable_trapping_requests_sync.mjs
  *

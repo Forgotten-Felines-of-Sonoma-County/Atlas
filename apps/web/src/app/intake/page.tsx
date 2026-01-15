@@ -33,7 +33,12 @@ interface FormData {
   ownership_status: string;
   cat_count_estimate: string;
   cat_count_text: string;
+  peak_count: string;
+  eartip_count_observed: string;
   fixed_status: string;
+  observation_time_of_day: string;
+  is_at_feeding_station: string;
+  reporter_confidence: string;
   has_kittens: string;
   kitten_count: string;
   kitten_age_estimate: string;
@@ -48,10 +53,17 @@ interface FormData {
   kitten_notes: string;
   awareness_duration: string;
 
+  // Feeding behavior
+  feeds_cat: string;
+  feeding_frequency: string;
+  feeding_duration: string;
+  cat_comes_inside: string;
+
   // Situation
   has_medical_concerns: string;
   medical_description: string;
   is_emergency: boolean;
+  emergency_acknowledged: boolean;
   cats_being_fed: string;
   feeder_info: string;
   has_property_access: string;
@@ -82,7 +94,12 @@ const initialFormData: FormData = {
   ownership_status: "",
   cat_count_estimate: "",
   cat_count_text: "",
+  peak_count: "",
+  eartip_count_observed: "",
   fixed_status: "",
+  observation_time_of_day: "",
+  is_at_feeding_station: "",
+  reporter_confidence: "",
   has_kittens: "",
   kitten_count: "",
   kitten_age_estimate: "",
@@ -96,9 +113,14 @@ const initialFormData: FormData = {
   can_bring_in: "",
   kitten_notes: "",
   awareness_duration: "",
+  feeds_cat: "",
+  feeding_frequency: "",
+  feeding_duration: "",
+  cat_comes_inside: "",
   has_medical_concerns: "",
   medical_description: "",
   is_emergency: false,
+  emergency_acknowledged: false,
   cats_being_fed: "",
   feeder_info: "",
   has_property_access: "",
@@ -127,6 +149,7 @@ function IntakeForm() {
   } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hasDraft, setHasDraft] = useState(false);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
 
   // Load draft from localStorage on mount
   useEffect(() => {
@@ -261,7 +284,12 @@ function IntakeForm() {
           ownership_status: formData.ownership_status,
           cat_count_estimate: formData.cat_count_estimate ? parseInt(formData.cat_count_estimate) : undefined,
           cat_count_text: formData.cat_count_text || undefined,
+          peak_count: formData.peak_count ? parseInt(formData.peak_count) : undefined,
+          eartip_count_observed: formData.eartip_count_observed ? parseInt(formData.eartip_count_observed) : undefined,
           fixed_status: formData.fixed_status,
+          observation_time_of_day: formData.observation_time_of_day || undefined,
+          is_at_feeding_station: formData.is_at_feeding_station === "yes" ? true : formData.is_at_feeding_station === "no" ? false : undefined,
+          reporter_confidence: formData.reporter_confidence || undefined,
           has_kittens: formData.has_kittens === "yes" ? true : formData.has_kittens === "no" ? false : undefined,
           kitten_count: formData.kitten_count ? parseInt(formData.kitten_count) : undefined,
           kitten_age_estimate: formData.kitten_age_estimate || undefined,
@@ -273,9 +301,15 @@ function IntakeForm() {
           can_bring_in: formData.can_bring_in || undefined,
           kitten_notes: formData.kitten_notes || undefined,
           awareness_duration: formData.awareness_duration || undefined,
+          // Feeding behavior
+          feeds_cat: formData.feeds_cat === "yes" ? true : formData.feeds_cat === "no" ? false : undefined,
+          feeding_frequency: formData.feeding_frequency || undefined,
+          feeding_duration: formData.feeding_duration || undefined,
+          cat_comes_inside: formData.cat_comes_inside || undefined,
           has_medical_concerns: formData.has_medical_concerns === "yes" ? true : formData.has_medical_concerns === "no" ? false : undefined,
           medical_description: formData.medical_description || undefined,
           is_emergency: formData.is_emergency,
+          emergency_acknowledged: formData.emergency_acknowledged,
           cats_being_fed: formData.cats_being_fed === "yes" ? true : formData.cats_being_fed === "no" ? false : undefined,
           feeder_info: formData.feeder_info || undefined,
           has_property_access: formData.has_property_access === "yes" ? true : formData.has_property_access === "no" ? false : undefined,
@@ -663,20 +697,20 @@ function IntakeForm() {
           <h2 style={{ marginBottom: "1rem" }}>Tell Us About the Cats</h2>
 
           <div style={{ marginBottom: "1.5rem" }}>
-            <label>What best describes these cats? *</label>
+            <label>What best describes this cat? *</label>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
               {[
-                { value: "unknown_stray", label: "Unknown/stray cats I've been seeing in the area" },
-                { value: "community_colony", label: "Community cats that someone feeds" },
-                { value: "my_cat", label: "My own pet cat(s)" },
-                { value: "neighbors_cat", label: "A neighbor's cat(s)" },
-                { value: "unsure", label: "I'm not sure" },
+                { value: "unknown_stray", label: "Stray cat (no apparent owner)", desc: "A cat that appears to have no home or caretaker" },
+                { value: "community_colony", label: "Outdoor cat I or someone feeds", desc: "A cat that lives outside but is being fed/cared for" },
+                { value: "newcomer", label: "Newcomer (just showed up recently)", desc: "A cat that recently appeared in your area" },
+                { value: "neighbors_cat", label: "Neighbor's cat", desc: "A cat that belongs to someone nearby" },
+                { value: "my_cat", label: "My own pet", desc: "Your personal pet cat" },
               ].map((opt) => (
                 <label
                   key={opt.value}
                   style={{
                     display: "flex",
-                    alignItems: "center",
+                    alignItems: "flex-start",
                     gap: "0.5rem",
                     padding: "0.75rem",
                     border: "1px solid var(--card-border)",
@@ -691,12 +725,96 @@ function IntakeForm() {
                     value={opt.value}
                     checked={formData.ownership_status === opt.value}
                     onChange={(e) => updateField("ownership_status", e.target.value)}
+                    style={{ marginTop: "0.25rem" }}
                   />
-                  {opt.label}
+                  <span>
+                    <strong>{opt.label}</strong>
+                    <span style={{ display: "block", fontSize: "0.85rem", color: "var(--muted)" }}>{opt.desc}</span>
+                  </span>
                 </label>
               ))}
             </div>
             {errors.ownership_status && <span style={{ color: "#dc3545", fontSize: "0.8rem" }}>{errors.ownership_status}</span>}
+          </div>
+
+          {/* Feeding Behavior Questions */}
+          <div style={{ marginBottom: "1.5rem", background: "var(--section-bg)", padding: "1rem", borderRadius: "8px" }}>
+            <h4 style={{ marginTop: 0, marginBottom: "1rem", fontSize: "1rem" }}>Feeding Information</h4>
+
+            <div style={{ marginBottom: "1rem" }}>
+              <label>Do you feed this cat?</label>
+              <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
+                {[
+                  { value: "yes", label: "Yes" },
+                  { value: "no", label: "No" },
+                ].map((opt) => (
+                  <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="feeds_cat"
+                      value={opt.value}
+                      checked={formData.feeds_cat === opt.value}
+                      onChange={(e) => updateField("feeds_cat", e.target.value)}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {formData.feeds_cat === "yes" && (
+              <div style={{ marginBottom: "1rem" }}>
+                <label>How often do you feed this cat?</label>
+                <select
+                  value={formData.feeding_frequency}
+                  onChange={(e) => updateField("feeding_frequency", e.target.value)}
+                  style={{ maxWidth: "250px" }}
+                >
+                  <option value="">Select...</option>
+                  <option value="daily">Daily</option>
+                  <option value="few_times_week">A few times a week</option>
+                  <option value="occasionally">Occasionally</option>
+                  <option value="rarely">Rarely</option>
+                </select>
+              </div>
+            )}
+
+            <div style={{ marginBottom: "1rem" }}>
+              <label>How long have you been feeding or aware of this cat?</label>
+              <select
+                value={formData.feeding_duration}
+                onChange={(e) => updateField("feeding_duration", e.target.value)}
+                style={{ maxWidth: "250px" }}
+              >
+                <option value="">Select...</option>
+                <option value="just_started">Just started (less than 2 weeks)</option>
+                <option value="few_weeks">A few weeks</option>
+                <option value="few_months">A few months</option>
+                <option value="over_year">Over a year</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Does this cat come inside your home?</label>
+              <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
+                {[
+                  { value: "yes_regularly", label: "Yes, regularly" },
+                  { value: "sometimes", label: "Sometimes" },
+                  { value: "never", label: "Never" },
+                ].map((opt) => (
+                  <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="cat_comes_inside"
+                      value={opt.value}
+                      checked={formData.cat_comes_inside === opt.value}
+                      onChange={(e) => updateField("cat_comes_inside", e.target.value)}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Show owned cat notice */}
@@ -739,6 +857,22 @@ function IntakeForm() {
             </div>
           </div>
 
+          {/* Peak count question - ecology data */}
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label>In the last 7 days, what's the highest number of cats you've seen at one time?</label>
+            <p style={{ fontSize: "0.85rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
+              This helps us better estimate the colony size
+            </p>
+            <input
+              type="number"
+              min="1"
+              value={formData.peak_count}
+              onChange={(e) => updateField("peak_count", e.target.value)}
+              placeholder="Highest number seen at once"
+              style={{ maxWidth: "200px" }}
+            />
+          </div>
+
           <div style={{ marginBottom: "1.5rem" }}>
             <label>Are any of the cats already fixed (ear-tipped)? *</label>
             <p style={{ fontSize: "0.85rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
@@ -774,6 +908,92 @@ function IntakeForm() {
               ))}
             </div>
             {errors.fixed_status && <span style={{ color: "#dc3545", fontSize: "0.8rem" }}>{errors.fixed_status}</span>}
+          </div>
+
+          {/* Ear-tip count - enables mark-resight estimation */}
+          {(formData.fixed_status === "some_fixed" || formData.fixed_status === "most_fixed") && (
+            <div style={{ marginBottom: "1.5rem", background: "var(--section-bg)", padding: "1rem", borderRadius: "8px" }}>
+              <label>About how many cats have ear tips?</label>
+              <p style={{ fontSize: "0.85rem", color: "var(--muted)", marginBottom: "0.5rem" }}>
+                If you can estimate, this helps us track progress more accurately
+              </p>
+              <input
+                type="number"
+                min="0"
+                value={formData.eartip_count_observed}
+                onChange={(e) => updateField("eartip_count_observed", e.target.value)}
+                placeholder="Number with ear tips"
+                style={{ maxWidth: "200px" }}
+              />
+            </div>
+          )}
+
+          {/* Observation context - optional ecology data */}
+          <div style={{ marginBottom: "1.5rem", background: "var(--section-bg)", padding: "1rem", borderRadius: "8px" }}>
+            <h4 style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "0.95rem" }}>Observation Details (Optional)</h4>
+            <p style={{ fontSize: "0.85rem", color: "var(--muted)", marginBottom: "1rem" }}>
+              These details help us better understand the cat population
+            </p>
+
+            <div style={{ marginBottom: "1rem" }}>
+              <label>When do you usually see these cats?</label>
+              <select
+                value={formData.observation_time_of_day}
+                onChange={(e) => updateField("observation_time_of_day", e.target.value)}
+                style={{ maxWidth: "250px" }}
+              >
+                <option value="">Select...</option>
+                <option value="dawn">Dawn / early morning</option>
+                <option value="midday">Midday</option>
+                <option value="dusk">Dusk / evening</option>
+                <option value="night">Night</option>
+                <option value="various">Various times</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: "1rem" }}>
+              <label>Is there a regular feeding station?</label>
+              <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
+                {[
+                  { value: "yes", label: "Yes" },
+                  { value: "no", label: "No" },
+                  { value: "unsure", label: "Not sure" },
+                ].map((opt) => (
+                  <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="is_at_feeding_station"
+                      value={opt.value}
+                      checked={formData.is_at_feeding_station === opt.value}
+                      onChange={(e) => updateField("is_at_feeding_station", e.target.value)}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label>How confident are you in your cat count?</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
+                {[
+                  { value: "high", label: "Very confident - I count them regularly" },
+                  { value: "medium", label: "Somewhat confident - my best estimate" },
+                  { value: "low", label: "Not very confident - hard to tell" },
+                ].map((opt) => (
+                  <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="reporter_confidence"
+                      value={opt.value}
+                      checked={formData.reporter_confidence === opt.value}
+                      onChange={(e) => updateField("reporter_confidence", e.target.value)}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div style={{ marginBottom: "1.5rem" }}>
@@ -997,6 +1217,121 @@ function IntakeForm() {
         </div>
       )}
 
+      {/* Emergency Acknowledgment Modal */}
+      {showEmergencyModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+          }}
+          onClick={() => setShowEmergencyModal(false)}
+        >
+          <div
+            style={{
+              background: "var(--card-bg)",
+              borderRadius: "12px",
+              maxWidth: "500px",
+              width: "100%",
+              padding: "1.5rem",
+              boxShadow: "0 10px 40px rgba(0,0,0,0.3)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ color: "#dc3545", marginTop: 0, marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ fontSize: "1.5rem" }}>!</span> Important: Emergency Services Notice
+            </h2>
+
+            <div style={{ marginBottom: "1rem", lineHeight: 1.6 }}>
+              <p style={{ marginBottom: "1rem" }}>
+                <strong>Forgotten Felines is a spay/neuter clinic, NOT a 24-hour emergency hospital.</strong>
+              </p>
+              <p style={{ marginBottom: "1rem" }}>
+                We will help cats as resources allow, but if your cat has a <strong>life-threatening emergency</strong>
+                (severe injury, difficulty breathing, poisoning, hit by car), please go to an emergency vet immediately:
+              </p>
+              <div style={{
+                background: "#f8f9fa",
+                padding: "1rem",
+                borderRadius: "8px",
+                marginBottom: "1rem",
+                border: "1px solid var(--border)"
+              }}>
+                <strong style={{ fontSize: "1.1rem" }}>Pet Care Veterinary Hospital</strong><br />
+                <span style={{ fontSize: "1.2rem", color: "#198754" }}>(707) 579-3900</span><br />
+                <span style={{ color: "var(--muted)" }}>2425 Mendocino Ave, Santa Rosa</span><br />
+                <span style={{ color: "#0d6efd" }}>Open 24/7</span>
+              </div>
+            </div>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "0.5rem",
+                padding: "1rem",
+                background: formData.emergency_acknowledged ? "#d4edda" : "#fff3cd",
+                border: formData.emergency_acknowledged ? "2px solid #198754" : "2px solid #ffc107",
+                borderRadius: "8px",
+                cursor: "pointer",
+                marginBottom: "1rem",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={formData.emergency_acknowledged}
+                onChange={(e) => updateField("emergency_acknowledged", e.target.checked)}
+                style={{ marginTop: "0.25rem" }}
+              />
+              <span style={{ fontSize: "0.95rem" }}>
+                <strong>I understand.</strong> My situation is urgent but not a life-threatening emergency
+                requiring immediate hospital care. I'd like FFSC's help as soon as possible.
+              </span>
+            </label>
+
+            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => {
+                  setShowEmergencyModal(false);
+                  updateField("is_emergency", false);
+                  updateField("emergency_acknowledged", false);
+                }}
+                style={{ padding: "0.75rem 1.5rem" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (formData.emergency_acknowledged) {
+                    updateField("is_emergency", true);
+                    setShowEmergencyModal(false);
+                  }
+                }}
+                disabled={!formData.emergency_acknowledged}
+                style={{
+                  padding: "0.75rem 1.5rem",
+                  background: formData.emergency_acknowledged ? "#dc3545" : "#ccc",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: formData.emergency_acknowledged ? "pointer" : "not-allowed",
+                }}
+              >
+                Continue with Urgent Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Step: Situation */}
       {currentStep === "situation" && (
         <div className="card" style={{ padding: "1.5rem" }}>
@@ -1004,7 +1339,15 @@ function IntakeForm() {
 
           {/* Emergency flag */}
           <div style={{ marginBottom: "1.5rem" }}>
-            <label
+            <div
+              onClick={() => {
+                if (!formData.is_emergency) {
+                  setShowEmergencyModal(true);
+                } else {
+                  updateField("is_emergency", false);
+                  updateField("emergency_acknowledged", false);
+                }
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1019,15 +1362,21 @@ function IntakeForm() {
               <input
                 type="checkbox"
                 checked={formData.is_emergency}
-                onChange={(e) => updateField("is_emergency", e.target.checked)}
+                onChange={() => {}} // Handled by parent onClick
+                style={{ pointerEvents: "none" }}
               />
               <span>
-                <strong>This is an emergency</strong>
+                <strong>This is an urgent situation</strong>
                 <span style={{ display: "block", fontSize: "0.85rem", color: "var(--muted)" }}>
                   Injured cat, active labor, or immediate danger
                 </span>
+                {formData.is_emergency && formData.emergency_acknowledged && (
+                  <span style={{ display: "block", fontSize: "0.8rem", color: "#198754", marginTop: "0.25rem" }}>
+                    Acknowledged - We will prioritize your request
+                  </span>
+                )}
               </span>
-            </label>
+            </div>
           </div>
 
           <div style={{ marginBottom: "1.5rem" }}>
@@ -1221,10 +1570,15 @@ function IntakeForm() {
             <h3 style={{ marginBottom: "0.5rem", fontSize: "1rem" }}>About the Cats</h3>
             <p><strong>Type:</strong> {formData.ownership_status.replace(/_/g, " ")}</p>
             <p><strong>Count:</strong> {formData.cat_count_estimate || formData.cat_count_text || "Not specified"}</p>
+            {formData.peak_count && <p><strong>Peak count (last 7 days):</strong> {formData.peak_count}</p>}
             <p><strong>Fixed status:</strong> {formData.fixed_status.replace(/_/g, " ")}</p>
+            {formData.eartip_count_observed && <p><strong>Ear-tipped cats:</strong> {formData.eartip_count_observed}</p>}
             {formData.has_kittens === "yes" && (
               <p><strong>Kittens:</strong> Yes ({formData.kitten_count || "count unknown"})</p>
             )}
+            {formData.reporter_confidence && <p><strong>Count confidence:</strong> {formData.reporter_confidence}</p>}
+            {formData.observation_time_of_day && <p><strong>Usually seen:</strong> {formData.observation_time_of_day}</p>}
+            {formData.is_at_feeding_station && <p><strong>Feeding station:</strong> {formData.is_at_feeding_station}</p>}
           </div>
 
           {formData.situation_description && (

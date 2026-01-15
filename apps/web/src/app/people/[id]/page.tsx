@@ -5,6 +5,10 @@ import { useParams } from "next/navigation";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import JournalSection, { JournalEntry } from "@/components/JournalSection";
 import { BackButton } from "@/components/BackButton";
+import { EditHistory } from "@/components/EditHistory";
+import { TrapperBadge } from "@/components/TrapperBadge";
+import { TrapperStatsCard } from "@/components/TrapperStatsCard";
+import { SubmissionsSection } from "@/components/SubmissionsSection";
 
 interface Cat {
   cat_id: string;
@@ -83,6 +87,11 @@ interface RelatedRequest {
   summary: string | null;
   created_at: string;
   place_name: string | null;
+}
+
+interface TrapperInfo {
+  trapper_type: string;
+  is_ffsc_trapper: boolean;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -343,6 +352,7 @@ export default function PersonDetailPage() {
   const [person, setPerson] = useState<PersonDetail | null>(null);
   const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [requests, setRequests] = useState<RelatedRequest[]>([]);
+  const [trapperInfo, setTrapperInfo] = useState<TrapperInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -357,6 +367,9 @@ export default function PersonDetailPage() {
   const [editEmail, setEditEmail] = useState("");
   const [savingIdentifiers, setSavingIdentifiers] = useState(false);
   const [identifierError, setIdentifierError] = useState<string | null>(null);
+
+  // Edit history panel
+  const [showHistory, setShowHistory] = useState(false);
 
   const fetchPerson = useCallback(async () => {
     try {
@@ -399,18 +412,36 @@ export default function PersonDetailPage() {
     }
   }, [id]);
 
+  const fetchTrapperInfo = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/people/${id}/trapper-stats`);
+      if (response.ok) {
+        const data = await response.json();
+        setTrapperInfo({
+          trapper_type: data.trapper_type,
+          is_ffsc_trapper: data.is_ffsc_trapper,
+        });
+      } else {
+        setTrapperInfo(null);
+      }
+    } catch (err) {
+      // Not a trapper, or error - just ignore
+      setTrapperInfo(null);
+    }
+  }, [id]);
+
   useEffect(() => {
     if (!id) return;
 
     const loadData = async () => {
       setLoading(true);
       setError(null);
-      await Promise.all([fetchPerson(), fetchJournal(), fetchRequests()]);
+      await Promise.all([fetchPerson(), fetchJournal(), fetchRequests(), fetchTrapperInfo()]);
       setLoading(false);
     };
 
     loadData();
-  }, [id, fetchPerson, fetchJournal, fetchRequests]);
+  }, [id, fetchPerson, fetchJournal, fetchRequests, fetchTrapperInfo]);
 
   const handlePlaceSelect = async (place: PlaceDetails) => {
     setSavingAddress(true);
@@ -537,8 +568,41 @@ export default function PersonDetailPage() {
       <div className="detail-header" style={{ marginTop: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <h1 style={{ margin: 0 }}>{person.display_name}</h1>
+          {trapperInfo && <TrapperBadge trapperType={trapperInfo.trapper_type} />}
           <EntityTypeBadge entityType={person.entity_type} />
           <DataSourceBadge dataSource={person.data_source} />
+          <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
+            <a
+              href={`/people/${person.person_id}/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "0.25rem 0.75rem",
+                fontSize: "0.875rem",
+                background: "transparent",
+                color: "inherit",
+                border: "1px solid var(--border)",
+                borderRadius: "6px",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+            >
+              Print
+            </a>
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              style={{
+                padding: "0.25rem 0.75rem",
+                fontSize: "0.875rem",
+                background: showHistory ? "var(--primary)" : "transparent",
+                color: showHistory ? "white" : "inherit",
+                border: showHistory ? "none" : "1px solid var(--border)",
+              }}
+            >
+              History
+            </button>
+          </div>
         </div>
         <p className="text-muted text-sm" style={{ marginTop: "0.25rem" }}>ID: {person.person_id}</p>
         {person.entity_type === "site" && (
@@ -552,6 +616,13 @@ export default function PersonDetailPage() {
           </p>
         )}
       </div>
+
+      {/* Trapper Stats (if person is a trapper) */}
+      {trapperInfo && (
+        <Section title="Trapper Statistics">
+          <TrapperStatsCard personId={id} compact />
+        </Section>
+      )}
 
       {/* Summary Stats */}
       <Section title="Summary">
@@ -839,6 +910,11 @@ export default function PersonDetailPage() {
         )}
       </Section>
 
+      {/* Website Submissions */}
+      <Section title="Website Submissions">
+        <SubmissionsSection entityType="person" entityId={id} />
+      </Section>
+
       {/* Journal / Notes */}
       <Section title="Journal">
         <JournalSection
@@ -880,6 +956,30 @@ export default function PersonDetailPage() {
             </tbody>
           </table>
         </Section>
+      )}
+
+      {/* Edit History Panel */}
+      {showHistory && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: "400px",
+          background: "var(--card-bg)",
+          borderLeft: "1px solid var(--border)",
+          padding: "1.5rem",
+          overflowY: "auto",
+          zIndex: 100,
+          boxShadow: "-4px 0 10px rgba(0,0,0,0.2)"
+        }}>
+          <EditHistory
+            entityType="person"
+            entityId={id}
+            limit={50}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
       )}
     </div>
   );

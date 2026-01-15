@@ -222,6 +222,127 @@ Cat matching is **review-queue only** by default. No automatic merges.
 | Shared owner | +0.20 | Strong contextual signal |
 | Shared place | +0.15 | Contextual signal |
 
+## Manual Entity Merging (MIG_225)
+
+Atlas provides functions for manually merging duplicate entities. Merges are:
+- **Stable across re-imports**: Merged entities stay merged
+- **Audited**: All merges logged to `entity_merge_history`
+- **Reversible**: Use `undo_*_merge()` functions if needed
+
+### Merging Cats
+
+```sql
+-- Merge source cat INTO target cat (target becomes canonical)
+SELECT trapper.merge_cats(
+    'source_cat_uuid',    -- Cat to merge away
+    'target_cat_uuid',    -- Cat to keep (canonical)
+    'duplicate',          -- Reason
+    'admin'               -- Who performed merge
+);
+
+-- Returns JSON with transfer details:
+-- {
+--   "success": true,
+--   "transferred": {
+--     "identifiers": 1,
+--     "procedures": 2,
+--     "appointments": 3,
+--     "place_relationships": 1,
+--     "person_relationships": 1
+--   }
+-- }
+```
+
+**What gets transferred:**
+- `cat_identifiers` (microchips, etc.)
+- `cat_procedures` (spay/neuter records)
+- `sot_appointments`
+- `cat_place_relationships`
+- `person_cat_relationships`
+- `request_cat_links`
+
+**Target cat enrichment:**
+- Missing data (sex, color, breed) copied from source
+- Notes appended with merge reference
+
+### Merging Places
+
+```sql
+-- Merge source place INTO target place
+SELECT trapper.merge_places(
+    'source_place_uuid',
+    'target_place_uuid'
+);
+```
+
+### Merging People
+
+```sql
+-- People use the existing auto-merge infrastructure
+-- Manual merge via accept_match_candidate
+SELECT trapper.accept_match_candidate('person', '<candidate_id>');
+```
+
+### Undoing Merges
+
+```sql
+-- Undo a cat merge (relationships stay with target)
+SELECT trapper.undo_cat_merge('merged_cat_uuid');
+
+-- Undo a place merge
+SELECT trapper.undo_place_merge('merged_place_uuid');
+
+-- Undo a person merge
+SELECT trapper.undo_person_merge('merged_person_uuid');
+```
+
+**Note:** Undo removes the merge marker but does NOT move relationships back. Manual cleanup may be needed.
+
+### Canonical ID Resolution
+
+When working with potentially merged entities, use these functions:
+
+```sql
+-- Get canonical cat_id (follows merge chain)
+SELECT trapper.get_canonical_cat_id('cat_uuid');
+
+-- Get canonical person_id
+SELECT trapper.get_canonical_person_id('person_uuid');
+
+-- Get canonical place_id
+SELECT trapper.get_canonical_place_id('place_uuid');
+
+-- Find canonical cat by microchip (respects merges)
+SELECT trapper.find_canonical_cat_by_microchip('981020012345678');
+```
+
+### Views for UI (Exclude Merged)
+
+Use these views in UI queries to exclude merged entities:
+
+```sql
+-- Canonical cats only
+SELECT * FROM trapper.v_canonical_cats;
+
+-- Canonical people only
+SELECT * FROM trapper.v_canonical_people;
+
+-- Canonical places only
+SELECT * FROM trapper.v_canonical_places;
+```
+
+### Merge History
+
+All merges are logged for audit:
+
+```sql
+-- View recent merges
+SELECT entity_type, source_atlas_id, target_atlas_id, merge_reason, merged_by, merged_at
+FROM trapper.entity_merge_history
+ORDER BY merged_at DESC
+LIMIT 20;
+```
+
 ## ClinicHQ People Pipeline
 
 ClinicHQ owner data is extracted into canonical people through a multi-step pipeline.

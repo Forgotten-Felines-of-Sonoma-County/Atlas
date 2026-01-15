@@ -427,12 +427,12 @@ export default function PrintableIntakeForm() {
         <div className="section">
           <div className="section-title">3. ABOUT THE CATS</div>
           <div className="question-row">
-            <span className="qlabel">Ownership? *</span>
-            <span className="checkbox-item"><span className="bubble"></span> Stray/unknown</span>
-            <span className="checkbox-item"><span className="bubble"></span> Community colony</span>
-            <span className="checkbox-item"><span className="bubble"></span> My cat</span>
+            <span className="qlabel">Cat type? *</span>
+            <span className="checkbox-item"><span className="bubble"></span> Stray (no owner)</span>
+            <span className="checkbox-item"><span className="bubble"></span> Outdoor cat I/someone feeds</span>
+            <span className="checkbox-item"><span className="bubble"></span> Newcomer (just appeared)</span>
             <span className="checkbox-item"><span className="bubble"></span> Neighbor's cat</span>
-            <span className="checkbox-item"><span className="bubble"></span> Unsure</span>
+            <span className="checkbox-item"><span className="bubble"></span> My pet</span>
           </div>
           <div style={{ display: "flex", gap: "12px" }}>
             <div className="question-row">
@@ -447,13 +447,28 @@ export default function PrintableIntakeForm() {
               <span className="checkbox-item"><span className="bubble"></span> Unknown</span>
             </div>
           </div>
-          <div className="question-row">
-            <span className="qlabel">How long aware?</span>
-            <span className="checkbox-item"><span className="bubble"></span> &lt;1 week</span>
-            <span className="checkbox-item"><span className="bubble"></span> &lt;1 month</span>
-            <span className="checkbox-item"><span className="bubble"></span> 1-6 months</span>
-            <span className="checkbox-item"><span className="bubble"></span> 6-12 months</span>
-            <span className="checkbox-item"><span className="bubble"></span> 1+ year</span>
+          {/* Feeding behavior */}
+          <div style={{ background: "#f8f9fa", padding: "4px 6px", marginTop: "4px", marginBottom: "4px", border: "1px solid #ddd" }}>
+            <div className="question-row">
+              <span className="qlabel" style={{ minWidth: "90px" }}>Do you feed?</span>
+              <span className="checkbox-item"><span className="bubble"></span> Yes</span>
+              <span className="checkbox-item"><span className="bubble"></span> No</span>
+              <span style={{ marginLeft: "10px", fontSize: "9pt" }}>If yes, how often?</span>
+              <span className="checkbox-item"><span className="bubble"></span> Daily</span>
+              <span className="checkbox-item"><span className="bubble"></span> Few times/wk</span>
+              <span className="checkbox-item"><span className="bubble"></span> Occasionally</span>
+            </div>
+            <div className="question-row">
+              <span className="qlabel" style={{ minWidth: "90px" }}>How long aware?</span>
+              <span className="checkbox-item"><span className="bubble"></span> &lt;2 wks</span>
+              <span className="checkbox-item"><span className="bubble"></span> Few weeks</span>
+              <span className="checkbox-item"><span className="bubble"></span> Few months</span>
+              <span className="checkbox-item"><span className="bubble"></span> 1+ year</span>
+              <span style={{ marginLeft: "10px", fontSize: "9pt" }}>Comes inside?</span>
+              <span className="checkbox-item"><span className="bubble"></span> Yes</span>
+              <span className="checkbox-item"><span className="bubble"></span> Sometimes</span>
+              <span className="checkbox-item"><span className="bubble"></span> Never</span>
+            </div>
           </div>
           <div className="question-row">
             <span className="qlabel">Kittens present?</span>
@@ -467,12 +482,21 @@ export default function PrintableIntakeForm() {
         </div>
 
         {/* Emergency */}
-        <div className="emergency-box">
-          <span className="checkbox-item">
-            <span className="bubble square" style={{ width: "14px", height: "14px", borderColor: "#dc3545" }}></span>
-            <span style={{ fontWeight: "bold", color: "#dc3545" }}>THIS IS AN EMERGENCY</span>
-          </span>
-          <span style={{ fontSize: "9pt", color: "#666" }}>(injured cat, active labor, immediate danger)</span>
+        <div className="emergency-box" style={{ flexDirection: "column", alignItems: "flex-start" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "3px" }}>
+            <span className="checkbox-item">
+              <span className="bubble square" style={{ width: "14px", height: "14px", borderColor: "#dc3545" }}></span>
+              <span style={{ fontWeight: "bold", color: "#dc3545" }}>THIS IS AN URGENT SITUATION</span>
+            </span>
+            <span style={{ fontSize: "9pt", color: "#666" }}>(injured cat, active labor, immediate danger)</span>
+          </div>
+          <div style={{ fontSize: "8pt", color: "#666", paddingLeft: "20px" }}>
+            <strong>Note:</strong> FFSC is a spay/neuter clinic, NOT a 24hr hospital. For life-threatening emergencies: <strong>Pet Care Hospital (707) 579-3900</strong>
+            <span style={{ marginLeft: "8px" }}>
+              <span className="bubble square" style={{ width: "10px", height: "10px", display: "inline-block", verticalAlign: "middle" }}></span>
+              <span style={{ marginLeft: "3px" }}>I acknowledge this is urgent but not life-threatening</span>
+            </span>
+          </div>
         </div>
 
         {/* Section 4: Situation */}
@@ -481,12 +505,6 @@ export default function PrintableIntakeForm() {
           <div className="compact-grid">
             <div className="question-row">
               <span className="qlabel">Medical concerns?</span>
-              <span className="checkbox-item"><span className="bubble"></span> Yes</span>
-              <span className="checkbox-item"><span className="bubble"></span> No</span>
-              <span className="checkbox-item"><span className="bubble"></span> Unsure</span>
-            </div>
-            <div className="question-row">
-              <span className="qlabel">Cats being fed?</span>
               <span className="checkbox-item"><span className="bubble"></span> Yes</span>
               <span className="checkbox-item"><span className="bubble"></span> No</span>
               <span className="checkbox-item"><span className="bubble"></span> Unsure</span>
@@ -501,6 +519,12 @@ export default function PrintableIntakeForm() {
               <span className="qlabel">Property owner?</span>
               <span className="checkbox-item"><span className="bubble"></span> Yes</span>
               <span className="checkbox-item"><span className="bubble"></span> No (renter)</span>
+            </div>
+            <div className="question-row">
+              <span className="qlabel">Others feeding?</span>
+              <span className="checkbox-item"><span className="bubble"></span> Yes</span>
+              <span className="checkbox-item"><span className="bubble"></span> No</span>
+              <span className="checkbox-item"><span className="bubble"></span> Unsure</span>
             </div>
           </div>
           <div className="question-row" style={{ marginTop: "2px" }}>
@@ -520,14 +544,14 @@ export default function PrintableIntakeForm() {
             Please tell us more about the cats and the situation:
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px", fontSize: "8pt", color: "#666", marginBottom: "3px" }}>
-            <div>• Cat descriptions (colors, markings, ear-tips seen)</div>
+            <div>• Cat descriptions (colors, markings, ear-tips)</div>
             <div>• Best times to reach you / schedule trapping</div>
             <div>• Medical concerns (injuries, illness, pregnant)</div>
-            <div>• Feeding schedule & locations where cats are seen</div>
-            <div>• How long have you been feeding them?</div>
-            <div>• Access notes (gates, dogs, landlord contact needed)</div>
+            <div>• Where cats are usually seen</div>
+            <div>• Access notes (gates, dogs, landlord needed)</div>
+            <div>• Any other helpful details</div>
           </div>
-          <div className="field-input" style={{ minHeight: "1.6in" }}></div>
+          <div className="field-input" style={{ minHeight: "1.5in" }}></div>
         </div>
 
         {/* Signature */}

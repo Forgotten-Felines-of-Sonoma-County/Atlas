@@ -282,6 +282,38 @@ async function updateGeocodingResult(client, submissionId, geoResult) {
     JSON.stringify(geoResult.raw_response),
     submissionId,
   ]);
+
+  // If geocoding succeeded, link to place (triggers colony estimate creation)
+  if (geoResult.formatted_address && (geoResult.confidence === 'exact' || geoResult.confidence === 'approximate')) {
+    const placeId = await linkToPlace(client, submissionId, geoResult);
+    return { placeLinked: !!placeId };
+  }
+  return { placeLinked: false };
+}
+
+async function linkToPlace(client, submissionId, geoResult) {
+  // Use find_or_create_place_deduped to avoid duplicate places
+  const sql = `
+    SELECT trapper.link_intake_to_place(
+      $1::UUID,
+      $2,
+      $3::DOUBLE PRECISION,
+      $4::DOUBLE PRECISION
+    ) as place_id
+  `;
+
+  try {
+    const result = await client.query(sql, [
+      submissionId,
+      geoResult.formatted_address,
+      geoResult.latitude,
+      geoResult.longitude,
+    ]);
+    return result.rows[0]?.place_id;
+  } catch (err) {
+    console.error(`\n  [!] Error linking to place: ${err.message}`);
+    return null;
+  }
 }
 
 // ============================================
@@ -336,6 +368,7 @@ async function main() {
     failed: 0,
     skipped: 0,
     outside_area: 0,
+    places_linked: 0,
     errors: 0,
   };
 
@@ -399,12 +432,15 @@ async function main() {
       const result = parseGeocodingResult(data, address);
 
       // Update database
-      await updateGeocodingResult(client, row.submission_id, result);
+      const { placeLinked } = await updateGeocodingResult(client, row.submission_id, result);
 
       // Update stats
       stats[result.confidence]++;
       if (result.in_service_area === false) {
         stats.outside_area++;
+      }
+      if (placeLinked) {
+        stats.places_linked++;
       }
 
       if (options.verbose) {
@@ -447,6 +483,7 @@ async function main() {
   console.log(`  Failed:             ${stats.failed}`);
   console.log(`  Skipped (invalid):  ${stats.skipped}`);
   console.log(`  Outside area:       ${stats.outside_area}`);
+  console.log(`  Places linked:      ${stats.places_linked}`);
   if (stats.errors > 0) {
     console.log(`  Errors:             ${stats.errors}`);
   }

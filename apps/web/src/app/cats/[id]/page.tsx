@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import JournalSection, { JournalEntry } from "@/components/JournalSection";
 import { BackButton } from "@/components/BackButton";
+import { EditHistory } from "@/components/EditHistory";
+import { OwnershipTransferWizard } from "@/components/OwnershipTransferWizard";
 
 interface Owner {
   person_id: string;
@@ -409,6 +411,10 @@ export default function CatDetailPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Edit history and transfer wizard
+  const [showHistory, setShowHistory] = useState(false);
+  const [showTransferWizard, setShowTransferWizard] = useState(false);
+
   const fetchCat = useCallback(async () => {
     try {
       const response = await fetch(`/api/cats/${id}`);
@@ -592,12 +598,44 @@ export default function CatDetailPage() {
               <DataSourceBadge dataSource={cat.data_source} />
               <OwnershipTypeBadge ownershipType={cat.ownership_type} />
               {!editingBasic && (
-                <button
-                  onClick={startEditingBasic}
-                  style={{ marginLeft: "auto", padding: "0.25rem 0.75rem", fontSize: "0.875rem" }}
-                >
-                  Edit
-                </button>
+                <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
+                  <a
+                    href={`/cats/${cat.cat_id}/print`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      padding: "0.25rem 0.75rem",
+                      fontSize: "0.875rem",
+                      background: "transparent",
+                      color: "inherit",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      textDecoration: "none",
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    Print
+                  </a>
+                  <button
+                    onClick={() => setShowHistory(!showHistory)}
+                    style={{
+                      padding: "0.25rem 0.75rem",
+                      fontSize: "0.875rem",
+                      background: showHistory ? "var(--primary)" : "transparent",
+                      color: showHistory ? "white" : "inherit",
+                      border: showHistory ? "none" : "1px solid var(--border)",
+                    }}
+                  >
+                    History
+                  </button>
+                  <button
+                    onClick={startEditingBasic}
+                    style={{ padding: "0.25rem 0.75rem", fontSize: "0.875rem" }}
+                  >
+                    Edit
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1146,7 +1184,16 @@ export default function CatDetailPage() {
       )}
 
       {/* Owners - Clickable Links */}
-      <Section title="People">
+      <div className="detail-section">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2>People</h2>
+          <button
+            onClick={() => setShowTransferWizard(true)}
+            style={{ padding: "0.25rem 0.75rem", fontSize: "0.875rem" }}
+          >
+            Transfer Ownership
+          </button>
+        </div>
         {cat.owners && cat.owners.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
             {cat.owners.map((owner) => (
@@ -1162,7 +1209,7 @@ export default function CatDetailPage() {
         ) : (
           <p className="text-muted">No people linked to this cat.</p>
         )}
-      </Section>
+      </div>
 
       {/* Places - Clickable Links */}
       <Section title="Places">
@@ -1342,6 +1389,67 @@ export default function CatDetailPage() {
           </div>
         </div>
       </Section>
+
+      {/* Edit History Panel */}
+      {showHistory && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: "400px",
+          background: "var(--card-bg)",
+          borderLeft: "1px solid var(--border)",
+          padding: "1.5rem",
+          overflowY: "auto",
+          zIndex: 100,
+          boxShadow: "-4px 0 10px rgba(0,0,0,0.2)"
+        }}>
+          <EditHistory
+            entityType="cat"
+            entityId={id}
+            limit={50}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
+      )}
+
+      {/* Ownership Transfer Wizard */}
+      {showTransferWizard && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: "var(--card-bg)",
+            borderRadius: "8px",
+            maxWidth: "600px",
+            width: "90%",
+            maxHeight: "90vh",
+            overflow: "auto",
+          }}>
+            <OwnershipTransferWizard
+              catId={id}
+              catName={cat.display_name}
+              currentOwnerId={cat.owners?.[0]?.person_id || null}
+              currentOwnerName={cat.owners?.[0]?.display_name || null}
+              onComplete={() => {
+                setShowTransferWizard(false);
+                fetchCat(); // Refresh cat data after transfer
+              }}
+              onCancel={() => setShowTransferWizard(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
