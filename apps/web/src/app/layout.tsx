@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import PasswordGate from "@/components/PasswordGate";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -20,7 +21,9 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body>
-        <AppShell>{children}</AppShell>
+        <PasswordGate>
+          <AppShell>{children}</AppShell>
+        </PasswordGate>
       </body>
     </html>
   );
