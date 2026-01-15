@@ -305,12 +305,12 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
 
     // Step 3: Link people to places via person_place_relationships
     const personPlaceLinks = await query(`
-      INSERT INTO trapper.person_place_relationships (person_id, place_id, relationship_type, confidence, source_system, source_table)
+      INSERT INTO trapper.person_place_relationships (person_id, place_id, role, confidence, source_system, source_table)
       SELECT DISTINCT
         pi.person_id,
         p.place_id,
-        'residence',
-        'medium',
+        'resident'::trapper.person_place_role,
+        0.7,
         'clinichq',
         'owner_info'
       FROM trapper.staged_records sr
