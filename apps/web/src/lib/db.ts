@@ -8,15 +8,22 @@ export class DatabaseConnectionError extends Error {
   }
 }
 
+// Serverless-optimized connection pool settings
+// Vercel serverless functions need smaller pools since each invocation may spawn a new instance
+const isServerless = process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_NAME;
+
 // Create a connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes("localhost")
     ? false
     : { rejectUnauthorized: false },
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  // Serverless: use minimal pool size to avoid connection exhaustion
+  // Local/Server: use larger pool for performance
+  max: isServerless ? 1 : 10,
+  // Shorter timeouts for serverless to fail fast and release connections
+  idleTimeoutMillis: isServerless ? 10000 : 30000,
+  connectionTimeoutMillis: isServerless ? 5000 : 10000,
 });
 
 // Handle pool errors
