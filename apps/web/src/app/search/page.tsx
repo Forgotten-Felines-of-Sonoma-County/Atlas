@@ -38,12 +38,39 @@ interface IntakeResult {
   metadata: Record<string, unknown>;
 }
 
+interface SubmissionResult {
+  submission_id: string;
+  display_name: string;
+  email: string | null;
+  phone: string | null;
+  cats_address: string | null;
+  cats_city: string | null;
+  status: string;
+  triage_category: string | null;
+  submitted_at: string;
+  match_type: string;
+}
+
+interface RequestResult {
+  request_id: string;
+  display_name: string;
+  status: string;
+  priority: string;
+  place_address: string | null;
+  requester_name: string | null;
+  estimated_cat_count: number | null;
+  created_at: string;
+  match_type: string;
+}
+
 interface SearchResponse {
   query: string;
   mode: string;
   results: SearchResult[];
   possible_matches?: SearchResult[];
   intake_records?: IntakeResult[];
+  submissions?: SubmissionResult[];
+  requests?: RequestResult[];
   counts_by_type?: Record<string, number>;
   total: number;
   timing_ms: number;
@@ -71,6 +98,9 @@ function SearchContent() {
   const [data, setData] = useState<SearchResponse | DeepSearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const pageSize = 25;
 
   const search = useCallback(async () => {
     if (!query.trim()) {
@@ -174,6 +204,8 @@ function SearchContent() {
           <option value="cat">Cats</option>
           <option value="person">People</option>
           <option value="place">Places</option>
+          <option value="submission">Submissions</option>
+          <option value="request">Requests</option>
         </select>
         <select
           value={mode}
@@ -324,6 +356,94 @@ function SearchContent() {
                               <span>Submitted: {new Date(record.submitted_at).toLocaleDateString()}</span>
                             )}
                             <span> (score: {record.score})</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Submissions section */}
+                  {data.submissions && data.submissions.length > 0 && (
+                    <div className="results-section" style={{ marginTop: "2rem" }}>
+                      <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem", color: "var(--muted)" }}>
+                        Intake Submissions ({data.submissions.length})
+                      </h2>
+                      {data.submissions.map((sub) => (
+                        <div key={`sub-${sub.submission_id}`} className="search-result" style={{ borderLeft: "3px solid #17a2b8" }}>
+                          <div className="search-result-header">
+                            <span className="badge" style={{ background: sub.status === "new" ? "#0d6efd" : sub.status === "reviewed" ? "#198754" : "#6c757d", color: "#fff" }}>
+                              {sub.status}
+                            </span>
+                            {sub.triage_category && (
+                              <span className="badge" style={{ marginLeft: "0.25rem" }}>
+                                {sub.triage_category.replace(/_/g, " ")}
+                              </span>
+                            )}
+                            <a href={`/intake/queue/${sub.submission_id}`} className="search-result-title">
+                              {sub.display_name}
+                            </a>
+                          </div>
+                          <div className="search-result-subtitle">
+                            {sub.cats_address && <div>{sub.cats_address}{sub.cats_city ? `, ${sub.cats_city}` : ""}</div>}
+                            {(sub.phone || sub.email) && (
+                              <div style={{ marginTop: "0.25rem" }}>
+                                {sub.phone && <span>{sub.phone}</span>}
+                                {sub.phone && sub.email && <span> &bull; </span>}
+                                {sub.email && <span>{sub.email}</span>}
+                              </div>
+                            )}
+                          </div>
+                          <div className="search-result-match">
+                            Submitted: {new Date(sub.submitted_at).toLocaleDateString()}
+                            <span className="text-muted"> &bull; matched on: {sub.match_type.replace(/_/g, " ")}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Requests section */}
+                  {data.requests && data.requests.length > 0 && (
+                    <div className="results-section" style={{ marginTop: "2rem" }}>
+                      <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem", color: "var(--muted)" }}>
+                        Trapping Requests ({data.requests.length})
+                      </h2>
+                      {data.requests.map((req) => (
+                        <div key={`req-${req.request_id}`} className="search-result" style={{ borderLeft: "3px solid #6f42c1" }}>
+                          <div className="search-result-header">
+                            <span className="badge" style={{
+                              background: req.status === "new" ? "#0d6efd" :
+                                         req.status === "scheduled" ? "#198754" :
+                                         req.status === "in_progress" ? "#fd7e14" :
+                                         req.status === "completed" ? "#20c997" : "#6c757d",
+                              color: ["in_progress", "completed"].includes(req.status) ? "#000" : "#fff"
+                            }}>
+                              {req.status.replace(/_/g, " ")}
+                            </span>
+                            <span className="badge" style={{
+                              marginLeft: "0.25rem",
+                              background: req.priority === "urgent" ? "#dc3545" :
+                                         req.priority === "high" ? "#fd7e14" : "#6c757d",
+                              color: req.priority === "high" ? "#000" : "#fff"
+                            }}>
+                              {req.priority}
+                            </span>
+                            <a href={`/requests/${req.request_id}`} className="search-result-title">
+                              {req.display_name}
+                            </a>
+                          </div>
+                          <div className="search-result-subtitle">
+                            {req.place_address && <div>{req.place_address}</div>}
+                            {req.requester_name && (
+                              <div style={{ marginTop: "0.25rem" }}>
+                                Requester: {req.requester_name}
+                                {req.estimated_cat_count && <span> &bull; ~{req.estimated_cat_count} cats</span>}
+                              </div>
+                            )}
+                          </div>
+                          <div className="search-result-match">
+                            Created: {new Date(req.created_at).toLocaleDateString()}
+                            <span className="text-muted"> &bull; matched on: {req.match_type.replace(/_/g, " ")}</span>
                           </div>
                         </div>
                       ))}

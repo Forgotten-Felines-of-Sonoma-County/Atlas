@@ -43,6 +43,31 @@ interface IntakeResult {
   metadata: Record<string, unknown>;
 }
 
+interface SubmissionResult {
+  submission_id: string;
+  display_name: string;
+  email: string | null;
+  phone: string | null;
+  cats_address: string | null;
+  cats_city: string | null;
+  status: string;
+  triage_category: string | null;
+  submitted_at: string;
+  match_type: string;
+}
+
+interface RequestResult {
+  request_id: string;
+  display_name: string;
+  status: string;
+  priority: string;
+  place_address: string | null;
+  requester_name: string | null;
+  estimated_cat_count: number | null;
+  created_at: string;
+  match_type: string;
+}
+
 const STRONG_THRESHOLD = 5;  // If fewer than this many strong results, include possible matches
 
 export async function GET(request: NextRequest) {
@@ -223,6 +248,100 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Search submissions (web_intake_submissions)
+    let submissions: SubmissionResult[] = [];
+    if (!typeParam || typeParam === "submission") {
+      try {
+        const submissionSql = `
+          SELECT
+            submission_id,
+            COALESCE(first_name || ' ' || last_name, 'Unknown') as display_name,
+            email,
+            phone,
+            cats_address,
+            cats_city,
+            status,
+            triage_category,
+            submitted_at,
+            CASE
+              WHEN LOWER(first_name || ' ' || last_name) = LOWER($1) THEN 'exact_name'
+              WHEN email = LOWER($1) THEN 'exact_email'
+              WHEN phone = $1 OR REPLACE(REPLACE(REPLACE(phone, '-', ''), '(', ''), ')', '') LIKE '%' || REPLACE(REPLACE(REPLACE($1, '-', ''), '(', ''), ')', '') || '%' THEN 'phone_match'
+              WHEN LOWER(cats_address) ILIKE '%' || LOWER($1) || '%' THEN 'address_match'
+              WHEN LOWER(first_name || ' ' || last_name) ILIKE '%' || LOWER($1) || '%' THEN 'fuzzy_name'
+              WHEN LOWER(situation_description) ILIKE '%' || LOWER($1) || '%' THEN 'description_match'
+              ELSE 'fuzzy'
+            END as match_type
+          FROM trapper.web_intake_submissions
+          WHERE
+            LOWER(first_name || ' ' || last_name) ILIKE '%' || LOWER($1) || '%'
+            OR email ILIKE '%' || LOWER($1) || '%'
+            OR phone LIKE '%' || $1 || '%'
+            OR LOWER(cats_address) ILIKE '%' || LOWER($1) || '%'
+            OR LOWER(situation_description) ILIKE '%' || LOWER($1) || '%'
+          ORDER BY
+            CASE
+              WHEN LOWER(first_name || ' ' || last_name) = LOWER($1) THEN 1
+              WHEN email = LOWER($1) THEN 2
+              ELSE 3
+            END,
+            submitted_at DESC
+          LIMIT 15
+        `;
+        submissions = await queryRows<SubmissionResult>(submissionSql, [q]);
+      } catch (err) {
+        console.error("Submission search error:", err);
+      }
+    }
+
+    // Search requests (sot_requests)
+    let requests: RequestResult[] = [];
+    if (!typeParam || typeParam === "request") {
+      try {
+        const requestSql = `
+          SELECT
+            r.request_id,
+            COALESCE(r.summary, 'Request #' || LEFT(r.request_id::TEXT, 8)) as display_name,
+            r.status,
+            r.priority,
+            p.formatted_address as place_address,
+            per.display_name as requester_name,
+            r.estimated_cat_count,
+            r.created_at,
+            CASE
+              WHEN LOWER(r.summary) ILIKE '%' || LOWER($1) || '%' THEN 'summary_match'
+              WHEN LOWER(p.formatted_address) ILIKE '%' || LOWER($1) || '%' THEN 'address_match'
+              WHEN LOWER(per.display_name) ILIKE '%' || LOWER($1) || '%' THEN 'requester_match'
+              WHEN LOWER(r.notes) ILIKE '%' || LOWER($1) || '%' THEN 'notes_match'
+              ELSE 'fuzzy'
+            END as match_type
+          FROM trapper.sot_requests r
+          LEFT JOIN trapper.places p ON r.place_id = p.place_id
+          LEFT JOIN trapper.sot_people per ON r.requester_person_id = per.person_id
+          WHERE
+            LOWER(r.summary) ILIKE '%' || LOWER($1) || '%'
+            OR LOWER(p.formatted_address) ILIKE '%' || LOWER($1) || '%'
+            OR LOWER(p.display_name) ILIKE '%' || LOWER($1) || '%'
+            OR LOWER(per.display_name) ILIKE '%' || LOWER($1) || '%'
+            OR LOWER(r.notes) ILIKE '%' || LOWER($1) || '%'
+            OR r.request_id::TEXT ILIKE '%' || $1 || '%'
+          ORDER BY
+            CASE r.status
+              WHEN 'new' THEN 1
+              WHEN 'triaged' THEN 2
+              WHEN 'scheduled' THEN 3
+              WHEN 'in_progress' THEN 4
+              ELSE 5
+            END,
+            r.created_at DESC
+          LIMIT 15
+        `;
+        requests = await queryRows<RequestResult>(requestSql, [q]);
+      } catch (err) {
+        console.error("Request search error:", err);
+      }
+    }
+
     return NextResponse.json({
       query: q,
       mode: "canonical",
@@ -230,6 +349,8 @@ export async function GET(request: NextRequest) {
       results: strongResults.length > 0 ? strongResults : results.slice(0, limit),
       possible_matches: possibleMatches,
       intake_records: intakeResults,
+      submissions,
+      requests,
       counts_by_type: countsByType,
       total: totalCount,
       limit,
