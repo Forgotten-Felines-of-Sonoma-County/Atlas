@@ -664,8 +664,8 @@ export default function PrintableIntakeForm() {
               <span className="qlabel">Behavior *</span>
               <span className="checkbox-item"><span className="bubble"></span> Friendly (handleable)</span>
               <span className="checkbox-item"><span className="bubble"></span> Shy but can pick up</span>
-              <span className="checkbox-item"><span className="bubble"></span> Feral/hissy (young)</span>
-              <span className="checkbox-item"><span className="bubble"></span> Feral (older)</span>
+              <span className="checkbox-item"><span className="bubble"></span> Shy/hissy (young)</span>
+              <span className="checkbox-item"><span className="bubble"></span> Unhandleable (older)</span>
               <span className="checkbox-item"><span className="bubble"></span> Unknown</span>
             </div>
 
@@ -710,7 +710,7 @@ export default function PrintableIntakeForm() {
               <li><strong>Behavior matters:</strong> Friendly/handleable kittens are prioritized for foster placement.</li>
               <li><strong>Mom helps:</strong> Spayed mom with kittens increases foster likelihood.</li>
               <li><strong>Foster space is limited</strong> and not guaranteed until day of assessment.</li>
-              <li>Older or feral kittens (12+ weeks, hard to handle) may need TNR instead of foster.</li>
+              <li>Older or unhandleable kittens (12+ weeks, hard to handle) may need TNR instead of foster.</li>
             </ul>
           </div>
 

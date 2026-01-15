@@ -135,7 +135,7 @@ const KITTEN_ASSESSMENT_STATUS_OPTIONS = [
 
 const KITTEN_OUTCOME_OPTIONS = [
   { value: "foster_intake", label: "Foster Intake" },
-  { value: "tnr_candidate", label: "TNR Candidate (feral/older)" },
+  { value: "tnr_candidate", label: "TNR Candidate (unhandleable/older)" },
   { value: "pending_space", label: "Pending Foster Space" },
   { value: "return_to_colony", label: "Return to Colony" },
   { value: "declined", label: "Declined / Not Suitable" },

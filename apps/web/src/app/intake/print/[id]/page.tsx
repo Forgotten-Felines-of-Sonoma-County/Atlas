@@ -373,8 +373,8 @@ export default function PrintSubmissionPage({ params }: { params: Promise<{ id: 
               <span className="qlabel">Behavior:</span>
               <span className="checkbox-item"><Bubble filled={submission.kitten_behavior === "friendly"} /> Friendly</span>
               <span className="checkbox-item"><Bubble filled={submission.kitten_behavior === "shy_handleable"} /> Shy but handleable</span>
-              <span className="checkbox-item"><Bubble filled={submission.kitten_behavior === "feral_young"} /> Feral (young)</span>
-              <span className="checkbox-item"><Bubble filled={submission.kitten_behavior === "feral_older"} /> Feral (older)</span>
+              <span className="checkbox-item"><Bubble filled={submission.kitten_behavior === "shy_young"} /> Shy/hissy (young)</span>
+              <span className="checkbox-item"><Bubble filled={submission.kitten_behavior === "unhandleable_older"} /> Unhandleable (older)</span>
               <span className="checkbox-item"><Bubble filled={submission.kitten_behavior === "unknown"} /> Unknown</span>
             </div>
 

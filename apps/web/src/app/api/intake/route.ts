@@ -45,7 +45,7 @@ interface IntakeSubmission {
   reporter_confidence?: string;
 
   // Handleability - determines carrier vs trap
-  handleability?: "friendly_carrier" | "shy_handleable" | "feral_trap" | "unknown" | "some_friendly" | "all_feral";
+  handleability?: "friendly_carrier" | "shy_handleable" | "unhandleable_trap" | "unknown" | "some_friendly" | "all_unhandleable";
 
   // Kittens
   has_kittens?: boolean;

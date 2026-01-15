@@ -2213,7 +2213,7 @@ function NewRequestForm() {
                   checked={catsAreFriendly === false}
                   onChange={() => setCatsAreFriendly(false)}
                 />
-                No, feral
+                No, unhandleable
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer" }}>
                 <input
@@ -2321,8 +2321,8 @@ function NewRequestForm() {
                   {[
                     { value: "friendly", label: "Friendly - can be handled, approaches people" },
                     { value: "shy_handleable", label: "Shy but handleable - scared but can be picked up" },
-                    { value: "feral_young", label: "Feral but young - hissy/scared, may be socializable" },
-                    { value: "feral_older", label: "Feral and older - very scared, hard to handle" },
+                    { value: "shy_young", label: "Shy/hissy (young) - may be socializable" },
+                    { value: "unhandleable_older", label: "Unhandleable (older) - very scared, hard to handle" },
                     { value: "unknown", label: "Unknown - haven't been able to assess" },
                   ].map((opt) => (
                     <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>

@@ -889,8 +889,8 @@ export default function NewIntakeEntryPage() {
                 {[
                   { value: "friendly", label: "Friendly (handleable)" },
                   { value: "shy_handleable", label: "Shy but can pick up" },
-                  { value: "feral_young", label: "Feral/hissy (young)" },
-                  { value: "feral_older", label: "Feral (older)" },
+                  { value: "shy_young", label: "Shy/hissy (young)" },
+                  { value: "unhandleable_older", label: "Unhandleable (older)" },
                   { value: "unknown", label: "Unknown" },
                 ].map(opt => (
                   <label key={opt.value} style={{ cursor: "pointer" }}>

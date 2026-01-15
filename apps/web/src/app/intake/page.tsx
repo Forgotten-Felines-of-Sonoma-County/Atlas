@@ -99,7 +99,7 @@ interface FormData {
   fixed_status: string;
 
   // Handleability - key question for determining carrier vs trap
-  handleability: string;  // friendly_carrier, shy_handleable, feral_trap, unknown
+  handleability: string;  // friendly_carrier, shy_handleable, unhandleable_trap, unknown
 
   // Colony-specific
   peak_count: string;
@@ -219,8 +219,8 @@ const HANDLEABILITY_OPTIONS = [
     desc: "Nervous but can be approached and contained with patience",
   },
   {
-    value: "feral_trap",
-    label: "Feral - will need a trap",
+    value: "unhandleable_trap",
+    label: "Unhandleable - will need trap",
     desc: "Cannot be touched, runs away, will require humane trap",
   },
   {
@@ -1554,7 +1554,7 @@ function IntakeForm() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
                   {[
                     { v: "some_friendly", l: "Some are friendly (can be carried)" },
-                    { v: "all_feral", l: "All are feral (need traps)" },
+                    { v: "all_unhandleable", l: "All unhandleable (need traps)" },
                     { v: "unknown", l: "Unknown / varies" },
                   ].map(({ v, l }) => (
                     <label key={v} style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
@@ -1629,7 +1629,7 @@ function IntakeForm() {
                   {[
                     { v: "friendly", l: "Friendly - can be handled" },
                     { v: "shy_handleable", l: "Shy but handleable" },
-                    { v: "feral", l: "Feral - hissy/scared, hard to handle" },
+                    { v: "unhandleable", l: "Shy/scared - hard to handle" },
                     { v: "unknown", l: "Unknown" },
                   ].map(({ v, l }) => (
                     <label key={v} style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
