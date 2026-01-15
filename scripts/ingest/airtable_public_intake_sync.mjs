@@ -151,8 +151,8 @@ async function syncToAtlas(record) {
     email: getField(fields, "email") || undefined,
     phone: getField(fields, "phone") || undefined,
 
-    // Requester's own address
-    requester_address: getField(fields, "requesterAddress") || undefined,
+    // Requester's own address - parse from various formats
+    requester_address: parseAddress(getField(fields, "requesterAddress")) || undefined,
     requester_city: getField(fields, "requesterCity") || undefined,
     requester_zip: getField(fields, "requesterZip") || undefined,
 
@@ -163,8 +163,8 @@ async function syncToAtlas(record) {
     property_owner_phone: getField(fields, "propertyOwnerPhone") || undefined,
     property_owner_email: getField(fields, "propertyOwnerEmail") || undefined,
 
-    // Location
-    cats_address: getField(fields, "catsAddress") || "",
+    // Location - parse address from various formats
+    cats_address: parseAddress(getField(fields, "catsAddress")) || "",
     cats_city: getField(fields, "catsCity") || undefined,
     cats_zip: getField(fields, "catsZip") || undefined,
     county: getField(fields, "county") || undefined,
@@ -257,6 +257,51 @@ function mapHandleability(handle) {
   if (h.includes("some") && h.includes("friendly")) return "some_friendly";
   if (h.includes("all") && h.includes("feral")) return "all_feral";
   return "unknown";
+}
+
+/**
+ * Parse address from various formats including Google Maps widget multiline output
+ *
+ * Handles formats like:
+ * - "123 Main St, Santa Rosa, CA 95401" (normal)
+ * - "Street name: Main St\nHouse number: 123\nCity: Santa Rosa\nState: CA\nPostal code: 95401" (widget)
+ */
+function parseAddress(rawAddress) {
+  if (!rawAddress) return null;
+
+  // Check if it's the multiline Google Maps widget format
+  if (rawAddress.includes("Street name:") || rawAddress.includes("House number:")) {
+    const parts = {};
+    const lines = rawAddress.split(/[\n\r]+/);
+
+    for (const line of lines) {
+      const match = line.match(/^([^:]+):\s*(.+)$/);
+      if (match) {
+        const key = match[1].trim().toLowerCase();
+        const value = match[2].trim();
+        if (key.includes("street")) parts.street = value;
+        else if (key.includes("house") || key.includes("number")) parts.number = value;
+        else if (key.includes("city")) parts.city = value;
+        else if (key.includes("state")) parts.state = value;
+        else if (key.includes("postal") || key.includes("zip")) parts.zip = value;
+      }
+    }
+
+    // Build formatted address
+    const streetPart = parts.number && parts.street
+      ? `${parts.number} ${parts.street}`
+      : (parts.street || parts.number || '');
+
+    const addressParts = [streetPart, parts.city, parts.state, parts.zip].filter(Boolean);
+
+    if (parts.city && parts.state) {
+      return `${streetPart}, ${parts.city}, ${parts.state} ${parts.zip || ''}`.trim();
+    }
+    return addressParts.join(', ');
+  }
+
+  // Already a normal address string
+  return rawAddress.trim();
 }
 
 function buildSituationDescription(fields) {
