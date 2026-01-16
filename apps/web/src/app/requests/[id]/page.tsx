@@ -1994,25 +1994,30 @@ export default function RequestDetailPage() {
           </div>
 
           {/* Trapping Logistics Card */}
-          {(request.permission_status || request.access_notes || request.traps_overnight_safe !== null || request.access_without_contact !== null || request.best_times_seen) && (
+          {((request.permission_status && request.permission_status !== "unknown") || request.access_notes || request.traps_overnight_safe !== null || request.access_without_contact !== null || request.best_times_seen || request.property_owner_contact) && (
             <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
               <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Trapping Logistics</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
-                {request.permission_status && (
+                {request.permission_status && request.permission_status !== "unknown" && (
                   <div>
                     <div className="text-muted text-sm">Permission Status</div>
                     <div style={{ fontWeight: 500 }}>
                       <span style={{
                         padding: "0.2rem 0.5rem",
                         borderRadius: "4px",
-                        background: request.permission_status === "granted" ? "#198754"
+                        background: request.permission_status === "yes" ? "#198754"
                           : request.permission_status === "pending" ? "#ffc107"
-                          : request.permission_status === "not_required" ? "#6c757d"
-                          : "#dc3545",
+                          : request.permission_status === "no" ? "#dc3545"
+                          : request.permission_status === "not_needed" ? "#6c757d"
+                          : "#6c757d",
                         color: request.permission_status === "pending" ? "#000" : "#fff",
                         fontSize: "0.85rem",
                       }}>
-                        {request.permission_status.replace(/_/g, " ")}
+                        {request.permission_status === "yes" ? "Permission Granted"
+                          : request.permission_status === "no" ? "Permission Denied"
+                          : request.permission_status === "pending" ? "Pending Response"
+                          : request.permission_status === "not_needed" ? "Not Needed (Public)"
+                          : request.permission_status.replace(/_/g, " ")}
                       </span>
                     </div>
                   </div>
