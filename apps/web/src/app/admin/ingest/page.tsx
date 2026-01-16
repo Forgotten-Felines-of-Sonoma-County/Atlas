@@ -48,6 +48,7 @@ function StatusBadge({ status }: { status: string }) {
     processing: { bg: "#17a2b8", color: "#fff" },
     completed: { bg: "#28a745", color: "#fff" },
     failed: { bg: "#dc3545", color: "#fff" },
+    expired: { bg: "#adb5bd", color: "#495057" },
   };
   const style = colors[status] || { bg: "#6c757d", color: "#fff" };
 
@@ -376,7 +377,13 @@ export default function IngestPage() {
             </thead>
             <tbody>
               {uploads.map((upload) => (
-                <tr key={upload.upload_id}>
+                <tr
+                  key={upload.upload_id}
+                  style={{
+                    opacity: upload.status === "expired" ? 0.5 : 1,
+                    background: upload.status === "expired" ? "var(--background-secondary)" : undefined,
+                  }}
+                >
                   <td>
                     <div style={{ fontSize: "0.875rem" }}>
                       {upload.original_filename}
@@ -404,6 +411,8 @@ export default function IngestPage() {
                       <span className="text-muted" title={upload.error_message || ""}>
                         Failed
                       </span>
+                    ) : upload.status === "expired" ? (
+                      <span className="text-muted">Re-upload required</span>
                     ) : (
                       <span className="text-muted">—</span>
                     )}
@@ -434,6 +443,9 @@ export default function IngestPage() {
                       >
                         Retry
                       </button>
+                    )}
+                    {upload.status === "expired" && (
+                      <span className="text-muted" style={{ fontSize: "0.75rem" }}>—</span>
                     )}
                   </td>
                 </tr>
