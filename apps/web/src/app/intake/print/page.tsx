@@ -12,7 +12,7 @@ export default function PrintableIntakeForm() {
         @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@600;700&display=swap');
 
         @media print {
-          @page { size: letter; margin: 0.3in; }
+          @page { size: letter; margin: 0.4in; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .print-controls { display: none !important; }
           .print-page {
@@ -28,15 +28,15 @@ export default function PrintableIntakeForm() {
 
         .print-wrapper {
           font-family: Helvetica, Arial, sans-serif;
-          font-size: 9pt;
-          line-height: 1.2;
+          font-size: 9.5pt;
+          line-height: 1.3;
           color: #2c3e50;
         }
 
         .print-page {
           width: 8.5in;
-          height: 10.4in;
-          padding: 0.3in;
+          height: 10.2in;
+          padding: 0.4in;
           box-sizing: border-box;
           background: #fff;
         }
@@ -50,53 +50,53 @@ export default function PrintableIntakeForm() {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding-bottom: 6px;
-          margin-bottom: 8px;
+          padding-bottom: 8px;
+          margin-bottom: 10px;
           border-bottom: 2px solid #3498db;
         }
 
         .print-header h1 {
-          font-size: 14pt;
+          font-size: 16pt;
           margin: 0;
           color: #2c3e50;
         }
 
         .print-header .subtitle {
-          font-size: 8pt;
+          font-size: 9pt;
           color: #7f8c8d;
-          margin-top: 1px;
+          margin-top: 2px;
         }
 
         .header-logo {
-          height: 36px;
+          height: 42px;
           width: auto;
         }
 
         .intro-note {
           background: #e8f6f3;
-          border-left: 3px solid #1abc9c;
-          padding: 4px 8px;
-          margin-bottom: 8px;
-          font-size: 8pt;
+          border-left: 4px solid #1abc9c;
+          padding: 6px 10px;
+          margin-bottom: 10px;
+          font-size: 8.5pt;
           border-radius: 0 4px 4px 0;
         }
 
         .section {
-          margin-bottom: 6px;
+          margin-bottom: 10px;
         }
 
         .section-title {
-          font-size: 9pt;
+          font-size: 10pt;
           color: #3498db;
-          border-bottom: 1px solid #ecf0f1;
-          padding-bottom: 2px;
-          margin-bottom: 4px;
+          border-bottom: 1.5px solid #ecf0f1;
+          padding-bottom: 3px;
+          margin-bottom: 6px;
         }
 
         .field-row {
           display: flex;
-          gap: 8px;
-          margin-bottom: 4px;
+          gap: 10px;
+          margin-bottom: 6px;
         }
 
         .field {
@@ -110,51 +110,52 @@ export default function PrintableIntakeForm() {
 
         .field label {
           display: block;
-          font-size: 7pt;
+          font-size: 7.5pt;
           font-weight: 600;
           color: #7f8c8d;
           text-transform: uppercase;
-          letter-spacing: 0.2px;
-          margin-bottom: 1px;
+          letter-spacing: 0.3px;
+          margin-bottom: 2px;
         }
 
         .field-input {
           border: 1px solid #bdc3c7;
-          border-radius: 3px;
-          padding: 3px 5px;
-          min-height: 18px;
+          border-radius: 4px;
+          padding: 4px 6px;
+          min-height: 22px;
           background: #fff;
         }
 
-        .field-input.sm { min-height: 16px; padding: 2px 4px; }
-        .field-input.lg { min-height: 50px; }
-        .field-input.md { min-height: 32px; }
+        .field-input.sm { min-height: 20px; padding: 3px 5px; }
+        .field-input.lg { min-height: 70px; }
+        .field-input.md { min-height: 45px; }
+        .field-input.xl { min-height: 100px; }
 
         .options-row {
           display: flex;
           align-items: center;
-          gap: 3px;
-          font-size: 8pt;
-          margin-bottom: 3px;
+          gap: 4px;
+          font-size: 9pt;
+          margin-bottom: 4px;
           flex-wrap: wrap;
         }
 
         .options-label {
           font-weight: 600;
           color: #2c3e50;
-          min-width: 80px;
+          min-width: 85px;
         }
 
         .option {
           display: inline-flex;
           align-items: center;
-          gap: 2px;
-          margin-right: 8px;
+          gap: 3px;
+          margin-right: 10px;
         }
 
         .bubble {
-          width: 10px;
-          height: 10px;
+          width: 12px;
+          height: 12px;
           border: 1.5px solid #3498db;
           border-radius: 50%;
           background: #fff;
@@ -162,8 +163,8 @@ export default function PrintableIntakeForm() {
         }
 
         .checkbox {
-          width: 10px;
-          height: 10px;
+          width: 12px;
+          height: 12px;
           border: 1.5px solid #3498db;
           border-radius: 2px;
           background: #fff;
@@ -171,17 +172,17 @@ export default function PrintableIntakeForm() {
         }
 
         .hint {
-          font-size: 7pt;
+          font-size: 7.5pt;
           color: #95a5a6;
-          margin-left: 2px;
+          margin-left: 3px;
         }
 
         .third-party-box {
           border: 1.5px solid #f39c12;
           background: #fef9e7;
-          padding: 6px 8px;
-          margin-bottom: 8px;
-          border-radius: 4px;
+          padding: 8px 10px;
+          margin-bottom: 10px;
+          border-radius: 6px;
         }
 
         .third-party-box .title {
@@ -189,17 +190,17 @@ export default function PrintableIntakeForm() {
           align-items: center;
           gap: 6px;
           font-weight: 600;
-          margin-bottom: 4px;
+          margin-bottom: 6px;
           color: #e67e22;
-          font-size: 8pt;
+          font-size: 9pt;
         }
 
         .emergency-box {
           border: 1.5px solid #e74c3c;
           background: #fdedec;
-          padding: 6px 8px;
-          margin-bottom: 8px;
-          border-radius: 4px;
+          padding: 8px 10px;
+          margin-bottom: 10px;
+          border-radius: 6px;
         }
 
         .emergency-box .title {
@@ -208,29 +209,29 @@ export default function PrintableIntakeForm() {
           gap: 6px;
           font-weight: 600;
           color: #e74c3c;
-          margin-bottom: 2px;
-          font-size: 8pt;
+          margin-bottom: 3px;
+          font-size: 9pt;
         }
 
         .emergency-box .note {
-          font-size: 7pt;
+          font-size: 8pt;
           color: #7f8c8d;
         }
 
         .info-card {
           background: #f8f9fa;
-          border-radius: 4px;
-          padding: 5px 8px;
-          margin-bottom: 6px;
+          border-radius: 6px;
+          padding: 6px 10px;
+          margin-bottom: 8px;
           border-left: 3px solid #3498db;
         }
 
         .staff-section {
           background: #f0f3f4;
           border: 1.5px dashed #bdc3c7;
-          border-radius: 4px;
-          padding: 6px 8px;
-          margin-top: 6px;
+          border-radius: 6px;
+          padding: 10px 12px;
+          margin-top: 10px;
         }
 
         .staff-section .section-title {
@@ -242,29 +243,54 @@ export default function PrintableIntakeForm() {
           display: flex;
           justify-content: space-between;
           align-items: flex-end;
-          margin-top: 6px;
-          padding-top: 6px;
+          margin-top: 10px;
+          padding-top: 8px;
           border-top: 1px solid #ecf0f1;
         }
 
         .signature-area .consent {
-          font-size: 7pt;
+          font-size: 7.5pt;
           color: #7f8c8d;
-          max-width: 2.2in;
+          max-width: 2.5in;
         }
 
         .signature-area .sig-fields {
           display: flex;
-          gap: 16px;
-          font-size: 8pt;
+          gap: 20px;
+          font-size: 9pt;
         }
 
         .footer {
           margin-top: auto;
-          padding-top: 4px;
-          font-size: 7pt;
+          padding-top: 6px;
+          font-size: 8pt;
           color: #95a5a6;
           text-align: center;
+        }
+
+        .foster-info {
+          background: #e8f6f3;
+          border-left: 4px solid #1abc9c;
+          padding: 12px 14px;
+          border-radius: 0 8px 8px 0;
+          margin-bottom: 12px;
+        }
+
+        .foster-info h3 {
+          color: #16a085;
+          font-size: 11pt;
+          margin: 0 0 8px 0;
+        }
+
+        .foster-info ul {
+          margin: 0;
+          padding-left: 18px;
+          font-size: 9pt;
+          line-height: 1.5;
+        }
+
+        .foster-info li {
+          margin-bottom: 4px;
         }
 
         @media screen {
@@ -364,19 +390,20 @@ export default function PrintableIntakeForm() {
 
         {/* Intro Note */}
         <div className="intro-note">
-          <strong>Thank you!</strong> Fill out completely. Fill bubbles: ● &nbsp;|&nbsp; <strong>Phone:</strong> (707) 576-7999 &nbsp;|&nbsp; <strong>Web:</strong> forgottenfelines.com
+          <strong>Thank you for reaching out!</strong> Fill out this form completely so we can best help the cats.
+          Fill bubbles completely: ● &nbsp;|&nbsp; <strong>Phone:</strong> (707) 576-7999 &nbsp;|&nbsp; <strong>Web:</strong> forgottenfelines.com
         </div>
 
         {/* Third-Party Report */}
         <div className="third-party-box">
           <div className="title">
             <span className="checkbox"></span>
-            Reporting for someone else?
-            <span className="hint">(neighbor, property manager)</span>
+            Reporting on behalf of someone else?
+            <span className="hint">(neighbor, property manager, etc.)</span>
           </div>
           <div className="field-row" style={{ marginBottom: 0 }}>
             <div className="field">
-              <label>Relationship</label>
+              <label>Your relationship</label>
               <div className="field-input sm"></div>
             </div>
             <div className="field">
@@ -431,11 +458,11 @@ export default function PrintableIntakeForm() {
             </div>
           </div>
           <div className="options-row" style={{ marginBottom: 0 }}>
-            <span className="options-label" style={{ minWidth: "50px" }}>County:</span>
+            <span className="options-label" style={{ minWidth: "55px" }}>County:</span>
             <span className="option"><span className="bubble"></span> Sonoma</span>
             <span className="option"><span className="bubble"></span> Marin</span>
             <span className="option"><span className="bubble"></span> Napa</span>
-            <span className="option"><span className="bubble"></span> Other: _____</span>
+            <span className="option"><span className="bubble"></span> Other: ________</span>
           </div>
         </div>
 
@@ -443,20 +470,20 @@ export default function PrintableIntakeForm() {
         <div className="section">
           <div className="section-title">About the Cats</div>
           <div className="options-row">
-            <span className="options-label" style={{ minWidth: "60px" }}>Type:</span>
-            <span className="option"><span className="bubble"></span> Stray</span>
+            <span className="options-label" style={{ minWidth: "65px" }}>Type:</span>
+            <span className="option"><span className="bubble"></span> Stray (no owner)</span>
             <span className="option"><span className="bubble"></span> Community cat I feed</span>
             <span className="option"><span className="bubble"></span> New arrival</span>
-            <span className="option"><span className="bubble"></span> Neighbor's</span>
+            <span className="option"><span className="bubble"></span> Neighbor's cat</span>
             <span className="option"><span className="bubble"></span> My pet</span>
           </div>
-          <div className="field-row" style={{ alignItems: "center", marginBottom: "2px" }}>
-            <div className="field" style={{ flex: "0 0 90px" }}>
-              <label>How many?</label>
-              <div className="field-input sm" style={{ width: "50px" }}></div>
+          <div className="field-row" style={{ alignItems: "center", marginBottom: "4px" }}>
+            <div className="field" style={{ flex: "0 0 100px" }}>
+              <label>How many cats?</label>
+              <div className="field-input sm" style={{ width: "60px" }}></div>
             </div>
             <div className="options-row" style={{ flex: 1, marginBottom: 0 }}>
-              <span className="options-label" style={{ minWidth: "70px" }}>Eartipped?</span>
+              <span className="options-label" style={{ minWidth: "80px" }}>Eartipped?</span>
               <span className="option"><span className="bubble"></span> None</span>
               <span className="option"><span className="bubble"></span> Some</span>
               <span className="option"><span className="bubble"></span> Most/All</span>
@@ -464,23 +491,23 @@ export default function PrintableIntakeForm() {
             </div>
           </div>
 
-          <div className="info-card" style={{ marginTop: "4px", marginBottom: "4px" }}>
-            <div className="options-row" style={{ marginBottom: "1px" }}>
-              <span className="options-label" style={{ minWidth: "70px" }}>Feed them?</span>
+          <div className="info-card" style={{ marginTop: "6px", marginBottom: "6px" }}>
+            <div className="options-row" style={{ marginBottom: "2px" }}>
+              <span className="options-label" style={{ minWidth: "80px" }}>Feed them?</span>
               <span className="option"><span className="bubble"></span> Yes</span>
               <span className="option"><span className="bubble"></span> No</span>
-              <span style={{ marginLeft: "8px", fontWeight: 600 }}>How often?</span>
+              <span style={{ marginLeft: "10px", fontWeight: 600 }}>How often?</span>
               <span className="option"><span className="bubble"></span> Daily</span>
-              <span className="option"><span className="bubble"></span> Few/wk</span>
+              <span className="option"><span className="bubble"></span> Few times/wk</span>
               <span className="option"><span className="bubble"></span> Occasionally</span>
             </div>
             <div className="options-row" style={{ marginBottom: 0 }}>
-              <span className="options-label" style={{ minWidth: "70px" }}>How long?</span>
-              <span className="option"><span className="bubble"></span> &lt;2wks</span>
+              <span className="options-label" style={{ minWidth: "80px" }}>How long?</span>
+              <span className="option"><span className="bubble"></span> &lt;2 weeks</span>
               <span className="option"><span className="bubble"></span> Weeks</span>
               <span className="option"><span className="bubble"></span> Months</span>
-              <span className="option"><span className="bubble"></span> 1+yr</span>
-              <span style={{ marginLeft: "8px", fontWeight: 600 }}>Inside?</span>
+              <span className="option"><span className="bubble"></span> 1+ year</span>
+              <span style={{ marginLeft: "10px", fontWeight: 600 }}>Come inside?</span>
               <span className="option"><span className="bubble"></span> Yes</span>
               <span className="option"><span className="bubble"></span> Sometimes</span>
               <span className="option"><span className="bubble"></span> Never</span>
@@ -488,12 +515,12 @@ export default function PrintableIntakeForm() {
           </div>
 
           <div className="options-row" style={{ marginBottom: 0 }}>
-            <span className="options-label" style={{ minWidth: "70px" }}>Kittens?</span>
+            <span className="options-label" style={{ minWidth: "80px" }}>Kittens?</span>
             <span className="option"><span className="bubble"></span> Yes</span>
             <span className="option"><span className="bubble"></span> No</span>
-            <span style={{ marginLeft: "6px" }}>How many? ___</span>
-            <span className="hint" style={{ marginLeft: "8px", color: "#3498db", fontWeight: 600 }}>
-              If yes → Page 2
+            <span style={{ marginLeft: "8px" }}>How many? ____</span>
+            <span className="hint" style={{ marginLeft: "10px", color: "#3498db", fontWeight: 600 }}>
+              If yes, complete Page 2
             </span>
           </div>
         </div>
@@ -502,14 +529,15 @@ export default function PrintableIntakeForm() {
         <div className="emergency-box">
           <div className="title">
             <span className="checkbox"></span>
-            Urgent situation
+            This is an urgent situation
             <span className="hint">({URGENT_SITUATION_EXAMPLES})</span>
           </div>
           <div className="note">
-            <strong>FFSC is NOT a 24hr hospital.</strong> Emergencies: <strong>Pet Care Hospital (707) 579-3900</strong>
-            <span style={{ marginLeft: "8px" }}>
-              <span className="checkbox" style={{ width: "8px", height: "8px", display: "inline-block", verticalAlign: "middle" }}></span>
-              <span style={{ marginLeft: "2px" }}>Acknowledged</span>
+            <strong>Note:</strong> FFSC is a spay/neuter clinic, NOT a 24hr hospital. For life-threatening emergencies:
+            <strong> Pet Care Hospital (707) 579-3900</strong>
+            <span style={{ marginLeft: "10px" }}>
+              <span className="checkbox" style={{ width: "10px", height: "10px", display: "inline-block", verticalAlign: "middle" }}></span>
+              <span style={{ marginLeft: "3px" }}>I acknowledge this</span>
             </span>
           </div>
         </div>
@@ -517,19 +545,19 @@ export default function PrintableIntakeForm() {
         {/* Section 4: Tell Us More + Situation Combined */}
         <div className="section">
           <div className="section-title">Additional Details</div>
-          <div className="options-row" style={{ marginBottom: "2px" }}>
+          <div className="options-row" style={{ marginBottom: "4px" }}>
             <span className="option"><span className="checkbox"></span> Medical concerns</span>
-            <span className="option"><span className="checkbox"></span> Property access OK</span>
-            <span className="option"><span className="checkbox"></span> I'm owner</span>
-            <span className="option"><span className="checkbox"></span> Others feeding</span>
-            <span style={{ marginLeft: "12px", fontWeight: 600 }}>Heard from:</span>
-            <span className="option"><span className="bubble"></span> Web</span>
-            <span className="option"><span className="bubble"></span> Social</span>
+            <span className="option"><span className="checkbox"></span> Property access available</span>
+            <span className="option"><span className="checkbox"></span> I'm the property owner</span>
+            <span className="option"><span className="checkbox"></span> Others also feeding</span>
+            <span style={{ marginLeft: "14px", fontWeight: 600 }}>Heard from:</span>
+            <span className="option"><span className="bubble"></span> Website</span>
+            <span className="option"><span className="bubble"></span> Social media</span>
             <span className="option"><span className="bubble"></span> Friend</span>
-            <span className="option"><span className="bubble"></span> Vet</span>
+            <span className="option"><span className="bubble"></span> Vet/shelter</span>
           </div>
-          <div style={{ fontSize: "7pt", color: "#7f8c8d", marginBottom: "3px" }}>
-            Describe: cat colors/behavior, medical concerns, best contact times, where cats are seen, access notes
+          <div style={{ fontSize: "8pt", color: "#7f8c8d", marginBottom: "4px" }}>
+            Describe: cat colors/behavior, medical concerns, best times to reach you, where cats are seen, access notes
           </div>
           <div className="field-input lg"></div>
         </div>
@@ -537,39 +565,39 @@ export default function PrintableIntakeForm() {
         {/* Signature */}
         <div className="signature-area">
           <div className="consent">
-            By submitting, you agree to be contacted by Forgotten Felines.
+            By submitting, you agree to be contacted by Forgotten Felines regarding this request.
           </div>
           <div className="sig-fields">
-            <span><strong>Date:</strong> __________</span>
-            <span><strong>Signature:</strong> ________________________</span>
+            <span><strong>Date:</strong> ____________</span>
+            <span><strong>Signature:</strong> ____________________________</span>
           </div>
         </div>
 
         {/* Staff Section */}
         <div className="staff-section">
           <div className="section-title">Office Use Only</div>
-          <div className="field-row" style={{ alignItems: "center", marginBottom: "2px" }}>
-            <div className="field" style={{ flex: "0 0 110px" }}>
-              <label>Received</label>
+          <div className="field-row" style={{ alignItems: "center", marginBottom: "4px" }}>
+            <div className="field" style={{ flex: "0 0 130px" }}>
+              <label>Date received</label>
               <div className="field-input sm"></div>
             </div>
-            <div className="field" style={{ flex: "0 0 110px" }}>
-              <label>By</label>
+            <div className="field" style={{ flex: "0 0 130px" }}>
+              <label>Received by</label>
               <div className="field-input sm"></div>
             </div>
             <div className="options-row" style={{ flex: 1, marginBottom: 0 }}>
-              <span className="options-label" style={{ minWidth: "45px" }}>Source:</span>
+              <span className="options-label" style={{ minWidth: "50px" }}>Source:</span>
               <span className="option"><span className="bubble"></span> Phone</span>
               <span className="option"><span className="bubble"></span> Paper</span>
               <span className="option"><span className="bubble"></span> Walk-in</span>
             </div>
           </div>
           <div className="options-row" style={{ marginBottom: 0 }}>
-            <span className="options-label" style={{ minWidth: "45px" }}>Priority:</span>
+            <span className="options-label" style={{ minWidth: "50px" }}>Priority:</span>
             <span className="option"><span className="bubble"></span> High</span>
             <span className="option"><span className="bubble"></span> Normal</span>
             <span className="option"><span className="bubble"></span> Low</span>
-            <span style={{ marginLeft: "12px" }}><span className="options-label" style={{ minWidth: "45px" }}>Triage:</span></span>
+            <span style={{ marginLeft: "16px" }}><span className="options-label" style={{ minWidth: "50px" }}>Triage:</span></span>
             <span className="option"><span className="bubble"></span> FFR</span>
             <span className="option"><span className="bubble"></span> Wellness</span>
             <span className="option"><span className="bubble"></span> Owned</span>
@@ -586,12 +614,12 @@ export default function PrintableIntakeForm() {
           <div className="print-header">
             <div>
               <h1>Kitten Details</h1>
-              <div className="subtitle">Complete if kittens are present</div>
+              <div className="subtitle">Complete if kittens are present at the location</div>
             </div>
             <img src="/logo.png" alt="Forgotten Felines" className="header-logo" />
           </div>
 
-          <div className="field-row" style={{ marginBottom: "8px" }}>
+          <div className="field-row" style={{ marginBottom: "12px" }}>
             <div className="field w2">
               <label>Requester Name (from page 1)</label>
               <div className="field-input sm"></div>
@@ -606,123 +634,123 @@ export default function PrintableIntakeForm() {
           <div className="section">
             <div className="section-title">Kitten Information</div>
 
-            <div className="field-row" style={{ alignItems: "center", marginBottom: "2px" }}>
-              <div className="field" style={{ flex: "0 0 100px" }}>
-                <label>How many?</label>
-                <div className="field-input sm" style={{ width: "50px" }}></div>
+            <div className="field-row" style={{ alignItems: "center", marginBottom: "6px" }}>
+              <div className="field" style={{ flex: "0 0 120px" }}>
+                <label>How many kittens?</label>
+                <div className="field-input sm" style={{ width: "60px" }}></div>
               </div>
               <div className="options-row" style={{ flex: 1, marginBottom: 0 }}>
-                <span className="options-label" style={{ minWidth: "50px" }}>Age:</span>
-                <span className="option"><span className="bubble"></span> &lt;4wk</span>
-                <span className="option"><span className="bubble"></span> 4-8wk</span>
-                <span className="option"><span className="bubble"></span> 8-12wk</span>
-                <span className="option"><span className="bubble"></span> 12-16wk</span>
-                <span className="option"><span className="bubble"></span> 4+mo</span>
+                <span className="options-label" style={{ minWidth: "70px" }}>Age range:</span>
+                <span className="option"><span className="bubble"></span> Under 4 wks</span>
+                <span className="option"><span className="bubble"></span> 4-8 wks</span>
+                <span className="option"><span className="bubble"></span> 8-12 wks</span>
+                <span className="option"><span className="bubble"></span> 12-16 wks</span>
+                <span className="option"><span className="bubble"></span> 4+ months</span>
                 <span className="option"><span className="bubble"></span> Mixed</span>
               </div>
             </div>
 
-            <div className="field" style={{ marginTop: "4px", marginBottom: "4px" }}>
+            <div className="field" style={{ marginTop: "6px", marginBottom: "8px" }}>
               <label>If mixed ages, describe (e.g., "3 at 8 weeks, 2 at 5 months")</label>
               <div className="field-input sm"></div>
             </div>
 
-            <div className="options-row">
-              <span className="options-label" style={{ minWidth: "60px" }}>Behavior:</span>
-              <span className="option"><span className="bubble"></span> Friendly</span>
-              <span className="option"><span className="bubble"></span> Shy/handleable</span>
-              <span className="option"><span className="bubble"></span> Hissy (young)</span>
-              <span className="option"><span className="bubble"></span> Unhandleable</span>
+            <div className="options-row" style={{ marginBottom: "6px" }}>
+              <span className="options-label" style={{ minWidth: "70px" }}>Behavior:</span>
+              <span className="option"><span className="bubble"></span> Friendly (handleable)</span>
+              <span className="option"><span className="bubble"></span> Shy but can pick up</span>
+              <span className="option"><span className="bubble"></span> Shy/hissy (young)</span>
+              <span className="option"><span className="bubble"></span> Unhandleable (older)</span>
               <span className="option"><span className="bubble"></span> Unknown</span>
             </div>
 
-            <div className="info-card" style={{ marginTop: "4px", marginBottom: "4px" }}>
-              <div className="options-row" style={{ marginBottom: "1px" }}>
-                <span className="options-label" style={{ minWidth: "60px" }}>Contained?</span>
-                <span className="option"><span className="bubble"></span> All caught</span>
-                <span className="option"><span className="bubble"></span> Some</span>
+            <div className="info-card" style={{ marginTop: "6px", marginBottom: "8px" }}>
+              <div className="options-row" style={{ marginBottom: "3px" }}>
+                <span className="options-label" style={{ minWidth: "70px" }}>Contained?</span>
+                <span className="option"><span className="bubble"></span> Yes, all caught</span>
+                <span className="option"><span className="bubble"></span> Some caught</span>
                 <span className="option"><span className="bubble"></span> No</span>
-                <span style={{ marginLeft: "12px" }}><span className="options-label" style={{ minWidth: "70px" }}>Mom there?</span></span>
+                <span style={{ marginLeft: "16px" }}><span className="options-label" style={{ minWidth: "80px" }}>Mom present?</span></span>
                 <span className="option"><span className="bubble"></span> Yes</span>
                 <span className="option"><span className="bubble"></span> No</span>
                 <span className="option"><span className="bubble"></span> Unsure</span>
               </div>
               <div className="options-row" style={{ marginBottom: 0 }}>
-                <span className="options-label" style={{ minWidth: "60px" }}>Mom fixed?</span>
+                <span className="options-label" style={{ minWidth: "70px" }}>Mom fixed?</span>
                 <span className="option"><span className="bubble"></span> Yes</span>
                 <span className="option"><span className="bubble"></span> No</span>
                 <span className="option"><span className="bubble"></span> Unsure</span>
-                <span style={{ marginLeft: "12px" }}><span className="options-label" style={{ minWidth: "70px" }}>Bring in?</span></span>
+                <span style={{ marginLeft: "16px" }}><span className="options-label" style={{ minWidth: "80px" }}>Can bring in?</span></span>
                 <span className="option"><span className="bubble"></span> Yes</span>
                 <span className="option"><span className="bubble"></span> Need help</span>
                 <span className="option"><span className="bubble"></span> No</span>
               </div>
             </div>
 
-            <div className="field" style={{ marginTop: "4px" }}>
-              <label>Kitten details (colors, hiding spots, feeding times, trap-savvy)</label>
+            <div className="field" style={{ marginTop: "8px" }}>
+              <label>Kitten details (colors, where they hide, feeding times, trap-savvy)</label>
               <div className="field-input md"></div>
             </div>
           </div>
 
-          {/* Foster Program Info - Compact */}
-          <div style={{ background: "#e8f6f3", borderLeft: "3px solid #1abc9c", padding: "6px 8px", borderRadius: "0 4px 4px 0", marginBottom: "8px" }}>
-            <strong style={{ color: "#16a085", fontSize: "8pt" }}>About Our Foster Program</strong>
-            <div style={{ fontSize: "7pt", lineHeight: "1.4", marginTop: "2px" }}>
-              <strong>Age:</strong> Under 12wk ideal • 12-16wk needs intensive work •
-              <strong> Behavior:</strong> Friendly/handleable prioritized •
-              <strong> Mom:</strong> Spayed mom helps •
-              Older/feral kittens (12+wk, hard to handle) may need FFR instead •
-              <strong> Space limited</strong> - placement not guaranteed until assessment
-            </div>
+          {/* Foster Program Info - Full Section */}
+          <div className="foster-info">
+            <h3>About Our Foster Program</h3>
+            <ul>
+              <li><strong>Age matters:</strong> Under 12 weeks is ideal for socialization. 12-16 weeks needs intensive work.</li>
+              <li><strong>Behavior matters:</strong> Friendly/handleable kittens are prioritized for foster placement.</li>
+              <li><strong>Mom helps:</strong> Spayed mom with kittens increases foster likelihood.</li>
+              <li>Older or feral kittens (12+ weeks, hard to handle) may need Feral Fix & Return (FFR) instead.</li>
+              <li><strong>Space is limited</strong> and foster placement is not guaranteed until day of assessment.</li>
+            </ul>
           </div>
 
           {/* Staff Section */}
           <div className="staff-section">
             <div className="section-title">Kitten Assessment (Office Use)</div>
 
-            <div className="field-row" style={{ alignItems: "center", marginBottom: "4px" }}>
-              <div className="field" style={{ flex: "0 0 140px" }}>
+            <div className="field-row" style={{ alignItems: "center", marginBottom: "6px" }}>
+              <div className="field" style={{ flex: "0 0 160px" }}>
                 <label>Assessment by</label>
                 <div className="field-input sm"></div>
               </div>
-              <div className="field" style={{ flex: "0 0 100px" }}>
+              <div className="field" style={{ flex: "0 0 120px" }}>
                 <label>Date</label>
                 <div className="field-input sm"></div>
               </div>
             </div>
 
-            <div className="options-row">
-              <span className="options-label" style={{ minWidth: "60px" }}>Outcome:</span>
+            <div className="options-row" style={{ marginBottom: "4px" }}>
+              <span className="options-label" style={{ minWidth: "70px" }}>Outcome:</span>
               <span className="option"><span className="bubble"></span> Foster intake</span>
               <span className="option"><span className="bubble"></span> FFR candidate</span>
-              <span className="option"><span className="bubble"></span> Pending</span>
+              <span className="option"><span className="bubble"></span> Pending space</span>
               <span className="option"><span className="bubble"></span> Declined</span>
             </div>
 
-            <div className="options-row">
-              <span className="options-label" style={{ minWidth: "60px" }}>Readiness:</span>
+            <div className="options-row" style={{ marginBottom: "4px" }}>
+              <span className="options-label" style={{ minWidth: "70px" }}>Readiness:</span>
               <span className="option"><span className="bubble"></span> High (friendly, ideal age)</span>
               <span className="option"><span className="bubble"></span> Medium (needs work)</span>
               <span className="option"><span className="bubble"></span> Low (FFR likely)</span>
             </div>
 
-            <div className="options-row">
-              <span className="options-label" style={{ minWidth: "60px" }}>Urgency:</span>
+            <div className="options-row" style={{ marginBottom: "6px" }}>
+              <span className="options-label" style={{ minWidth: "70px" }}>Urgency:</span>
               <span className="option"><span className="checkbox"></span> Bottle babies</span>
-              <span className="option"><span className="checkbox"></span> Medical</span>
+              <span className="option"><span className="checkbox"></span> Medical needs</span>
               <span className="option"><span className="checkbox"></span> Unsafe location</span>
               <span className="option"><span className="checkbox"></span> Mom unfixed</span>
             </div>
 
-            <div className="field" style={{ marginTop: "4px" }}>
+            <div className="field" style={{ marginTop: "6px" }}>
               <label>Staff notes (foster contact, follow-up, trapping plan)</label>
               <div className="field-input md"></div>
             </div>
           </div>
 
           <div className="footer">
-            Forgotten Felines of Sonoma County • Helping community cats since 1990 • Page 2
+            Forgotten Felines of Sonoma County • Helping community cats since 1990 • Page 2 of 2
           </div>
         </div>
       )}
