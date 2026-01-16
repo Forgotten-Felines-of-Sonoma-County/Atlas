@@ -15,7 +15,11 @@
 \echo '===================================='
 \echo ''
 
+-- Drop the old function first (return type is changing)
+DROP FUNCTION IF EXISTS trapper.enrich_place(text,text,text,text,text,text,text,uuid,text);
+
 -- Fix the enrich_place function to use correct schema
+-- Note: Output columns use out_ prefix to avoid ambiguity with table columns
 CREATE OR REPLACE FUNCTION trapper.enrich_place(
   p_street_address TEXT,
   p_city TEXT DEFAULT NULL,
@@ -28,10 +32,10 @@ CREATE OR REPLACE FUNCTION trapper.enrich_place(
   p_relationship_type TEXT DEFAULT 'requester'  -- Accepts any input, maps to valid enum
 )
 RETURNS TABLE(
-  place_id UUID,
-  is_new BOOLEAN,
-  matched_by TEXT,
-  needs_geocoding BOOLEAN
+  out_place_id UUID,
+  out_is_new BOOLEAN,
+  out_matched_by TEXT,
+  out_needs_geocoding BOOLEAN
 ) AS $$
 DECLARE
   v_place_id UUID;
@@ -52,8 +56,8 @@ BEGIN
     WHEN p_source_system IN ('jotform', 'jotform_public') THEN 'web_intake'
     ELSE 'web_intake'  -- Default for unknown sources
   END;
+
   -- Map relationship_type to valid person_place_role enum
-  -- Accept various input values and map to valid enum
   v_role := CASE
     WHEN p_relationship_type IN ('cats_location', 'requester', 'request') THEN 'requester'
     WHEN p_relationship_type IN ('property_owner', 'owner') THEN 'owner'
@@ -138,10 +142,14 @@ BEGIN
       p_person_id, v_place_id, v_role, p_source_system, NOW()
     )
     ON CONFLICT (person_id, place_id, role) DO UPDATE
-    SET created_at = NOW();  -- Just touch the timestamp
+    SET created_at = NOW();
   END IF;
 
-  RETURN QUERY SELECT v_place_id AS place_id, v_is_new AS is_new, v_matched_by AS matched_by, v_needs_geocoding AS needs_geocoding;
+  out_place_id := v_place_id;
+  out_is_new := v_is_new;
+  out_matched_by := v_matched_by;
+  out_needs_geocoding := v_needs_geocoding;
+  RETURN NEXT;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -149,6 +157,105 @@ COMMENT ON FUNCTION trapper.enrich_place IS
 'Find or create a place from address components. Uses find_or_create_place_deduped internally.
 Handles deduplication and geocoding queue. Optionally links the place to a person.
 Accepts relationship_type values like cats_location, property_owner and maps to valid enum.';
+
+-- Update enrich_person_with_place to use new column names
+CREATE OR REPLACE FUNCTION trapper.enrich_person_with_place(
+  p_email TEXT DEFAULT NULL,
+  p_phone TEXT DEFAULT NULL,
+  p_first_name TEXT DEFAULT NULL,
+  p_last_name TEXT DEFAULT NULL,
+  p_street_address TEXT DEFAULT NULL,
+  p_city TEXT DEFAULT NULL,
+  p_zip TEXT DEFAULT NULL,
+  p_county TEXT DEFAULT NULL,
+  p_source_system TEXT DEFAULT 'unknown',
+  p_source_record_id TEXT DEFAULT NULL,
+  p_interaction_type TEXT DEFAULT NULL,
+  p_roles TEXT[] DEFAULT NULL
+)
+RETURNS TABLE(
+  person_id UUID,
+  place_id UUID,
+  person_is_new BOOLEAN,
+  place_is_new BOOLEAN
+) AS $$
+DECLARE
+  v_person_id UUID;
+  v_place_id UUID;
+  v_person_is_new BOOLEAN;
+  v_place_is_new BOOLEAN;
+BEGIN
+  -- First, enrich the person
+  SELECT ep.person_id, ep.is_new INTO v_person_id, v_person_is_new
+  FROM trapper.enrich_person(
+    p_email := p_email,
+    p_phone := p_phone,
+    p_first_name := p_first_name,
+    p_last_name := p_last_name,
+    p_source_system := p_source_system,
+    p_source_record_id := p_source_record_id,
+    p_interaction_type := p_interaction_type,
+    p_roles := p_roles
+  ) ep;
+
+  -- Then, enrich the place (if address provided) and link to person
+  IF p_street_address IS NOT NULL AND p_street_address != '' THEN
+    SELECT epl.out_place_id, epl.out_is_new INTO v_place_id, v_place_is_new
+    FROM trapper.enrich_place(
+      p_street_address := p_street_address,
+      p_city := p_city,
+      p_zip := p_zip,
+      p_county := p_county,
+      p_source_system := p_source_system,
+      p_source_record_id := p_source_record_id,
+      p_person_id := v_person_id,
+      p_relationship_type := 'residence'
+    ) epl;
+  END IF;
+
+  RETURN QUERY SELECT v_person_id, v_place_id, v_person_is_new, COALESCE(v_place_is_new, FALSE);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Update link_intake_to_place to use new column names
+CREATE OR REPLACE FUNCTION trapper.link_intake_to_place(p_submission_id UUID)
+RETURNS UUID AS $$
+DECLARE
+  v_sub RECORD;
+  v_place_id UUID;
+BEGIN
+  SELECT * INTO v_sub FROM trapper.web_intake_submissions WHERE submission_id = p_submission_id;
+
+  IF v_sub IS NULL OR v_sub.cats_address IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  -- Already linked?
+  IF v_sub.place_id IS NOT NULL THEN
+    RETURN v_sub.place_id;
+  END IF;
+
+  -- Find or create place using new column name
+  SELECT epl.out_place_id INTO v_place_id
+  FROM trapper.enrich_place(
+    p_street_address := v_sub.cats_address,
+    p_city := v_sub.cats_city,
+    p_zip := v_sub.cats_zip,
+    p_county := v_sub.county,
+    p_source_system := 'web_intake',
+    p_source_record_id := v_sub.submission_id::TEXT,
+    p_person_id := v_sub.matched_person_id,
+    p_relationship_type := 'cats_location'
+  ) epl;
+
+  -- Update submission with place_id
+  UPDATE trapper.web_intake_submissions
+  SET place_id = v_place_id
+  WHERE submission_id = p_submission_id;
+
+  RETURN v_place_id;
+END;
+$$ LANGUAGE plpgsql;
 
 \echo ''
 \echo 'MIG_252 complete!'
