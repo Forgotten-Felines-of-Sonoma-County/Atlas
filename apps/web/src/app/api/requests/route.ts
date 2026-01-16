@@ -23,6 +23,7 @@ interface RequestListRow {
   latitude: number | null;
   longitude: number | null;
   linked_cat_count: number;
+  is_legacy_request: boolean;
 }
 
 export async function GET(request: NextRequest) {
@@ -82,21 +83,16 @@ export async function GET(request: NextRequest) {
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   // Build ORDER BY clause based on sort parameters
-  // Native Atlas requests (web_intake, atlas_ui) always come before imported (airtable)
-  const nativeFirst = `
-    CASE
-      WHEN source_system IN ('web_intake', 'atlas_ui') THEN 0
-      ELSE 1
-    END`;
+  // Native Atlas requests (is_legacy_request = false) come before imported legacy data
+  const nativeFirst = `is_legacy_request ASC`; // false (0) before true (1)
 
   const buildOrderBy = () => {
     const dir = sortOrder === "desc" ? "DESC" : "ASC";
-    const dirInverse = sortOrder === "desc" ? "ASC" : "DESC";
 
     switch (sortBy) {
       case "created":
-        // Sort by original Airtable creation date (source_created_at)
-        return `${nativeFirst}, source_created_at ${dir} NULLS LAST, created_at ${dir}`;
+        // Sort by creation date (newest first by default)
+        return `${nativeFirst}, created_at ${dir} NULLS LAST`;
       case "priority":
         return `
           ${nativeFirst},
@@ -106,8 +102,11 @@ export async function GET(request: NextRequest) {
             WHEN 'normal' THEN 3
             WHEN 'low' THEN 4
           END ${dir},
-          source_created_at DESC NULLS LAST
+          created_at DESC NULLS LAST
         `;
+      case "type":
+        // Sort by legacy vs native first
+        return `is_legacy_request ${dir}, created_at DESC NULLS LAST`;
       case "status":
       default:
         // Default: native first, then status order, then by creation date (newest first)
@@ -149,7 +148,8 @@ export async function GET(request: NextRequest) {
         requester_name,
         latitude,
         longitude,
-        linked_cat_count
+        linked_cat_count,
+        is_legacy_request
       FROM trapper.v_request_list
       ${whereClause}
       ORDER BY ${buildOrderBy()}
