@@ -120,17 +120,21 @@ export async function POST(request: NextRequest) {
     const ext = ['csv', 'xlsx', 'xls'].includes(originalExt) ? originalExt : 'csv';
     const storedFilename = `${sourceSystem}_${sourceTable}_${timestamp}_${hashPrefix}.${ext}`;
 
-    // Try to write file to disk (may fail on serverless - that's OK, we store in DB)
-    let fileWritten = false;
-    try {
-      const uploadDir = path.join(process.cwd(), "uploads", "ingest");
-      await mkdir(uploadDir, { recursive: true });
-      const filePath = path.join(uploadDir, storedFilename);
-      await writeFile(filePath, buffer);
-      fileWritten = true;
-    } catch (fsError) {
-      // Filesystem write failed (likely serverless/read-only) - will use DB storage
-      console.log("[UPLOAD] Filesystem write failed (serverless), using DB storage only");
+    // Skip filesystem on serverless - store in DB only
+    // Vercel's filesystem is read-only except /tmp
+    const isServerless = process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_NAME;
+    if (!isServerless) {
+      try {
+        const uploadDir = path.join(process.cwd(), "uploads", "ingest");
+        await mkdir(uploadDir, { recursive: true });
+        const filePath = path.join(uploadDir, storedFilename);
+        await writeFile(filePath, buffer);
+        console.log("[UPLOAD] File written to disk");
+      } catch (fsError) {
+        console.log("[UPLOAD] Filesystem write failed, using DB storage only");
+      }
+    } else {
+      console.log("[UPLOAD] Serverless environment, using DB storage only");
     }
 
     // Record in database (store file content for serverless environments)
