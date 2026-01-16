@@ -20,8 +20,6 @@ export default function PrintableIntakeForm() {
             box-shadow: none !important;
             margin: 0 !important;
             page-break-after: always;
-            max-height: 10in;
-            overflow: hidden;
           }
           .print-page:last-child { page-break-after: auto; }
         }
@@ -38,7 +36,6 @@ export default function PrintableIntakeForm() {
         .print-page {
           width: 8.5in;
           min-height: 10in;
-          max-height: 10in;
           padding: 0.5in;
           box-sizing: border-box;
           background: #fff;
@@ -104,13 +101,11 @@ export default function PrintableIntakeForm() {
           border-bottom: 2px solid #ecf0f1;
           padding-bottom: 4px;
           margin-bottom: 8px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
         }
 
-        .section-icon {
-          font-size: 14pt;
+        .header-logo {
+          height: 50px;
+          width: auto;
         }
 
         .field-row {
@@ -375,11 +370,7 @@ export default function PrintableIntakeForm() {
             <h1>Help Request Form</h1>
             <div className="subtitle">Tell us about the cats that need help</div>
           </div>
-          <div className="org-badge">
-            <strong>Forgotten Felines</strong>
-            (707) 576-7999<br />
-            forgottenfelines.com
-          </div>
+          <img src="/logo.png" alt="Forgotten Felines" className="header-logo" />
         </div>
 
         {/* Intro Note */}
@@ -413,10 +404,7 @@ export default function PrintableIntakeForm() {
 
         {/* Section 1: Contact */}
         <div className="section">
-          <div className="section-title">
-            <span className="section-icon">👤</span>
-            Your Contact Information
-          </div>
+          <div className="section-title">Your Contact Information</div>
           <div className="field-row">
             <div className="field">
               <label>First Name *</label>
@@ -439,10 +427,7 @@ export default function PrintableIntakeForm() {
 
         {/* Section 2: Location */}
         <div className="section">
-          <div className="section-title">
-            <span className="section-icon">📍</span>
-            Where are the cats?
-          </div>
+          <div className="section-title">Where are the cats?</div>
           <div className="field-row">
             <div className="field w3">
               <label>Street Address *</label>
@@ -468,10 +453,7 @@ export default function PrintableIntakeForm() {
 
         {/* Section 3: About the Cats */}
         <div className="section">
-          <div className="section-title">
-            <span className="section-icon">🐱</span>
-            About the Cats
-          </div>
+          <div className="section-title">About the Cats</div>
           <div className="options-row">
             <span className="options-label">What type?</span>
             <span className="option"><span className="bubble"></span> Stray (no owner)</span>
@@ -547,10 +529,7 @@ export default function PrintableIntakeForm() {
 
         {/* Section 4: Situation */}
         <div className="section">
-          <div className="section-title">
-            <span className="section-icon">📋</span>
-            Tell Us More
-          </div>
+          <div className="section-title">Tell Us More</div>
           <div className="options-row">
             <span className="option"><span className="bubble"></span> Medical concerns</span>
             <span className="option"><span className="bubble"></span> Property access available</span>
@@ -569,10 +548,7 @@ export default function PrintableIntakeForm() {
 
         {/* Section 5: Description */}
         <div className="section">
-          <div className="section-title">
-            <span className="section-icon">📝</span>
-            Describe the Situation
-          </div>
+          <div className="section-title">Describe the Situation</div>
           <div style={{ fontSize: "9pt", color: "#7f8c8d", marginBottom: "6px" }}>
             Cat descriptions • Medical concerns • Best times to reach you • Where cats hang out • Access notes
           </div>
@@ -592,10 +568,7 @@ export default function PrintableIntakeForm() {
 
         {/* Staff Section */}
         <div className="staff-section">
-          <div className="section-title">
-            <span className="section-icon">📎</span>
-            Office Use Only
-          </div>
+          <div className="section-title">Office Use Only</div>
           <div className="field-row" style={{ alignItems: "center" }}>
             <div className="field" style={{ flex: "0 0 150px" }}>
               <label>Date received</label>
@@ -636,10 +609,7 @@ export default function PrintableIntakeForm() {
               <h1>Kitten Details</h1>
               <div className="subtitle">Complete if kittens are present at the location</div>
             </div>
-            <div className="org-badge">
-              <strong>Forgotten Felines</strong>
-              Kitten Program
-            </div>
+            <img src="/logo.png" alt="Forgotten Felines" className="header-logo" />
           </div>
 
           <div className="field-row" style={{ marginBottom: "14px" }}>
@@ -655,10 +625,7 @@ export default function PrintableIntakeForm() {
 
           {/* Section 6: Kitten Info */}
           <div className="section">
-            <div className="section-title">
-              <span className="section-icon">🐱</span>
-              Kitten Information
-            </div>
+            <div className="section-title">Kitten Information</div>
 
             <div className="field-row" style={{ alignItems: "center" }}>
               <div className="field" style={{ flex: "0 0 140px" }}>
@@ -721,7 +688,7 @@ export default function PrintableIntakeForm() {
 
           {/* Foster Program Info */}
           <div style={{ background: "#e8f6f3", borderLeft: "4px solid #1abc9c", padding: "12px", borderRadius: "0 8px 8px 0", marginBottom: "14px" }}>
-            <strong style={{ color: "#16a085" }}>💚 About Our Foster Program</strong>
+            <strong style={{ color: "#16a085" }}>About Our Foster Program</strong>
             <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "9pt", lineHeight: "1.5" }}>
               <li><strong>Age matters:</strong> Under 12 weeks is ideal for socialization. 12-16 weeks needs intensive work.</li>
               <li><strong>Behavior matters:</strong> Friendly/handleable kittens are prioritized for foster placement.</li>
@@ -733,10 +700,7 @@ export default function PrintableIntakeForm() {
 
           {/* Staff Section */}
           <div className="staff-section">
-            <div className="section-title">
-              <span className="section-icon">📋</span>
-              Kitten Assessment (Office Use)
-            </div>
+            <div className="section-title">Kitten Assessment (Office Use)</div>
 
             <div className="field-row" style={{ alignItems: "center", marginBottom: "8px" }}>
               <div className="field" style={{ flex: "0 0 180px" }}>

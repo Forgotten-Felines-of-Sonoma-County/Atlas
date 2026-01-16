@@ -133,8 +133,6 @@ export default function RequestPrintPage() {
             padding: 0 !important;
             box-shadow: none !important;
             margin: 0 !important;
-            max-height: 10in;
-            overflow: hidden;
           }
         }
 
@@ -150,7 +148,6 @@ export default function RequestPrintPage() {
         .print-page {
           width: 8.5in;
           min-height: 10in;
-          max-height: 10in;
           padding: 0.5in;
           box-sizing: border-box;
           background: #fff;
@@ -253,13 +250,11 @@ export default function RequestPrintPage() {
           border-bottom: 2px solid #ecf0f1;
           padding-bottom: 4px;
           margin-bottom: 10px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
         }
 
-        .section-icon {
-          font-size: 14pt;
+        .header-logo {
+          height: 50px;
+          width: auto;
         }
 
         .card {
@@ -448,11 +443,7 @@ export default function RequestPrintPage() {
               {request.requester_name || "Unknown Requester"} • {request.place_address || "Location TBD"}
             </div>
           </div>
-          <div className="org-badge">
-            <strong>Forgotten Felines</strong>
-            FFR Program<br />
-            (707) 576-7999
-          </div>
+          <img src="/logo.png" alt="Forgotten Felines" className="header-logo" />
         </div>
 
         {/* Status Strip */}
@@ -480,7 +471,7 @@ export default function RequestPrintPage() {
         {/* Urgency Alert */}
         {request.urgency_reasons && request.urgency_reasons.length > 0 && (
           <div className="card card-warning" style={{ marginBottom: "14px" }}>
-            <strong style={{ color: "#e67e22" }}>⚠️ Urgency Factors</strong>
+            <strong style={{ color: "#e67e22" }}>Urgency Factors</strong>
             <div style={{ marginTop: "4px" }}>
               {request.urgency_reasons.map((r, i) => (
                 <span key={i} className="tag tag-orange" style={{ marginRight: "6px" }}>
@@ -503,7 +494,6 @@ export default function RequestPrintPage() {
             {/* Contact Card */}
             <div className="card card-highlight">
               <div className="section-title" style={{ marginTop: 0, border: "none", paddingBottom: 0 }}>
-                <span className="section-icon">👤</span>
                 Contact
               </div>
               <div className="info-grid" style={{ marginTop: "8px" }}>
@@ -530,10 +520,7 @@ export default function RequestPrintPage() {
 
             {/* Location */}
             <div className="section">
-              <div className="section-title">
-                <span className="section-icon">📍</span>
-                Location
-              </div>
+              <div className="section-title">Location</div>
               <div className="info-grid">
                 <div className="info-item" style={{ gridColumn: "span 2" }}>
                   <span className="info-label">Address</span>
@@ -566,10 +553,7 @@ export default function RequestPrintPage() {
           <div>
             {/* Cat Information */}
             <div className="section">
-              <div className="section-title">
-                <span className="section-icon">🐱</span>
-                Cats
-              </div>
+              <div className="section-title">Cats</div>
               <div className="info-grid">
                 <div className="info-item">
                   <span className="info-label">Estimated Count</span>
@@ -603,10 +587,7 @@ export default function RequestPrintPage() {
 
             {/* Access & Logistics */}
             <div className="section">
-              <div className="section-title">
-                <span className="section-icon">🔑</span>
-                Access
-              </div>
+              <div className="section-title">Access</div>
               <div className="checklist" style={{ marginBottom: "8px" }}>
                 <span className={`check-item ${request.permission_status === "granted" ? "check-yes" : request.permission_status === "denied" ? "check-no" : "check-na"}`}>
                   {request.permission_status === "granted" ? "✓" : request.permission_status === "denied" ? "✗" : "?"} Permission
@@ -642,10 +623,7 @@ export default function RequestPrintPage() {
         {/* Feeding Info */}
         {(request.is_being_fed || request.feeder_name) && (
           <div className="section">
-            <div className="section-title">
-              <span className="section-icon">🍽️</span>
-              Feeding
-            </div>
+            <div className="section-title">Feeding</div>
             <div className="info-grid info-grid-3">
               <div className="info-item">
                 <span className="info-label">Being Fed?</span>
@@ -670,10 +648,7 @@ export default function RequestPrintPage() {
         {/* Linked Cats */}
         {request.cats && request.cats.length > 0 && (
           <div className="section">
-            <div className="section-title">
-              <span className="section-icon">📋</span>
-              Linked Cats ({request.cats.length})
-            </div>
+            <div className="section-title">Linked Cats ({request.cats.length})</div>
             <table className="cats-table">
               <thead>
                 <tr>
@@ -703,10 +678,7 @@ export default function RequestPrintPage() {
         {/* Summary */}
         {request.summary && (
           <div className="section">
-            <div className="section-title">
-              <span className="section-icon">📝</span>
-              Notes
-            </div>
+            <div className="section-title">Notes</div>
             <div className="notes-box">
               {request.summary}
             </div>
