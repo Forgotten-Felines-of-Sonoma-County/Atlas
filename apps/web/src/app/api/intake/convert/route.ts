@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { queryOne } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,13 +14,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Call the SQL function to convert to request
-    const { data, error } = await supabase.rpc("convert_intake_to_request", {
-      p_submission_id: submission_id,
-      p_converted_by: converted_by,
-    });
+    const result = await queryOne<{ request_id: string }>(
+      `SELECT trapper.convert_intake_to_request($1, $2) as request_id`,
+      [submission_id, converted_by]
+    );
 
-    if (error) {
-      console.error("Error converting intake:", error);
+    if (!result?.request_id) {
+      console.error("Error converting intake: no request_id returned");
       return NextResponse.json(
         { error: "Failed to convert submission to request" },
         { status: 500 }
@@ -34,12 +29,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      request_id: data,
+      request_id: result.request_id,
     });
   } catch (err) {
     console.error("Convert error:", err);
     return NextResponse.json(
-      { error: "Invalid request" },
+      { error: err instanceof Error ? err.message : "Invalid request" },
       { status: 400 }
     );
   }

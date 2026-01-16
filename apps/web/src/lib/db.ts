@@ -8,28 +8,42 @@ export class DatabaseConnectionError extends Error {
   }
 }
 
+// Validate DATABASE_URL is configured
+if (!process.env.DATABASE_URL) {
+  console.error(
+    "FATAL: DATABASE_URL environment variable is not set.\n" +
+    "Please configure DATABASE_URL in your environment or .env.local file.\n" +
+    "Get it from: Supabase Dashboard > Project Settings > Database > Connection string"
+  );
+  // Don't throw in module scope - let queries fail with clear error messages
+}
+
 // Serverless-optimized connection pool settings
 // Vercel serverless functions need smaller pools since each invocation may spawn a new instance
 const isServerless = process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_NAME;
 
-// Create a connection pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes("localhost")
-    ? false
-    : { rejectUnauthorized: false },
-  // Serverless: use minimal pool size to avoid connection exhaustion
-  // Local/Server: use larger pool for performance
-  max: isServerless ? 1 : 10,
-  // Shorter timeouts for serverless to fail fast and release connections
-  idleTimeoutMillis: isServerless ? 10000 : 30000,
-  connectionTimeoutMillis: isServerless ? 5000 : 10000,
-});
+// Create a connection pool (may be undefined if DATABASE_URL is missing)
+const pool = process.env.DATABASE_URL
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_URL.includes("localhost")
+        ? false
+        : { rejectUnauthorized: false },
+      // Serverless: use minimal pool size to avoid connection exhaustion
+      // Local/Server: use larger pool for performance
+      max: isServerless ? 1 : 10,
+      // Shorter timeouts for serverless to fail fast and release connections
+      idleTimeoutMillis: isServerless ? 10000 : 30000,
+      connectionTimeoutMillis: isServerless ? 5000 : 10000,
+    })
+  : null;
 
-// Handle pool errors
-pool.on("error", (err) => {
-  console.error("Unexpected database pool error:", err);
-});
+// Handle pool errors (only if pool exists)
+if (pool) {
+  pool.on("error", (err) => {
+    console.error("Unexpected database pool error:", err);
+  });
+}
 
 /**
  * Check if an error is a connection-related error
@@ -61,6 +75,13 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   sql: string,
   params: unknown[] = []
 ): Promise<QueryResult<T>> {
+  // Check if pool is configured
+  if (!pool) {
+    throw new DatabaseConnectionError(
+      "DATABASE_URL is not configured. Please set the DATABASE_URL environment variable."
+    );
+  }
+
   let client;
   try {
     client = await pool.connect();
