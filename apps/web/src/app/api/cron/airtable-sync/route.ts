@@ -31,7 +31,7 @@ interface AirtableRecord {
     "Requester City"?: string;
     "Requester ZIP"?: string;
     // Third party
-    "Is Third Party Report"?: boolean;
+    "Is Third Party Report"?: string | boolean;
     "Third Party Relationship"?: string;
     "Property Owner Name"?: string;
     "Property Owner Phone"?: string;
@@ -53,22 +53,23 @@ interface AirtableRecord {
     Handleability?: string;
     "Fixed Status"?: string;
     // Kittens
-    "Has Kittens"?: boolean;
+    "Has Kittens"?: string | boolean;
     "Kitten Count"?: number;
     "Kitten Age"?: string;
     "Kitten Socialization"?: string;
     "Mom Present"?: string;
     // Medical
-    "Has Medical Concerns"?: boolean;
+    "Has Medical Concerns"?: string | boolean;
     "Medical Description"?: string;
-    "Is Emergency"?: boolean;
-    "Emergency Acknowledged"?: boolean;
+    "Is Emergency"?: string | boolean;
+    "Emergency Acknowledged"?: string | boolean;
     // Property access
     "Is Property Owner"?: string;  // yes/no/unsure
     "Has Property Access"?: string; // yes/no/unsure
     // Notes
     Notes?: string;
     "Referral Source"?: string;
+    "Same As Requester"?: string;
     // Metadata
     "Submitted At"?: string;
     "Jotform Submission ID"?: string;
@@ -145,6 +146,15 @@ async function updateAirtableRecord(
       body: JSON.stringify({ fields }),
     }
   );
+}
+
+// Convert string/boolean to boolean (handles "Yes", "No", "Yes - ...", etc.)
+function toBool(value: string | boolean | undefined): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    return value.toLowerCase().startsWith("yes");
+  }
+  return false;
 }
 
 // Parse Jotform structured address format into components
@@ -246,12 +256,17 @@ async function syncRecordToAtlas(record: AirtableRecord): Promise<SyncResult> {
       "unknown_stray";
 
     // Build notes combining all relevant info
+    const isThirdParty = typeof f["Is Third Party Report"] === "string"
+      ? !f["Is Third Party Report"].toLowerCase().includes("no")
+      : f["Is Third Party Report"];
     const notesContent = [
       situationParts,
+      f.Notes,  // Additional notes from Jotform
       f["Cat Description"] ? `Cat: ${f["Cat Description"]}` : null,
       f.Handleability ? `Handleability: ${f.Handleability}` : null,
       f["Mom Present"] ? `Mom present: ${f["Mom Present"]}` : null,
-      f["Is Third Party Report"] ? `Third party report: ${f["Third Party Relationship"] || "yes"}` : null,
+      isThirdParty ? `Third party report: ${f["Third Party Relationship"] || "yes"}` : null,
+      f["Same As Requester"] ? `Same address: ${f["Same As Requester"]}` : null,
     ].filter(Boolean).join("\n");
 
     const result = await queryOne<{ submission_id: string }>(
@@ -266,25 +281,12 @@ async function syncRecordToAtlas(record: AirtableRecord): Promise<SyncResult> {
         has_medical_concerns, medical_description,
         has_property_access, is_property_owner,
         situation_description, referral_source,
-        intake_source, source_record_id,
         submitted_at, submitter_name, status
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30
+        $21, $22, $23, $24, $25, $26, $27, $28
       )
-      ON CONFLICT (source_record_id) WHERE source_record_id IS NOT NULL
-      DO UPDATE SET
-        updated_at = NOW(),
-        first_name = EXCLUDED.first_name,
-        last_name = EXCLUDED.last_name,
-        email = EXCLUDED.email,
-        phone = EXCLUDED.phone,
-        cats_address = EXCLUDED.cats_address,
-        cats_city = EXCLUDED.cats_city,
-        cats_zip = EXCLUDED.cats_zip,
-        cat_count_estimate = EXCLUDED.cat_count_estimate,
-        situation_description = EXCLUDED.situation_description
       RETURNING submission_id`,
       [
         f["First Name"] || "Unknown",                      // $1
@@ -302,21 +304,19 @@ async function syncRecordToAtlas(record: AirtableRecord): Promise<SyncResult> {
         f["Cat Count"] || null,                            // $13
         f["Cat Count Text"] || null,                       // $14
         f["Fixed Status"] || "unknown",                    // $15
-        f["Has Kittens"] || false,                         // $16
+        toBool(f["Has Kittens"]),                          // $16
         f["Kitten Count"] || null,                         // $17
         f["Kitten Age"] || null,                           // $18
-        f["Is Emergency"] || false,                        // $19
-        f["Has Medical Concerns"] || false,                // $20
+        toBool(f["Is Emergency"]),                         // $19
+        toBool(f["Has Medical Concerns"]),                 // $20
         f["Medical Description"] || null,                  // $21
-        f["Has Property Access"] === "Yes",                // $22
-        f["Is Property Owner"] === "Yes",                  // $23
+        toBool(f["Has Property Access"]),                  // $22
+        toBool(f["Is Property Owner"]),                    // $23
         notesContent || null,                              // $24
         f["Referral Source"] || null,                      // $25
-        "jotform_website",                                 // $26 intake_source
-        `airtable:${record.id}`,                           // $27 source_record_id
-        f["Submitted At"] ? new Date(f["Submitted At"]) : new Date(record.createdTime), // $28
-        submitterName || "Unknown",                        // $29 submitter_name
-        "new",                                             // $30 status
+        f["Submitted At"] ? new Date(f["Submitted At"]) : new Date(record.createdTime), // $26
+        submitterName || "Unknown",                        // $27 submitter_name
+        "new",                                             // $28 status
       ]
     );
 
