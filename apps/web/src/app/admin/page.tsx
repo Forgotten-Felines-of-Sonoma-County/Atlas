@@ -123,6 +123,10 @@ export default function AdminPage() {
           <h3>Intake Fields</h3>
           <p className="text-muted text-sm">Add custom questions + Airtable sync</p>
         </a>
+        <a href="/admin/duplicates" className="card" style={{ textAlign: "center", background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" }}>
+          <h3>Potential Duplicates</h3>
+          <p className="text-muted text-sm">Review flagged person conflicts</p>
+        </a>
       </div>
 
       {/* Geocoding Controls */}
