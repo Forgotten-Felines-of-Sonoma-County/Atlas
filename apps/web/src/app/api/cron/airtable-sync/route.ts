@@ -245,30 +245,33 @@ async function syncRecordToAtlas(record: AirtableRecord): Promise<SyncResult> {
       f["Call Type"] === "kitten_rescue" ? "unknown_stray" :
       "unknown_stray";
 
+    // Build notes combining all relevant info
+    const notesContent = [
+      situationParts,
+      f["Cat Description"] ? `Cat: ${f["Cat Description"]}` : null,
+      f.Handleability ? `Handleability: ${f.Handleability}` : null,
+      f["Mom Present"] ? `Mom present: ${f["Mom Present"]}` : null,
+      f["Is Third Party Report"] ? `Third party report: ${f["Third Party Relationship"] || "yes"}` : null,
+    ].filter(Boolean).join("\n");
+
     const result = await queryOne<{ submission_id: string }>(
       `INSERT INTO trapper.web_intake_submissions (
         first_name, last_name, email, phone,
         requester_address, requester_city, requester_zip,
-        is_third_party_report, third_party_relationship,
-        property_owner_name, property_owner_phone, property_owner_email,
         cats_address, cats_city, cats_zip, county,
         ownership_status, cat_count_estimate, cat_count_text,
-        peak_count, eartip_count_observed, fixed_status,
-        handleability,
+        fixed_status,
         has_kittens, kitten_count, kitten_age_estimate,
-        kitten_behavior, mom_present,
-        is_emergency, emergency_acknowledged,
+        is_emergency,
         has_medical_concerns, medical_description,
         has_property_access, is_property_owner,
         situation_description, referral_source,
-        source, intake_source, source_record_id,
+        intake_source, source_record_id,
         submitted_at, submitter_name, status
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-        $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
-        $41, $42
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30
       )
       ON CONFLICT (source_record_id) WHERE source_record_id IS NOT NULL
       DO UPDATE SET
@@ -284,48 +287,36 @@ async function syncRecordToAtlas(record: AirtableRecord): Promise<SyncResult> {
         situation_description = EXCLUDED.situation_description
       RETURNING submission_id`,
       [
-        f["First Name"] || null,                           // $1
-        f["Last Name"] || null,                            // $2
-        f.Email || null,                                   // $3
+        f["First Name"] || "Unknown",                      // $1
+        f["Last Name"] || "",                              // $2
+        f.Email || "",                                     // $3
         f.Phone || null,                                   // $4
         f["Requester Address"] || null,                    // $5
         f["Requester City"] || null,                       // $6
         f["Requester ZIP"] || null,                        // $7
-        f["Is Third Party Report"] || false,               // $8
-        f["Third Party Relationship"] || null,             // $9
-        f["Property Owner Name"] || null,                  // $10
-        f["Property Owner Phone"] || null,                 // $11
-        f["Property Owner Email"] || null,                 // $12
-        catsAddress || null,                               // $13 - parsed cat location address
-        catsCity || null,                                  // $14 - parsed city
-        catsZip || null,                                   // $15 - parsed zip
-        f.County || null,                                  // $16
-        ownershipStatus,                                   // $17 (derived from Call Type)
-        f["Cat Count"] || null,                            // $18 (was Cat Count Estimate)
-        f["Cat Count Text"] || null,                       // $19
-        f["Peak Count"] || null,                           // $20
-        f["Eartip Count"] || null,                         // $21 (was Eartip Count Observed)
-        f["Fixed Status"] || null,                         // $22
-        f.Handleability || null,                           // $23
-        f["Has Kittens"] || false,                         // $24
-        f["Kitten Count"] || null,                         // $25
-        f["Kitten Age"] || null,                           // $26 (was Kitten Age Estimate)
-        f["Kitten Socialization"] || null,                 // $27 (maps to kitten_behavior)
-        f["Mom Present"] || null,                          // $28
-        f["Is Emergency"] || false,                        // $29
-        f["Emergency Acknowledged"] || false,              // $30
-        f["Has Medical Concerns"] || false,                // $31
-        f["Medical Description"] || null,                  // $32
-        f["Has Property Access"] === "yes",                // $33 (convert string to boolean)
-        f["Is Property Owner"] === "yes",                  // $34 (convert string to boolean)
-        situationParts || null,                            // $35
-        f["Referral Source"] || null,                      // $36
-        "airtable_sync",                                   // $37 source
-        "jotform_website",                                 // $38 intake_source
-        `airtable:${record.id}`,                           // $39 source_record_id
-        f["Submitted At"] ? new Date(f["Submitted At"]) : new Date(record.createdTime), // $40
-        submitterName || "Unknown",                        // $41
-        "new",                                             // $42 status
+        catsAddress,                                       // $8 - parsed cat location address
+        catsCity || null,                                  // $9 - parsed city
+        catsZip || null,                                   // $10 - parsed zip
+        f.County || null,                                  // $11
+        ownershipStatus,                                   // $12 (derived from Call Type)
+        f["Cat Count"] || null,                            // $13
+        f["Cat Count Text"] || null,                       // $14
+        f["Fixed Status"] || "unknown",                    // $15
+        f["Has Kittens"] || false,                         // $16
+        f["Kitten Count"] || null,                         // $17
+        f["Kitten Age"] || null,                           // $18
+        f["Is Emergency"] || false,                        // $19
+        f["Has Medical Concerns"] || false,                // $20
+        f["Medical Description"] || null,                  // $21
+        f["Has Property Access"] === "Yes",                // $22
+        f["Is Property Owner"] === "Yes",                  // $23
+        notesContent || null,                              // $24
+        f["Referral Source"] || null,                      // $25
+        "jotform_website",                                 // $26 intake_source
+        `airtable:${record.id}`,                           // $27 source_record_id
+        f["Submitted At"] ? new Date(f["Submitted At"]) : new Date(record.createdTime), // $28
+        submitterName || "Unknown",                        // $29 submitter_name
+        "new",                                             // $30 status
       ]
     );
 
