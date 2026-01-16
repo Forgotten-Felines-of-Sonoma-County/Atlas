@@ -433,15 +433,25 @@ function NewRequestForm() {
   };
 
   const createPlaceFromGoogle = async () => {
-    if (!pendingGooglePlace) return;
+    console.log("[CREATE PLACE] Starting, pendingGooglePlace:", pendingGooglePlace);
+    if (!pendingGooglePlace) {
+      console.log("[CREATE PLACE] No pendingGooglePlace, returning");
+      setError("No location selected");
+      return;
+    }
 
     setCreatingPlace(true);
+    setError(null);
     try {
+      console.log("[CREATE PLACE] Fetching details for:", pendingGooglePlace.place_id);
       const detailsRes = await fetch(
         `/api/places/details?place_id=${pendingGooglePlace.place_id}`
       );
+      console.log("[CREATE PLACE] Details response status:", detailsRes.status);
       if (!detailsRes.ok) {
-        throw new Error("Failed to get place details");
+        const errText = await detailsRes.text();
+        console.log("[CREATE PLACE] Details error:", errText);
+        throw new Error(`Failed to get place details: ${errText}`);
       }
       const { place: googleDetails } = await detailsRes.json();
 
@@ -840,12 +850,13 @@ function NewRequestForm() {
 
             {error && (
               <div style={{
-                background: "var(--danger-bg)",
-                color: "var(--danger-text)",
+                background: "#fee2e2",
+                color: "#dc2626",
                 padding: "0.75rem",
                 borderRadius: "6px",
                 marginTop: "1rem",
                 fontSize: "0.9rem",
+                border: "1px solid #fca5a5",
               }}>
                 {error}
               </div>
