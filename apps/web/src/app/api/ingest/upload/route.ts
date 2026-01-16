@@ -111,13 +111,18 @@ export async function POST(request: NextRequest) {
     const ext = ['csv', 'xlsx', 'xls'].includes(originalExt) ? originalExt : 'csv';
     const storedFilename = `${sourceSystem}_${sourceTable}_${timestamp}_${hashPrefix}.${ext}`;
 
-    // Ensure upload directory exists
-    const uploadDir = path.join(process.cwd(), "uploads", "ingest");
-    await mkdir(uploadDir, { recursive: true });
-
-    // Write file to disk
-    const filePath = path.join(uploadDir, storedFilename);
-    await writeFile(filePath, buffer);
+    // Try to write file to disk (may fail on serverless - that's OK, we store in DB)
+    let fileWritten = false;
+    try {
+      const uploadDir = path.join(process.cwd(), "uploads", "ingest");
+      await mkdir(uploadDir, { recursive: true });
+      const filePath = path.join(uploadDir, storedFilename);
+      await writeFile(filePath, buffer);
+      fileWritten = true;
+    } catch (fsError) {
+      // Filesystem write failed (likely serverless/read-only) - will use DB storage
+      console.log("[UPLOAD] Filesystem write failed (serverless), using DB storage only");
+    }
 
     // Record in database (store file content for serverless environments)
     console.log("[UPLOAD] Inserting into database...");
@@ -153,9 +158,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Upload error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage = error instanceof Error
+      ? `${error.name}: ${error.message}`
+      : JSON.stringify(error);
     return NextResponse.json(
-      { error: `Failed to upload file: ${errorMessage}` },
+      { error: `Upload failed: ${errorMessage}` },
       { status: 500 }
     );
   }
