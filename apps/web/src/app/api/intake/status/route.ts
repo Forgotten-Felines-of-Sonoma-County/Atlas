@@ -6,11 +6,16 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const {
       submission_id,
+      // Unified status (primary)
+      submission_status,
+      appointment_date,
+      priority_override,
+      // Native status (kept for transition)
       status,
       final_category,
       review_notes,
       reviewed_by = "web_user",
-      // Legacy field updates
+      // Legacy field updates (backward compatibility)
       legacy_status,
       legacy_submission_status,
       legacy_appointment_date,
@@ -28,7 +33,42 @@ export async function PATCH(request: NextRequest) {
     const params: unknown[] = [];
     let paramIndex = 1;
 
-    // Handle standard status update
+    // Handle unified status update (primary)
+    if (submission_status !== undefined) {
+      const validStatuses = ["new", "in_progress", "scheduled", "complete", "archived"];
+      if (!validStatuses.includes(submission_status)) {
+        return NextResponse.json(
+          { error: "Invalid submission_status. Valid values: new, in_progress, scheduled, complete, archived" },
+          { status: 400 }
+        );
+      }
+      updates.push(`submission_status = $${paramIndex}`);
+      params.push(submission_status);
+      paramIndex++;
+    }
+
+    // Handle appointment date
+    if (appointment_date !== undefined) {
+      updates.push(`appointment_date = $${paramIndex}`);
+      params.push(appointment_date || null);
+      paramIndex++;
+    }
+
+    // Handle priority override
+    if (priority_override !== undefined) {
+      const validPriorities = ["high", "normal", "low", null, ""];
+      if (priority_override && !validPriorities.includes(priority_override)) {
+        return NextResponse.json(
+          { error: "Invalid priority_override. Valid values: high, normal, low" },
+          { status: 400 }
+        );
+      }
+      updates.push(`priority_override = $${paramIndex}`);
+      params.push(priority_override || null);
+      paramIndex++;
+    }
+
+    // Handle native status update (kept for transition)
     if (status !== undefined) {
       const validStatuses = [
         "new",

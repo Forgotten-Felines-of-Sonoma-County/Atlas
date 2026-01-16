@@ -19,7 +19,12 @@ interface IntakeSubmission {
   triage_category: string | null;
   triage_score: number | null;
   triage_reasons: unknown;
-  status: string;
+  // Unified status (new)
+  submission_status: string | null;
+  appointment_date: string | null;
+  priority_override: string | null;
+  // Native status (kept for transition)
+  native_status: string;
   final_category: string | null;
   created_request_id: string | null;
   age: unknown;
@@ -83,37 +88,26 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    // Mode-based filtering (new approach)
+    // Mode-based filtering using unified submission_status
     if (mode === "attention") {
-      // "Needs Attention" tab: Actionable items only
-      // Include: New submissions OR legacy that's NOT done (Booked/Complete/Declined)
-      // EXCLUDE: Legacy submissions before 2026-01-01 (shown in Recent/All tabs instead)
-      conditions.push(`status IN ('new', 'triaged')`);
-      conditions.push(`(
-        -- New submissions (not legacy)
-        is_legacy = FALSE
-        OR
-        -- Legacy that still needs action AND is from 2026 onwards
-        (is_legacy = TRUE AND submitted_at >= '2026-01-01' AND (
-          legacy_submission_status IS NULL
-          OR legacy_submission_status = 'Pending Review'
-          OR (legacy_submission_status NOT IN ('Booked', 'Complete', 'Declined'))
-        ))
-      )`);
+      // "Needs Attention" tab: New and in-progress items
+      conditions.push(`submission_status IN ('new', 'in_progress')`);
+    } else if (mode === "scheduled") {
+      // "Scheduled" tab: Appointments booked
+      conditions.push(`submission_status = 'scheduled'`);
     } else if (mode === "recent") {
-      // "All Recent" tab: Everything from recent period including booked
+      // "All Recent" tab: Everything from recent period
       conditions.push(`(
         is_legacy = FALSE
         OR submitted_at >= '2025-10-01'
-        OR legacy_submission_status IN ('Pending Review', 'Booked')
+        OR submission_status IN ('new', 'in_progress', 'scheduled')
       )`);
-    } else if (mode === "booked") {
-      // "Booked" tab: Only booked submissions, useful to track upcoming appointments
-      conditions.push(`legacy_submission_status = 'Booked'`);
+    } else if (mode === "complete") {
+      // "Complete" tab: Done items
+      conditions.push(`submission_status = 'complete'`);
     } else if (mode === "all") {
-      // "All Submissions" tab: Everything, no filters
-      // Just exclude archived/request_created unless they want those too
-      conditions.push(`status NOT IN ('archived', 'request_created')`);
+      // "All Submissions" tab: Everything except archived
+      // View already filters out archived
     } else if (mode === "legacy") {
       // "Legacy" tab: All legacy data
       conditions.push(`is_legacy = TRUE`);
@@ -121,15 +115,11 @@ export async function GET(request: NextRequest) {
       // "Test" tab: Only test submissions
       conditions.push(`is_test = TRUE`);
     } else {
-      // Fallback to old behavior for backwards compatibility
+      // Default: Show actionable items (new + in_progress + scheduled)
       if (statusFilter === "active") {
-        conditions.push(`status IN ('new', 'triaged')`);
-        conditions.push(`(is_legacy = FALSE OR legacy_submission_status IS NULL OR legacy_submission_status NOT IN ('Complete', 'Declined'))`);
-        if (!includeOld) {
-          conditions.push(`(is_legacy = FALSE OR submitted_at >= '2025-10-01')`);
-        }
+        conditions.push(`submission_status IN ('new', 'in_progress', 'scheduled')`);
       } else if (statusFilter && statusFilter !== "") {
-        conditions.push(`status = $${paramIndex}`);
+        conditions.push(`submission_status = $${paramIndex}`);
         params.push(statusFilter);
         paramIndex++;
       }
@@ -143,7 +133,7 @@ export async function GET(request: NextRequest) {
 
       // When viewing all (no status filter), still hide old legacy unless requested
       if (!statusFilter && !includeOld) {
-        conditions.push(`(is_legacy = FALSE OR submitted_at >= '2025-10-01' OR legacy_submission_status IN ('Pending Review', 'Booked'))`);
+        conditions.push(`(is_legacy = FALSE OR submitted_at >= '2025-10-01' OR submission_status IN ('new', 'in_progress', 'scheduled'))`);
       }
     }
 
@@ -173,7 +163,10 @@ export async function GET(request: NextRequest) {
         triage_category,
         triage_score,
         triage_reasons,
-        status,
+        submission_status,
+        appointment_date,
+        priority_override,
+        native_status,
         final_category,
         created_request_id,
         age::text as age,
@@ -199,6 +192,12 @@ export async function GET(request: NextRequest) {
       ${whereClause}
       ORDER BY
         is_emergency DESC,
+        CASE submission_status
+          WHEN 'new' THEN 1
+          WHEN 'in_progress' THEN 2
+          WHEN 'scheduled' THEN 3
+          ELSE 4
+        END,
         submitted_at DESC
       LIMIT ${mode === "legacy" ? 2000 : (limitParam ? Math.min(parseInt(limitParam, 10), 2000) : 500)}
     `;

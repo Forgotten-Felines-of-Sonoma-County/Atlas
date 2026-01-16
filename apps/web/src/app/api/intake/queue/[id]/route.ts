@@ -22,6 +22,11 @@ interface IntakeSubmission {
   triage_category: string | null;
   triage_score: number | null;
   triage_reasons: unknown;
+  // Unified status (new)
+  submission_status: string | null;
+  appointment_date: string | null;
+  priority_override: string | null;
+  // Native status (kept for transition)
   status: string;
   final_category: string | null;
   created_request_id: string | null;
@@ -46,6 +51,8 @@ interface IntakeSubmission {
   geo_longitude: number | null;
   geo_confidence: string | null;
   updated_at: string | null;
+  // Custom fields (dynamic)
+  custom_fields: Record<string, unknown> | null;
 }
 
 interface MatchedPerson {
@@ -110,7 +117,13 @@ export async function PATCH(
 
     // Allowed fields to update
     const allowedFields = [
+      // Unified status (primary)
+      'submission_status',
+      'appointment_date',
+      'priority_override',
+      // Native status (kept for transition)
       'status',
+      // Legacy fields (kept for backward compatibility)
       'legacy_status',
       'legacy_submission_status',
       'legacy_appointment_date',
@@ -118,6 +131,10 @@ export async function PATCH(
       'review_notes',
       'matched_person_id',
       'final_category',
+      // Contact tracking
+      'last_contacted_at',
+      'last_contact_method',
+      'contact_attempt_count',
     ];
 
     for (const field of allowedFields) {

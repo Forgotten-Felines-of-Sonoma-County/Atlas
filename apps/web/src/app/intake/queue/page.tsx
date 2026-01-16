@@ -24,7 +24,12 @@ interface IntakeSubmission {
   triage_category: string | null;
   triage_score: number | null;
   triage_reasons: string[] | null;
-  status: string;
+  // Unified status (primary)
+  submission_status: string | null;
+  appointment_date: string | null;
+  priority_override: string | null;
+  // Native status (kept for transition)
+  native_status: string;
   final_category: string | null;
   created_request_id: string | null;
   age: string;
@@ -108,7 +113,7 @@ const SUBMISSION_STATUSES = [
   { value: "Complete", label: "Complete" },
 ];
 
-type TabType = "attention" | "recent" | "booked" | "all" | "legacy" | "test";
+type TabType = "attention" | "scheduled" | "recent" | "complete" | "all" | "legacy" | "test";
 
 function TriageBadge({ category, score, isLegacy }: { category: string | null; score: number | null; isLegacy: boolean }) {
   if (!category && isLegacy) {
@@ -145,6 +150,24 @@ function TriageBadge({ category, score, isLegacy }: { category: string | null; s
         </span>
       )}
     </div>
+  );
+}
+
+// Unified status badge for the new submission_status field
+function SubmissionStatusBadge({ status }: { status: string | null }) {
+  const colors: Record<string, { bg: string; color: string; label: string }> = {
+    "new": { bg: "#0d6efd", color: "#fff", label: "New" },
+    "in_progress": { bg: "#fd7e14", color: "#000", label: "In Progress" },
+    "scheduled": { bg: "#198754", color: "#fff", label: "Scheduled" },
+    "complete": { bg: "#20c997", color: "#000", label: "Complete" },
+    "archived": { bg: "#6c757d", color: "#fff", label: "Archived" },
+  };
+  const style = colors[status || "new"] || { bg: "#6c757d", color: "#fff", label: status || "Unknown" };
+
+  return (
+    <span className="badge" style={{ background: style.bg, color: style.color, fontSize: "0.7rem" }}>
+      {style.label}
+    </span>
   );
 }
 
@@ -446,7 +469,7 @@ function IntakeQueueContent() {
 
   const handleConfirmBooking = async () => {
     if (!bookingSubmission) return;
-    const wasAlreadyBooked = bookingSubmission.legacy_submission_status === "Booked";
+    const wasAlreadyScheduled = bookingSubmission.submission_status === "scheduled";
     setSaving(true);
     try {
       const response = await fetch("/api/intake/status", {
@@ -454,6 +477,10 @@ function IntakeQueueContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           submission_id: bookingSubmission.submission_id,
+          // Use unified status
+          submission_status: "scheduled",
+          appointment_date: bookingDate || null,
+          // Also update legacy fields for backward compatibility
           legacy_submission_status: "Booked",
           legacy_appointment_date: bookingDate || null,
           legacy_notes: bookingNotes
@@ -472,22 +499,24 @@ function IntakeQueueContent() {
         if (selectedSubmission?.submission_id === bookingSubmission.submission_id) {
           setSelectedSubmission({
             ...selectedSubmission,
+            submission_status: "scheduled",
+            appointment_date: bookingDate || null,
             legacy_submission_status: "Booked",
             legacy_appointment_date: bookingDate || null,
           });
         }
 
         // Show toast notification
-        if (wasAlreadyBooked) {
+        if (wasAlreadyScheduled) {
           setToastMessage(`Updated appointment for ${submitterName}`);
         } else {
-          setToastMessage(`Booked ${submitterName}. Find in "Recent" or "All" tabs.`);
+          setToastMessage(`Scheduled ${submitterName}. Find in "Scheduled" tab.`);
         }
         // Auto-clear toast after 5 seconds
         setTimeout(() => setToastMessage(null), 5000);
       }
     } catch (err) {
-      console.error("Failed to book:", err);
+      console.error("Failed to schedule:", err);
     } finally {
       setSaving(false);
     }
@@ -496,7 +525,7 @@ function IntakeQueueContent() {
   const handleChangeAppointment = (sub: IntakeSubmission) => {
     // Open booking modal with existing date pre-filled
     setBookingSubmission(sub);
-    setBookingDate(sub.legacy_appointment_date || "");
+    setBookingDate(sub.appointment_date || sub.legacy_appointment_date || "");
     setBookingNotes("");
     setShowBookingModal(true);
   };
@@ -559,7 +588,11 @@ function IntakeQueueContent() {
       const response = await fetch("/api/intake/status", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ submission_id: submissionId, status: "archived" }),
+        body: JSON.stringify({
+          submission_id: submissionId,
+          submission_status: "archived",
+          status: "archived", // Keep legacy field updated too
+        }),
       });
 
       if (response.ok) {
@@ -591,13 +624,13 @@ function IntakeQueueContent() {
     setWizardSubmission(null);
   };
 
-  // Stats for current view
+  // Stats for current view using unified status
   const stats = {
     total: submissions.length,
-    needsAttention: submissions.filter(s => !s.legacy_submission_status || s.legacy_submission_status === "Pending Review").length,
-    contacted: submissions.filter(s => s.legacy_status?.includes("Contacted")).length,
-    noResponse: submissions.filter(s => s.legacy_status === "Call/Email/No response").length,
-    booked: submissions.filter(s => s.legacy_submission_status === "Booked").length,
+    new: submissions.filter(s => s.submission_status === "new").length,
+    inProgress: submissions.filter(s => s.submission_status === "in_progress").length,
+    scheduled: submissions.filter(s => s.submission_status === "scheduled").length,
+    complete: submissions.filter(s => s.submission_status === "complete").length,
     highPriority: submissions.filter(s => s.triage_category === "high_priority_tnr").length,
     thirdParty: submissions.filter(s => s.is_third_party_report).length,
   };
@@ -693,11 +726,12 @@ function IntakeQueueContent() {
       <div style={{ display: "flex", gap: "0", borderBottom: "2px solid var(--border)", marginBottom: "1rem" }}>
         {[
           { id: "attention" as TabType, label: "Needs Attention", count: null },
+          { id: "scheduled" as TabType, label: "Scheduled", count: null },
           { id: "recent" as TabType, label: "Recent", count: null },
-          { id: "booked" as TabType, label: "Booked", count: null },
-          { id: "all" as TabType, label: "All Submissions", count: null },
+          { id: "complete" as TabType, label: "Complete", count: null },
+          { id: "all" as TabType, label: "All", count: null },
           { id: "legacy" as TabType, label: "Legacy", count: null },
-          { id: "test" as TabType, label: "Test Data", count: null },
+          { id: "test" as TabType, label: "Test", count: null },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -825,8 +859,28 @@ function IntakeQueueContent() {
       </div>
 
       {/* Quick stats for current tab */}
-      {activeTab === "attention" && stats.total > 0 && (
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+      {stats.total > 0 && (
+        <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+          {stats.new > 0 && (
+            <span style={{ padding: "0.25rem 0.75rem", background: "#0d6efd", color: "#fff", borderRadius: "12px", fontSize: "0.8rem" }}>
+              {stats.new} New
+            </span>
+          )}
+          {stats.inProgress > 0 && (
+            <span style={{ padding: "0.25rem 0.75rem", background: "#fd7e14", color: "#000", borderRadius: "12px", fontSize: "0.8rem" }}>
+              {stats.inProgress} In Progress
+            </span>
+          )}
+          {stats.scheduled > 0 && (
+            <span style={{ padding: "0.25rem 0.75rem", background: "#198754", color: "#fff", borderRadius: "12px", fontSize: "0.8rem" }}>
+              {stats.scheduled} Scheduled
+            </span>
+          )}
+          {activeTab !== "attention" && stats.complete > 0 && (
+            <span style={{ padding: "0.25rem 0.75rem", background: "#20c997", color: "#000", borderRadius: "12px", fontSize: "0.8rem" }}>
+              {stats.complete} Complete
+            </span>
+          )}
           {stats.highPriority > 0 && (
             <span style={{ padding: "0.25rem 0.75rem", background: "#dc3545", color: "#fff", borderRadius: "12px", fontSize: "0.8rem" }}>
               {stats.highPriority} High Priority
@@ -837,23 +891,6 @@ function IntakeQueueContent() {
               {stats.thirdParty} Third-Party
             </span>
           )}
-        </div>
-      )}
-
-      {activeTab === "legacy" && stats.total > 0 && (
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
-          <span style={{ padding: "0.25rem 0.75rem", background: "#ffc107", color: "#000", borderRadius: "12px", fontSize: "0.8rem" }}>
-            {stats.needsAttention} Pending
-          </span>
-          <span style={{ padding: "0.25rem 0.75rem", background: "#17a2b8", color: "#fff", borderRadius: "12px", fontSize: "0.8rem" }}>
-            {stats.contacted} Contacted
-          </span>
-          <span style={{ padding: "0.25rem 0.75rem", background: "#6c757d", color: "#fff", borderRadius: "12px", fontSize: "0.8rem" }}>
-            {stats.noResponse} No Response
-          </span>
-          <span style={{ padding: "0.25rem 0.75rem", background: "#198754", color: "#fff", borderRadius: "12px", fontSize: "0.8rem" }}>
-            {stats.booked} Booked
-          </span>
         </div>
       )}
 
@@ -891,11 +928,11 @@ function IntakeQueueContent() {
           ? sortedSubmissions.reduce((acc, sub) => {
               let key = "";
               if (groupBy === "category") {
-                key = sub.triage_category?.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) || "Uncategorized";
+                key = sub.triage_category?.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) || "Uncategorized";
               } else if (groupBy === "type") {
                 key = sub.is_legacy ? "Legacy (Airtable)" : "Native (Atlas)";
               } else if (groupBy === "status") {
-                key = sub.status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                key = (sub.submission_status || "unknown").replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
               }
               if (!acc[key]) acc[key] = [];
               acc[key].push(sub);
@@ -955,10 +992,10 @@ function IntakeQueueContent() {
                   style={{
                     background: sub.is_emergency
                       ? "rgba(220, 53, 69, 0.1)"
-                      : sub.legacy_submission_status === "Booked"
+                      : sub.submission_status === "scheduled"
                       ? "rgba(25, 135, 84, 0.05)"
-                      : sub.legacy_status === "Call/Email/No response"
-                      ? "rgba(108, 117, 125, 0.1)"
+                      : sub.submission_status === "complete"
+                      ? "rgba(32, 201, 151, 0.05)"
                       : undefined,
                   }}
                 >
@@ -1014,13 +1051,28 @@ function IntakeQueueContent() {
                   </td>
                   <td>
                     <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                      {sub.is_legacy ? (
-                        <>
-                          <LegacyStatusBadge status={sub.legacy_submission_status} />
-                          <ContactStatusBadge status={sub.legacy_status} />
-                        </>
-                      ) : (
-                        <TriageBadge category={sub.triage_category} score={sub.triage_score} isLegacy={false} />
+                      {/* Unified status badge */}
+                      <SubmissionStatusBadge status={sub.submission_status} />
+                      {/* Triage category if available */}
+                      {sub.triage_category && (
+                        <span
+                          className="badge"
+                          style={{
+                            background: sub.triage_category === "high_priority_tnr" ? "#dc3545" :
+                                       sub.triage_category === "standard_tnr" ? "#0d6efd" :
+                                       "#6c757d",
+                            color: "#fff",
+                            fontSize: "0.6rem",
+                          }}
+                        >
+                          {sub.triage_category.replace(/_/g, " ")}
+                        </span>
+                      )}
+                      {/* Appointment date if scheduled */}
+                      {sub.appointment_date && (
+                        <span style={{ fontSize: "0.7rem", color: "#198754" }}>
+                          {formatDate(sub.appointment_date)}
+                        </span>
                       )}
                       {sub.is_emergency && (
                         <span style={{ color: "#dc3545", fontSize: "0.7rem", fontWeight: "bold" }}>EMERGENCY</span>
@@ -1056,10 +1108,27 @@ function IntakeQueueContent() {
                         }}
                         title={sub.contact_attempt_count ? `${sub.contact_attempt_count} contact attempts` : "Log a contact attempt"}
                       >
-                        Log Contact/Journal {sub.contact_attempt_count ? `(${sub.contact_attempt_count})` : ""}
+                        Log {sub.contact_attempt_count ? `(${sub.contact_attempt_count})` : ""}
                       </button>
-                      {/* Booking actions - only these in table to prevent accidental clicks */}
-                      {sub.legacy_submission_status !== "Booked" && sub.legacy_submission_status !== "Complete" ? (
+                      {/* Status-based actions */}
+                      {sub.submission_status === "new" && (
+                        <button
+                          onClick={() => handleQuickStatus(sub.submission_id, "submission_status", "in_progress")}
+                          disabled={saving}
+                          style={{
+                            padding: "0.25rem 0.5rem",
+                            fontSize: "0.7rem",
+                            background: "#fd7e14",
+                            color: "#000",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Working
+                        </button>
+                      )}
+                      {(sub.submission_status === "new" || sub.submission_status === "in_progress") && (
                         <button
                           onClick={() => handleMarkBooked(sub)}
                           disabled={saving}
@@ -1073,9 +1142,10 @@ function IntakeQueueContent() {
                             cursor: "pointer",
                           }}
                         >
-                          Booked
+                          Schedule
                         </button>
-                      ) : (
+                      )}
+                      {sub.submission_status === "scheduled" && (
                         <>
                           <button
                             onClick={() => handleChangeAppointment(sub)}
@@ -1089,31 +1159,24 @@ function IntakeQueueContent() {
                               borderRadius: "4px",
                               cursor: "pointer",
                             }}
-                            title={sub.legacy_appointment_date ? `Appt: ${formatDate(sub.legacy_appointment_date)}` : "No date set"}
+                            title={sub.appointment_date ? `Appt: ${formatDate(sub.appointment_date)}` : "No date set"}
                           >
-                            Change Appt
+                            Edit Date
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`Undo booking for ${normalizeName(sub.submitter_name)}?`)) {
-                                handleQuickStatus(sub.submission_id, "legacy_submission_status", "Pending Review");
-                                setToastMessage(`${normalizeName(sub.submitter_name)} moved back to Pending`);
-                                setTimeout(() => setToastMessage(null), 5000);
-                              }
-                            }}
+                            onClick={() => handleQuickStatus(sub.submission_id, "submission_status", "complete")}
                             disabled={saving}
                             style={{
                               padding: "0.25rem 0.5rem",
                               fontSize: "0.7rem",
-                              background: "#ffc107",
+                              background: "#20c997",
                               color: "#000",
                               border: "none",
                               borderRadius: "4px",
                               cursor: "pointer",
                             }}
-                            title="Undo booking"
                           >
-                            Undo
+                            Done
                           </button>
                         </>
                       )}
@@ -1189,7 +1252,7 @@ function IntakeQueueContent() {
                     Legacy
                   </span>
                 )}
-                <LegacyStatusBadge status={selectedSubmission.legacy_submission_status} />
+                <SubmissionStatusBadge status={selectedSubmission.submission_status} />
               </div>
             </div>
 
@@ -1411,19 +1474,19 @@ function IntakeQueueContent() {
                   Log Contact/Journal {selectedSubmission.contact_attempt_count ? `(${selectedSubmission.contact_attempt_count})` : ""}
                 </button>
 
-                {(!selectedSubmission.legacy_status || selectedSubmission.legacy_status === "") && (
+                {selectedSubmission.submission_status === "new" && (
                   <button
                     onClick={() => {
-                      handleQuickStatus(selectedSubmission.submission_id, "legacy_status", "Contacted");
-                      setSelectedSubmission({ ...selectedSubmission, legacy_status: "Contacted" });
+                      handleQuickStatus(selectedSubmission.submission_id, "submission_status", "in_progress");
+                      setSelectedSubmission({ ...selectedSubmission, submission_status: "in_progress" });
                     }}
-                    style={{ padding: "0.5rem 1rem", background: "#17a2b8", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
+                    style={{ padding: "0.5rem 1rem", background: "#fd7e14", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer" }}
                   >
-                    Mark Contacted
+                    Mark In Progress
                   </button>
                 )}
 
-                {selectedSubmission.legacy_submission_status !== "Booked" ? (
+                {selectedSubmission.submission_status !== "scheduled" && selectedSubmission.submission_status !== "complete" ? (
                   <button
                     onClick={() => {
                       setSelectedSubmission(null);
@@ -1431,9 +1494,9 @@ function IntakeQueueContent() {
                     }}
                     style={{ padding: "0.5rem 1rem", background: "#198754", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
                   >
-                    Appointment Booked
+                    Schedule Appointment
                   </button>
-                ) : (
+                ) : selectedSubmission.submission_status === "scheduled" ? (
                   <button
                     onClick={() => {
                       setSelectedSubmission(null);
@@ -1441,9 +1504,9 @@ function IntakeQueueContent() {
                     }}
                     style={{ padding: "0.5rem 1rem", background: "#0d6efd", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
                   >
-                    Change Appointment {selectedSubmission.legacy_appointment_date && `(${formatDate(selectedSubmission.legacy_appointment_date)})`}
+                    Change Appointment {selectedSubmission.appointment_date && `(${formatDate(selectedSubmission.appointment_date)})`}
                   </button>
-                )}
+                ) : null}
               </div>
               <p style={{ margin: "0.5rem 0 0", fontSize: "0.8rem", color: "var(--muted)" }}>
                 These actions update tracking status. Changes save automatically.
@@ -1451,7 +1514,7 @@ function IntakeQueueContent() {
             </div>
 
             {/* Convert to Request - for ALL not-yet-converted submissions */}
-            {selectedSubmission.status !== "request_created" && !selectedSubmission.created_request_id && (
+            {selectedSubmission.native_status !== "request_created" && !selectedSubmission.created_request_id && (
               <div style={{
                 background: "rgba(102, 16, 242, 0.1)",
                 border: "1px solid rgba(102, 16, 242, 0.3)",
@@ -1488,7 +1551,7 @@ function IntakeQueueContent() {
             )}
 
             {/* Already converted indicator */}
-            {selectedSubmission.status === "request_created" && selectedSubmission.created_request_id && (
+            {selectedSubmission.native_status === "request_created" && selectedSubmission.created_request_id && (
               <div style={{
                 background: "rgba(25, 135, 84, 0.1)",
                 border: "1px solid rgba(25, 135, 84, 0.3)",
@@ -1534,12 +1597,12 @@ function IntakeQueueContent() {
               </a>
 
               {/* Mark Complete - requires confirmation */}
-              {selectedSubmission.legacy_submission_status !== "Complete" && (
+              {selectedSubmission.submission_status !== "complete" && (
                 <button
                   onClick={async () => {
                     if (confirm(`Mark "${normalizeName(selectedSubmission.submitter_name)}" as Complete?\n\nThis will remove it from the active queue.`)) {
-                      await handleQuickStatus(selectedSubmission.submission_id, "legacy_submission_status", "Complete");
-                      setSelectedSubmission({ ...selectedSubmission, legacy_submission_status: "Complete" });
+                      await handleQuickStatus(selectedSubmission.submission_id, "submission_status", "complete");
+                      setSelectedSubmission({ ...selectedSubmission, submission_status: "complete" });
                       setToastMessage(`${normalizeName(selectedSubmission.submitter_name)} marked as Complete`);
                       setTimeout(() => setToastMessage(null), 5000);
                     }
@@ -1551,19 +1614,19 @@ function IntakeQueueContent() {
               )}
 
               {/* Reset status - useful for accidentally marked submissions */}
-              {(selectedSubmission.legacy_submission_status === "Booked" || selectedSubmission.legacy_submission_status === "Complete" || selectedSubmission.legacy_submission_status === "Declined") && (
+              {(selectedSubmission.submission_status === "scheduled" || selectedSubmission.submission_status === "complete") && (
                 <button
                   onClick={async () => {
-                    if (confirm("Reset this submission back to Pending Review? It will appear in Needs Attention tab again.")) {
-                      await handleQuickStatus(selectedSubmission.submission_id, "legacy_submission_status", "Pending Review");
-                      setSelectedSubmission({ ...selectedSubmission, legacy_submission_status: "Pending Review" });
-                      setToastMessage(`${normalizeName(selectedSubmission.submitter_name)} moved back to Pending Review`);
+                    if (confirm("Reset this submission back to New? It will appear in Needs Attention tab again.")) {
+                      await handleQuickStatus(selectedSubmission.submission_id, "submission_status", "new");
+                      setSelectedSubmission({ ...selectedSubmission, submission_status: "new" });
+                      setToastMessage(`${normalizeName(selectedSubmission.submitter_name)} moved back to New`);
                       setTimeout(() => setToastMessage(null), 5000);
                     }
                   }}
                   style={{ padding: "0.5rem 1rem", background: "#ffc107", color: "#000", border: "none", borderRadius: "6px", cursor: "pointer" }}
                 >
-                  Reset to Pending
+                  Reset to New
                 </button>
               )}
 

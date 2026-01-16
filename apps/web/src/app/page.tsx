@@ -25,7 +25,11 @@ interface IntakeSubmission {
   email: string;
   phone: string | null;
   cats_address: string;
-  status: string;
+  // Unified status (primary)
+  submission_status: string | null;
+  appointment_date: string | null;
+  priority_override: string | null;
+  native_status: string;
   triage_category: string | null;
   triage_score: number | null;
   cat_count_estimate: number | null;
@@ -333,17 +337,12 @@ export default function Home() {
       .catch(() => setRequests([]))
       .finally(() => setLoadingRequests(false));
 
-    // Fetch intake submissions needing review (exclude already booked legacy)
-    fetch("/api/intake/queue?status_filter=active")
+    // Fetch intake submissions needing attention using unified status
+    fetch("/api/intake/queue?mode=attention&limit=10")
       .then((res) => (res.ok ? res.json() : { submissions: [] }))
       .then((data) => {
-        // Filter to show only submissions that truly need attention:
-        // - New Atlas submissions (any source except legacy_airtable)
-        // - Legacy submissions that are NOT already Booked
-        const needsAttention = (data.submissions || []).filter((s: IntakeSubmission) =>
-          !s.is_legacy || (s.legacy_submission_status !== "Booked" && s.legacy_submission_status !== "Complete")
-        );
-        setIntakeSubmissions(needsAttention.slice(0, 10));
+        // The API already filters to new/in_progress status
+        setIntakeSubmissions(data.submissions || []);
       })
       .catch(() => setIntakeSubmissions([]))
       .finally(() => setLoadingIntake(false));
@@ -510,46 +509,48 @@ export default function Home() {
                   >
                     <td>
                       <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                        {sub.is_legacy ? (
-                          <>
-                            <span
-                              className="badge"
-                              style={{ background: "#6c757d", color: "#fff", fontSize: "0.65rem" }}
-                            >
-                              Legacy
-                            </span>
-                            {sub.legacy_submission_status && (
-                              <span
-                                className="badge"
-                                style={{
-                                  background: sub.legacy_submission_status === "Booked" ? "#198754" :
-                                             sub.legacy_submission_status === "Pending Review" ? "#ffc107" :
-                                             "#6c757d",
-                                  color: "#fff",
-                                  fontSize: "0.65rem",
-                                }}
-                              >
-                                {sub.legacy_submission_status}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            {sub.triage_category && (
-                              <span
-                                className="badge"
-                                style={{
-                                  background: sub.triage_category === "high_priority_tnr" ? "#dc3545" :
-                                             sub.triage_category === "standard_tnr" ? "#0d6efd" :
-                                             "#6c757d",
-                                  color: "#fff",
-                                  fontSize: "0.65rem",
-                                }}
-                              >
-                                {sub.triage_category.replace(/_/g, " ")}
-                              </span>
-                            )}
-                          </>
+                        {/* Unified status badge */}
+                        <span
+                          className="badge"
+                          style={{
+                            background: sub.submission_status === "new" ? "#0d6efd" :
+                                       sub.submission_status === "in_progress" ? "#fd7e14" :
+                                       sub.submission_status === "scheduled" ? "#198754" :
+                                       sub.submission_status === "complete" ? "#20c997" :
+                                       "#6c757d",
+                            color: sub.submission_status === "in_progress" ? "#000" : "#fff",
+                            fontSize: "0.65rem",
+                          }}
+                        >
+                          {sub.submission_status === "new" ? "New" :
+                           sub.submission_status === "in_progress" ? "In Progress" :
+                           sub.submission_status === "scheduled" ? "Scheduled" :
+                           sub.submission_status === "complete" ? "Complete" :
+                           sub.submission_status || "Unknown"}
+                        </span>
+                        {/* Triage category */}
+                        {sub.triage_category && (
+                          <span
+                            className="badge"
+                            style={{
+                              background: sub.triage_category === "high_priority_tnr" ? "#dc3545" :
+                                         sub.triage_category === "standard_tnr" ? "#0d6efd" :
+                                         "#6c757d",
+                              color: "#fff",
+                              fontSize: "0.6rem",
+                            }}
+                          >
+                            {sub.triage_category.replace(/_/g, " ")}
+                          </span>
+                        )}
+                        {/* Legacy indicator */}
+                        {sub.is_legacy && (
+                          <span
+                            className="badge"
+                            style={{ background: "#6c757d", color: "#fff", fontSize: "0.6rem" }}
+                          >
+                            Legacy
+                          </span>
                         )}
                         {sub.is_emergency && (
                           <span style={{ color: "#ff6b6b", fontSize: "0.65rem", fontWeight: "bold" }}>
@@ -572,9 +573,9 @@ export default function Home() {
                     </td>
                     <td className="text-sm text-muted">
                       {new Date(sub.submitted_at).toLocaleDateString()}
-                      {sub.is_legacy && sub.legacy_appointment_date && (
+                      {sub.appointment_date && (
                         <div style={{ fontSize: "0.7rem", color: "#198754" }}>
-                          Appt: {new Date(sub.legacy_appointment_date).toLocaleDateString()}
+                          Appt: {new Date(sub.appointment_date).toLocaleDateString()}
                         </div>
                       )}
                     </td>

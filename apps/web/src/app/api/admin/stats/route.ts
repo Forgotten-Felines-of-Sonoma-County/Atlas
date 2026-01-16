@@ -52,12 +52,13 @@ export async function GET() {
       SELECT COUNT(*)::int as count FROM trapper.web_intake_submissions
     `);
 
+    // Use unified submission_status for status breakdown
     const statusResult = await queryOne<{ data: Record<string, number> }>(`
-      SELECT jsonb_object_agg(COALESCE(legacy_submission_status, '(none)'), cnt) as data
+      SELECT jsonb_object_agg(COALESCE(submission_status::text, '(none)'), cnt) as data
       FROM (
-        SELECT legacy_submission_status, COUNT(*)::int as cnt
+        SELECT submission_status, COUNT(*)::int as cnt
         FROM trapper.web_intake_submissions
-        GROUP BY legacy_submission_status
+        GROUP BY submission_status
         ORDER BY cnt DESC
       ) t
     `);
