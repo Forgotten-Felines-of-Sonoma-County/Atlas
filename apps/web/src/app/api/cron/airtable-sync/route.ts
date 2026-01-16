@@ -13,6 +13,9 @@ import { queryOne, queryRows, query } from "@/lib/db";
 //   - AIRTABLE_PAT: Airtable Personal Access Token
 //   - CRON_SECRET: Optional secret for manual trigger security
 
+// Allow up to 120 seconds for batch processing (Airtable sync is heavier)
+export const maxDuration = 120;
+
 const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
 const ATLAS_SYNC_BASE_ID = "appwFuRddph1krmcd";
 const STANDARDIZED_INTAKE_TABLE = "Public Intake Submissions";
@@ -432,7 +435,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Process each record (batch to avoid timeout)
-    const batchSize = 50; // Process 50 at a time to stay within Vercel limits
+    const batchSize = 100; // Process 100 at a time (increased from 50 with longer maxDuration)
     const recordsToProcess = pendingRecords.slice(0, batchSize);
 
     for (const record of recordsToProcess) {

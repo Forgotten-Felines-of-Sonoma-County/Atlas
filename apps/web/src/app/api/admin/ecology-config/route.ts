@@ -33,7 +33,12 @@ export async function GET() {
 
     const configs = await queryRows<EcologyConfigRow>(sql);
 
-    return NextResponse.json({ configs });
+    return NextResponse.json({ configs }, {
+      headers: {
+        // Cache config for 10 minutes - rarely changes
+        'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1200',
+      }
+    });
   } catch (error) {
     console.error("Error fetching ecology config:", error);
     return NextResponse.json(

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryRows } from "@/lib/db";
 
+// Cache custom fields for 10 minutes - they rarely change
+export const revalidate = 600;
+
 interface CustomField {
   field_id: string;
   field_key: string;
@@ -57,7 +60,11 @@ export async function GET(request: NextRequest) {
       ORDER BY display_order, created_at
     `, [callType || null]);
 
-    return NextResponse.json({ fields });
+    return NextResponse.json({ fields }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1200',
+      }
+    });
   } catch (err) {
     console.error("Error fetching custom fields:", err);
     // Return empty on error so form still works

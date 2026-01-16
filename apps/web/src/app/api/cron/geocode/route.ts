@@ -9,6 +9,9 @@ import { queryRows, queryOne } from "@/lib/db";
 // Vercel Cron: Add to vercel.json:
 //   "crons": [{ "path": "/api/cron/geocode", "schedule": "every-5-min" }]
 
+// Allow up to 60 seconds for batch processing
+export const maxDuration = 60;
+
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
 const CRON_SECRET = process.env.CRON_SECRET;
 
@@ -35,7 +38,7 @@ export async function GET(request: NextRequest) {
   }
 
   const startTime = Date.now();
-  const BATCH_LIMIT = 25; // Process 25 places per run
+  const BATCH_LIMIT = 50; // Process 50 places per run (increased from 25)
 
   try {
     // Get places from queue using the existing function

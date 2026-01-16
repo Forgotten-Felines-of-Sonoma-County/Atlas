@@ -71,6 +71,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       staff,
       departments: departments.map(d => d.department),
+    }, {
+      headers: {
+        // Cache staff list for 5 minutes - rarely changes
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+      }
     });
   } catch (err) {
     console.error("Error fetching staff:", err);

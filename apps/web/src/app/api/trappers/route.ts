@@ -187,6 +187,11 @@ export async function GET(request: NextRequest) {
         offset,
         hasMore: trappers.length === limit,
       },
+    }, {
+      headers: {
+        // Cache trapper list for 5 minutes - stats don't need real-time updates
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+      }
     });
   } catch (error) {
     console.error("Error fetching trappers:", error);

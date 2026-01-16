@@ -23,18 +23,20 @@ if (!process.env.DATABASE_URL) {
 const isServerless = process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_NAME;
 
 // Create a connection pool (may be undefined if DATABASE_URL is missing)
+// Using Supabase Session Pooler which handles connection multiplexing
 const pool = process.env.DATABASE_URL
   ? new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_URL.includes("localhost")
         ? false
         : { rejectUnauthorized: false },
-      // Serverless: use minimal pool size to avoid connection exhaustion
+      // Serverless: use small pool (3) to handle concurrent requests without exhausting connections
+      // The Supabase pooler handles the actual connection multiplexing
       // Local/Server: use larger pool for performance
-      max: isServerless ? 1 : 10,
+      max: isServerless ? 3 : 10,
       // Shorter timeouts for serverless to fail fast and release connections
-      idleTimeoutMillis: isServerless ? 10000 : 30000,
-      connectionTimeoutMillis: isServerless ? 5000 : 10000,
+      idleTimeoutMillis: isServerless ? 15000 : 30000,
+      connectionTimeoutMillis: isServerless ? 8000 : 10000,
     })
   : null;
 

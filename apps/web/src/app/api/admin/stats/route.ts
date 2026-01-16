@@ -1,93 +1,55 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 
+// Cache stats for 5 minutes - they don't need to be real-time
+export const revalidate = 300;
+
 export async function GET() {
   try {
+    // Combine all stats into a single efficient query
     const stats = await queryOne<{
       total: number;
       by_status: Record<string, number>;
       by_source: Record<string, number>;
       by_geo_confidence: Record<string, number>;
     }>(`
-      SELECT
-        COUNT(*)::int as total,
-        jsonb_object_agg(
-          COALESCE(legacy_submission_status, ''),
-          status_count
-        ) as by_status,
-        jsonb_object_agg(
-          COALESCE(intake_source::text, ''),
-          source_count
-        ) as by_source,
-        jsonb_object_agg(
-          COALESCE(geo_confidence, ''),
-          geo_count
-        ) as by_geo_confidence
-      FROM (
+      WITH status_counts AS (
         SELECT
-          legacy_submission_status,
-          COUNT(*) as status_count
-        FROM trapper.web_intake_submissions
-        GROUP BY legacy_submission_status
-      ) status_agg,
-      (
-        SELECT
-          intake_source,
-          COUNT(*) as source_count
-        FROM trapper.web_intake_submissions
-        GROUP BY intake_source
-      ) source_agg,
-      (
-        SELECT
-          geo_confidence,
-          COUNT(*) as geo_count
-        FROM trapper.web_intake_submissions
-        GROUP BY geo_confidence
-      ) geo_agg,
-      (SELECT COUNT(*) FROM trapper.web_intake_submissions) total_count
-    `);
-
-    // The above query is complex - let's simplify with separate queries
-    const totalResult = await queryOne<{ count: number }>(`
-      SELECT COUNT(*)::int as count FROM trapper.web_intake_submissions
-    `);
-
-    // Use unified submission_status for status breakdown
-    const statusResult = await queryOne<{ data: Record<string, number> }>(`
-      SELECT jsonb_object_agg(COALESCE(submission_status::text, '(none)'), cnt) as data
-      FROM (
-        SELECT submission_status, COUNT(*)::int as cnt
+          COALESCE(submission_status::text, '(none)') as status,
+          COUNT(*)::int as cnt
         FROM trapper.web_intake_submissions
         GROUP BY submission_status
-        ORDER BY cnt DESC
-      ) t
-    `);
-
-    const sourceResult = await queryOne<{ data: Record<string, number> }>(`
-      SELECT jsonb_object_agg(COALESCE(intake_source::text, '(none)'), cnt) as data
-      FROM (
-        SELECT intake_source, COUNT(*)::int as cnt
+      ),
+      source_counts AS (
+        SELECT
+          COALESCE(intake_source::text, '(none)') as source,
+          COUNT(*)::int as cnt
         FROM trapper.web_intake_submissions
         GROUP BY intake_source
-        ORDER BY cnt DESC
-      ) t
-    `);
-
-    const geoResult = await queryOne<{ data: Record<string, number> }>(`
-      SELECT jsonb_object_agg(COALESCE(geo_confidence, '(pending)'), cnt) as data
-      FROM (
-        SELECT geo_confidence, COUNT(*)::int as cnt
+      ),
+      geo_counts AS (
+        SELECT
+          COALESCE(geo_confidence, '(pending)') as geo,
+          COUNT(*)::int as cnt
         FROM trapper.web_intake_submissions
         GROUP BY geo_confidence
-        ORDER BY cnt DESC
-      ) t
+      )
+      SELECT
+        (SELECT COUNT(*)::int FROM trapper.web_intake_submissions) as total,
+        (SELECT COALESCE(jsonb_object_agg(status, cnt), '{}') FROM status_counts) as by_status,
+        (SELECT COALESCE(jsonb_object_agg(source, cnt), '{}') FROM source_counts) as by_source,
+        (SELECT COALESCE(jsonb_object_agg(geo, cnt), '{}') FROM geo_counts) as by_geo_confidence
     `);
 
     return NextResponse.json({
-      total: totalResult?.count || 0,
-      by_status: statusResult?.data || {},
-      by_source: sourceResult?.data || {},
-      by_geo_confidence: geoResult?.data || {},
+      total: stats?.total || 0,
+      by_status: stats?.by_status || {},
+      by_source: stats?.by_source || {},
+      by_geo_confidence: stats?.by_geo_confidence || {},
+    }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+      }
     });
   } catch (err) {
     console.error("Error fetching admin stats:", err);
