@@ -116,6 +116,7 @@ export default function PrintSubmissionPage({ params }: { params: Promise<{ id: 
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hideStaffNotes, setHideStaffNotes] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -459,6 +460,15 @@ export default function PrintSubmissionPage({ params }: { params: Promise<{ id: 
 
       {/* Controls */}
       <div className="print-controls">
+        <label style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", fontSize: "13px", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={hideStaffNotes}
+            onChange={(e) => setHideStaffNotes(e.target.checked)}
+            style={{ width: "16px", height: "16px", accentColor: "#3498db" }}
+          />
+          Hide staff notes (public-safe)
+        </label>
         <button className="print-btn" onClick={() => window.print()}>Print / Save PDF</button>
         <a href={`/intake/queue`} style={{ textDecoration: "none" }}>
           <button className="back-btn" style={{ width: "100%" }}>← Back to Queue</button>
@@ -650,8 +660,8 @@ export default function PrintSubmissionPage({ params }: { params: Promise<{ id: 
           </div>
         )}
 
-        {/* Legacy Info Section */}
-        {isLegacy && (submission.legacy_notes || submission.legacy_status) && (
+        {/* Legacy Info Section - Hidden when hideStaffNotes is true */}
+        {!hideStaffNotes && isLegacy && (submission.legacy_notes || submission.legacy_status) && (
           <div className="section">
             <div className="section-title">
               Legacy Information
@@ -681,27 +691,29 @@ export default function PrintSubmissionPage({ params }: { params: Promise<{ id: 
           </div>
         )}
 
-        {/* Staff Section */}
-        <div className="staff-section">
-          <div className="section-title">
-            Staff Notes
-          </div>
-          <div className="info-grid" style={{ marginBottom: "8px" }}>
-            <div className="info-item">
-              <span className="info-label">Priority</span>
-              <span className="info-value" style={{ color: getPriorityColor(submission.priority_override, submission.triage_category) }}>
-                {formatValue(submission.priority_override) || "Normal"}
-              </span>
+        {/* Staff Section - Hidden when hideStaffNotes is true */}
+        {!hideStaffNotes && (
+          <div className="staff-section">
+            <div className="section-title">
+              Staff Notes
             </div>
-            <div className="info-item">
-              <span className="info-label">Triage Score</span>
-              <span className="info-value">{submission.triage_score ?? "—"}</span>
+            <div className="info-grid" style={{ marginBottom: "8px" }}>
+              <div className="info-item">
+                <span className="info-label">Priority</span>
+                <span className="info-value" style={{ color: getPriorityColor(submission.priority_override, submission.triage_category) }}>
+                  {formatValue(submission.priority_override) || "Normal"}
+                </span>
+              </div>
+              <div className="info-item">
+                <span className="info-label">Triage Score</span>
+                <span className="info-value">{submission.triage_score ?? "—"}</span>
+              </div>
+            </div>
+            <div className="notes-box" style={{ minHeight: "40px" }}>
+              {submission.review_notes || ""}
             </div>
           </div>
-          <div className="notes-box" style={{ minHeight: "40px" }}>
-            {submission.review_notes || ""}
-          </div>
-        </div>
+        )}
 
         {/* Footer */}
         <div className="footer">
@@ -801,37 +813,39 @@ export default function PrintSubmissionPage({ params }: { params: Promise<{ id: 
             </ul>
           </div>
 
-          {/* Staff Kitten Assessment */}
-          <div className="staff-section">
-            <div className="section-title">
-              Kitten Assessment
-            </div>
-            <div className="info-grid" style={{ marginBottom: "10px" }}>
-              <div className="info-item">
-                <span className="info-label">Outcome</span>
-                <span className="info-value">{formatValue(submission.kitten_outcome) || "—"}</span>
+          {/* Staff Kitten Assessment - Hidden when hideStaffNotes is true */}
+          {!hideStaffNotes && (
+            <div className="staff-section">
+              <div className="section-title">
+                Kitten Assessment
               </div>
-              <div className="info-item">
-                <span className="info-label">Foster Readiness</span>
-                <span className="info-value">{formatValue(submission.foster_readiness) || "—"}</span>
-              </div>
-            </div>
-            {submission.kitten_urgency_factors && submission.kitten_urgency_factors.length > 0 && (
-              <div style={{ marginBottom: "10px" }}>
-                <span className="info-label">Urgency Factors</span>
-                <div style={{ marginTop: "4px" }}>
-                  {submission.kitten_urgency_factors.map((f, i) => (
-                    <span key={i} className="tag tag-orange" style={{ marginRight: "6px" }}>
-                      {formatValue(f)}
-                    </span>
-                  ))}
+              <div className="info-grid" style={{ marginBottom: "10px" }}>
+                <div className="info-item">
+                  <span className="info-label">Outcome</span>
+                  <span className="info-value">{formatValue(submission.kitten_outcome) || "—"}</span>
+                </div>
+                <div className="info-item">
+                  <span className="info-label">Foster Readiness</span>
+                  <span className="info-value">{formatValue(submission.foster_readiness) || "—"}</span>
                 </div>
               </div>
-            )}
-            <div className="notes-box" style={{ minHeight: "60px" }}>
-              {/* Space for staff notes */}
+              {submission.kitten_urgency_factors && submission.kitten_urgency_factors.length > 0 && (
+                <div style={{ marginBottom: "10px" }}>
+                  <span className="info-label">Urgency Factors</span>
+                  <div style={{ marginTop: "4px" }}>
+                    {submission.kitten_urgency_factors.map((f, i) => (
+                      <span key={i} className="tag tag-orange" style={{ marginRight: "6px" }}>
+                        {formatValue(f)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="notes-box" style={{ minHeight: "60px" }}>
+                {/* Space for staff notes */}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="footer" style={{ marginTop: "auto" }}>
             <span>Forgotten Felines of Sonoma County • Kitten Program</span>
