@@ -40,11 +40,21 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  console.log("[UPLOAD] Starting upload request...");
+
   try {
+    console.log("[UPLOAD] Parsing formData...");
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const sourceSystem = formData.get("source_system") as string | null;
     const sourceTable = formData.get("source_table") as string | null;
+
+    console.log("[UPLOAD] Got:", {
+      fileName: file?.name,
+      fileSize: file?.size,
+      sourceSystem,
+      sourceTable
+    });
 
     // Validation
     if (!file) {
@@ -69,11 +79,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Read file content
+    console.log("[UPLOAD] Reading file content...");
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    console.log("[UPLOAD] File read, size:", buffer.length);
 
     // Calculate file hash for duplicate detection
     const fileHash = createHash("sha256").update(buffer).digest("hex");
+    console.log("[UPLOAD] Hash:", fileHash.substring(0, 16));
 
     // Check for duplicate
     const existing = await queryOne<{ upload_id: string }>(
@@ -107,6 +120,7 @@ export async function POST(request: NextRequest) {
     await writeFile(filePath, buffer);
 
     // Record in database (store file content for serverless environments)
+    console.log("[UPLOAD] Inserting into database...");
     const result = await queryOne<{ upload_id: string }>(
       `INSERT INTO trapper.file_uploads (
         original_filename,
