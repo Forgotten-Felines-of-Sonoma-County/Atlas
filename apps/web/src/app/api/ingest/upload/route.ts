@@ -40,11 +40,20 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  console.log("[UPLOAD] Starting upload request...");
+  console.log("[UPLOAD] Starting upload request v2...");
 
   try {
     console.log("[UPLOAD] Parsing formData...");
-    const formData = await request.formData();
+    let formData;
+    try {
+      formData = await request.formData();
+    } catch (formError) {
+      console.error("[UPLOAD] FormData parse error:", formError);
+      return NextResponse.json(
+        { error: `FormData parse error: ${formError instanceof Error ? formError.message : String(formError)}` },
+        { status: 400 }
+      );
+    }
     const file = formData.get("file") as File | null;
     const sourceSystem = formData.get("source_system") as string | null;
     const sourceTable = formData.get("source_table") as string | null;
@@ -172,7 +181,7 @@ export async function POST(request: NextRequest) {
       ? `${error.name}: ${error.message}`
       : JSON.stringify(error);
     return NextResponse.json(
-      { error: `Upload failed: ${errorMessage}` },
+      { error: `[v2] Upload failed: ${errorMessage}` },
       { status: 500 }
     );
   }
