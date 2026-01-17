@@ -362,6 +362,7 @@ function IntakeQueueContent() {
     contacted_by: "",
     is_journal_only: false,
   });
+  const [showInlineContactForm, setShowInlineContactForm] = useState<"note" | "call" | null>(null);
 
   // Staff list for dropdown
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -558,9 +559,20 @@ function IntakeQueueContent() {
       .catch((err) => console.error("Failed to fetch staff:", err));
   }, []);
 
-  // Reset address editing when submission changes
+  // Reset editing states when submission changes
   useEffect(() => {
     setEditingAddress(false);
+    setShowInlineContactForm(null);
+  }, [selectedSubmission?.submission_id]);
+
+  // Fetch communication logs when detail modal opens
+  useEffect(() => {
+    if (selectedSubmission?.submission_id) {
+      fetchCommunicationLogs(selectedSubmission.submission_id);
+    } else {
+      setCommunicationLogs([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSubmission?.submission_id]);
 
   // Fetch communication logs for a submission
@@ -626,6 +638,38 @@ function IntakeQueueContent() {
     setShowContactModal(false);
     setContactModalSubmission(null);
     setCommunicationLogs([]);
+  };
+
+  // Submit inline contact/journal entry (for detail modal)
+  const handleInlineContactSubmit = async () => {
+    if (!selectedSubmission) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/intake/${selectedSubmission.submission_id}/communications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(contactForm),
+      });
+
+      if (response.ok) {
+        // Refresh logs
+        fetchCommunicationLogs(selectedSubmission.submission_id);
+        fetchSubmissions();
+        // Reset form and close inline form
+        setContactForm({
+          ...contactForm,
+          notes: "",
+          is_journal_only: false,
+        });
+        setShowInlineContactForm(null);
+        setToastMessage("Entry added successfully");
+        setTimeout(() => setToastMessage(null), 3000);
+      }
+    } catch (err) {
+      console.error("Failed to submit contact log:", err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const fetchEditHistory = async (submissionId: string) => {
@@ -2577,16 +2621,6 @@ function IntakeQueueContent() {
             }}>
               <h3 style={{ marginTop: 0, marginBottom: "0.75rem", fontSize: "1rem" }}>Quick Actions</h3>
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                <button
-                  onClick={() => {
-                    setSelectedSubmission(null);
-                    openContactModal(selectedSubmission);
-                  }}
-                  style={{ padding: "0.5rem 1rem", background: "#6f42c1", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
-                >
-                  Log Contact/Journal {selectedSubmission.contact_attempt_count ? `(${selectedSubmission.contact_attempt_count})` : ""}
-                </button>
-
                 {selectedSubmission.submission_status === "new" && (
                   <button
                     onClick={() => {
@@ -2624,6 +2658,254 @@ function IntakeQueueContent() {
               <p style={{ margin: "0.5rem 0 0", fontSize: "0.8rem", color: "var(--muted)" }}>
                 These actions update tracking status. Changes save automatically.
               </p>
+            </div>
+
+            {/* Inline Communication Log */}
+            <div style={{
+              background: "var(--card-bg, rgba(0,0,0,0.03))",
+              borderRadius: "8px",
+              padding: "1rem",
+              marginBottom: "1rem"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                <h3 style={{ margin: 0, fontSize: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  Communication Log
+                  {communicationLogs.length > 0 && (
+                    <span style={{
+                      background: "var(--muted-bg, #e0e0e0)",
+                      padding: "0.125rem 0.4rem",
+                      borderRadius: "10px",
+                      fontSize: "0.75rem",
+                      color: "var(--muted)"
+                    }}>
+                      {communicationLogs.length}
+                    </span>
+                  )}
+                </h3>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button
+                    onClick={() => {
+                      setShowInlineContactForm("note");
+                      setContactForm({ ...contactForm, is_journal_only: true, notes: "" });
+                    }}
+                    style={{
+                      padding: "0.35rem 0.75rem",
+                      background: showInlineContactForm === "note" ? "#0d6efd" : "transparent",
+                      color: showInlineContactForm === "note" ? "#fff" : "#0d6efd",
+                      border: "1px solid #0d6efd",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "0.8rem",
+                      fontWeight: 500
+                    }}
+                  >
+                    + Note
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowInlineContactForm("call");
+                      setContactForm({ ...contactForm, is_journal_only: false, notes: "", contact_method: "phone", contact_result: "answered" });
+                    }}
+                    style={{
+                      padding: "0.35rem 0.75rem",
+                      background: showInlineContactForm === "call" ? "#6f42c1" : "transparent",
+                      color: showInlineContactForm === "call" ? "#fff" : "#6f42c1",
+                      border: "1px solid #6f42c1",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "0.8rem",
+                      fontWeight: 500
+                    }}
+                  >
+                    + Call
+                  </button>
+                </div>
+              </div>
+
+              {/* Inline Add Form */}
+              {showInlineContactForm && (
+                <div style={{
+                  background: "var(--background)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  padding: "0.75rem",
+                  marginBottom: "0.75rem"
+                }}>
+                  <div style={{ display: "grid", gridTemplateColumns: showInlineContactForm === "call" ? "1fr 1fr" : "1fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                    {/* Contact method & result - only for calls */}
+                    {showInlineContactForm === "call" && (
+                      <>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.2rem", color: "var(--muted)" }}>Method</label>
+                          <select
+                            value={contactForm.contact_method}
+                            onChange={(e) => setContactForm({ ...contactForm, contact_method: e.target.value })}
+                            style={{ width: "100%", padding: "0.4rem", fontSize: "0.85rem" }}
+                          >
+                            {CONTACT_METHODS.map((m) => (
+                              <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.2rem", color: "var(--muted)" }}>Result</label>
+                          <select
+                            value={contactForm.contact_result}
+                            onChange={(e) => setContactForm({ ...contactForm, contact_result: e.target.value })}
+                            style={{ width: "100%", padding: "0.4rem", fontSize: "0.85rem" }}
+                          >
+                            {CONTACT_RESULTS.map((r) => (
+                              <option key={r.value} value={r.value}>{r.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    )}
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.2rem", color: "var(--muted)" }}>Staff</label>
+                      <select
+                        value={contactForm.contacted_by}
+                        onChange={(e) => setContactForm({ ...contactForm, contacted_by: e.target.value })}
+                        style={{ width: "100%", padding: "0.4rem", fontSize: "0.85rem" }}
+                      >
+                        <option value="">Select staff...</option>
+                        {staffList.map((s) => (
+                          <option key={s.staff_id} value={s.display_name}>
+                            {s.display_name} ({s.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.2rem", color: "var(--muted)" }}>
+                        {showInlineContactForm === "note" ? "Note" : "Notes"}
+                      </label>
+                      <textarea
+                        value={contactForm.notes}
+                        onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })}
+                        rows={2}
+                        placeholder={showInlineContactForm === "note" ? "Internal note..." : "Notes about the conversation..."}
+                        style={{ width: "100%", padding: "0.4rem", fontSize: "0.85rem", resize: "vertical" }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      onClick={handleInlineContactSubmit}
+                      disabled={saving || !contactForm.notes.trim() || !contactForm.contacted_by}
+                      style={{
+                        padding: "0.4rem 0.75rem",
+                        background: showInlineContactForm === "note" ? "#0d6efd" : "#6f42c1",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: saving || !contactForm.notes.trim() || !contactForm.contacted_by ? "not-allowed" : "pointer",
+                        opacity: saving || !contactForm.notes.trim() || !contactForm.contacted_by ? 0.6 : 1,
+                        fontSize: "0.85rem",
+                        fontWeight: 500
+                      }}
+                    >
+                      {saving ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setShowInlineContactForm(null)}
+                      style={{
+                        padding: "0.4rem 0.75rem",
+                        background: "transparent",
+                        color: "var(--muted)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        fontSize: "0.85rem"
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Communication Log Entries */}
+              {loadingLogs ? (
+                <p style={{ color: "var(--muted)", fontSize: "0.85rem", margin: 0 }}>Loading...</p>
+              ) : communicationLogs.length === 0 ? (
+                <p style={{ color: "var(--muted)", fontSize: "0.85rem", margin: 0, fontStyle: "italic" }}>
+                  No communication logged yet. Use the buttons above to add notes or log calls.
+                </p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "200px", overflowY: "auto" }}>
+                  {communicationLogs.map((log) => {
+                    const isNote = log.entry_kind === "note" || !log.contact_method;
+                    const displayName = log.created_by_staff_name || log.contacted_by;
+                    const initials = displayName
+                      ? displayName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
+                      : "??";
+
+                    return (
+                      <div
+                        key={log.log_id}
+                        style={{
+                          padding: "0.5rem 0.65rem",
+                          background: "var(--background)",
+                          borderRadius: "4px",
+                          borderLeft: `3px solid ${isNote ? "#0d6efd" : "#6f42c1"}`,
+                          fontSize: "0.85rem"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                          {/* Initials badge */}
+                          <span style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: "22px",
+                            height: "22px",
+                            borderRadius: "50%",
+                            background: isNote ? "#0d6efd" : "#6f42c1",
+                            color: "#fff",
+                            fontSize: "0.6rem",
+                            fontWeight: "bold"
+                          }}>{initials}</span>
+
+                          {/* Entry type badge */}
+                          <span style={{
+                            padding: "0.1rem 0.35rem",
+                            borderRadius: "3px",
+                            fontSize: "0.65rem",
+                            fontWeight: 500,
+                            background: isNote ? "#0d6efd" : "#6f42c1",
+                            color: "#fff"
+                          }}>
+                            {isNote ? "Note" : "Contact"}
+                          </span>
+
+                          {/* Contact details for calls */}
+                          {!isNote && log.contact_method && (
+                            <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                              {CONTACT_METHODS.find(m => m.value === log.contact_method)?.label || log.contact_method}
+                              {log.contact_result && (
+                                <> → {CONTACT_RESULTS.find(r => r.value === log.contact_result)?.label || log.contact_result}</>
+                              )}
+                            </span>
+                          )}
+
+                          {/* Date */}
+                          <span style={{ fontSize: "0.7rem", color: "var(--muted)", marginLeft: "auto" }}>
+                            {formatDate(log.contacted_at)}
+                          </span>
+                        </div>
+
+                        {/* Notes */}
+                        {log.notes && (
+                          <p style={{ margin: 0, color: "var(--foreground)", lineHeight: 1.4 }}>
+                            {log.notes}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Convert to Request - for ALL not-yet-converted submissions */}
