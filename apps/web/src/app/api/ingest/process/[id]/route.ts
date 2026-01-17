@@ -171,6 +171,13 @@ export async function POST(
         }
       }
 
+      // For appointment_info, skip service line items (rows without appointment Number)
+      // ClinicHQ exports have multiple rows per appointment: main row + service lines
+      if (!sourceRowId && upload.source_table === 'appointment_info') {
+        skipped++;
+        continue;
+      }
+
       if (!sourceRowId) {
         sourceRowId = `row_${rows.indexOf(row)}`;
       }
