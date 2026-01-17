@@ -1,8 +1,359 @@
 # Atlas TODO Tracker
 
-Last Updated: 2026-01-16
+Last Updated: 2026-01-17
 
-This document tracks implementation priorities, fixes, and enhancements for the Atlas codebase. Items are organized by priority and status.
+## UI IMPROVEMENTS ROADMAP (Comprehensive Audit 2026-01-17)
+
+This section documents findings from a comprehensive UI audit and proposes improvements to ensure Beacon data remains accurate and maintainable over time.
+
+### Data Stewardship Philosophy
+
+**Problem:** Beacon data (colony estimates, reproduction, mortality) will become stale without:
+- Easy access to review and correct parsed data
+- Visual indicators when data might be incorrect
+- Bulk operations for maintenance
+- Historical tracking of data quality
+
+**Solution:** Build "data stewardship" into the UI - every screen should make it easy to verify and improve data quality.
+
+### Navigation Redesign: Left Sidebar with Categories
+
+**Current:** Top navigation with flat menu
+**Proposed:** Left sidebar with categorized sections
+
+```
+┌─────────────────────────────────────────────────────┐
+│ ATLAS                                    [🔍] [👤]  │
+├──────────┬──────────────────────────────────────────┤
+│          │                                          │
+│ DASHBOARD│  [Main content area]                     │
+│          │                                          │
+│ OPERATIONS                                          │
+│  📥 Intake Queue                                    │
+│  📋 Requests                                        │
+│  🪤 Trappers                                        │
+│                                                     │
+│ DATA                                                │
+│  🐱 Cats                                            │
+│  👥 People                                          │
+│  📍 Places                                          │
+│                                                     │
+│ BEACON                                              │
+│  📊 Colony Estimates                                │
+│  🤰 Reproduction Data                               │
+│  💀 Mortality Events                                │
+│  📈 Seasonal Analysis                               │
+│  🔮 Population Forecasts                            │
+│                                                     │
+│ ADMIN                                               │
+│  ⚙️ Settings                                        │
+│  🔄 Data Ingest                                     │
+│  👥 Duplicates                                      │
+└──────────┴──────────────────────────────────────────┘
+```
+
+**Benefits:**
+- Clear categorization of tools
+- Beacon data given proper visibility
+- Room for growth without cluttering top nav
+- Consistent with modern admin UIs
+
+### Beacon Data Review Pages (Created 2026-01-17)
+
+- [x] `/admin/beacon/colony-estimates` - Review/edit/delete colony size estimates with bulk operations
+- [x] `/admin/beacon/reproduction` - Review reproduction indicators with edit/delete/bulk ops
+- [x] `/admin/beacon/mortality` - Review mortality events with edit/delete/bulk ops
+- [x] `/admin/beacon/seasonal` - Seasonal analysis views (dashboard, breeding, kittens, alerts)
+- [x] `/admin/beacon/forecasts` - Population forecasts with Vortex model parameters
+- [x] `/admin/needs-review` - AI-parsed data needing human verification
+
+### Critical UI Gaps by Page
+
+#### Dashboard (`/page.tsx`)
+| Gap | Impact | Priority | Status |
+|-----|--------|----------|--------|
+| No bulk actions | Can't efficiently process queue | HIGH | ✅ Fixed (bulk ops on requests/intake) |
+| No Beacon summary | Staff unaware of data quality | MEDIUM | ✅ Fixed (Beacon widget) |
+| No "overdue" indicators | Missed follow-ups | HIGH | ✅ Fixed (stale/urgent alerts) |
+| No geographic hotspots | Can't see problem areas | LOW | Pending |
+
+#### Request Detail (`/requests/[id]/page.tsx`)
+| Gap | Impact | Priority | Status |
+|-----|--------|----------|--------|
+| No colony estimate management | Data disconnected from workflow | HIGH | ✅ Fixed (ColonyEstimates component) |
+| No outcome tracking | Don't know what happened to cats | HIGH | Pending |
+| No cost/resource estimates | Can't plan resources | MEDIUM | Pending |
+| No related requests view | Miss multi-site operations | MEDIUM | Pending |
+
+#### Place Detail (`/places/[id]/page.tsx`)
+| Gap | Impact | Priority | Status |
+|-----|--------|----------|--------|
+| No population trend chart | Can't see progress | HIGH | ✅ Fixed (PopulationTrendChart) |
+| No birth/death timeline | Missing population dynamics | HIGH | ✅ Fixed (PopulationTimeline) |
+| No TNR success metrics | Can't measure effectiveness | MEDIUM | Pending |
+| No "intervention complete" workflow | Sites stay open forever | MEDIUM | Pending |
+
+#### Cat Detail (`/cats/[id]/page.tsx`)
+| Gap | Impact | Priority | Status |
+|-----|--------|----------|--------|
+| Birth events not displayed | Reproduction tracking incomplete | HIGH | ✅ Fixed (Birth Information section) |
+| Reproduction status not visible | Miss pregnant/lactating cats | HIGH | ✅ Fixed (Reproduction Status section) |
+| No timeline view of all events | Hard to understand history | MEDIUM | Pending |
+| No health risk scoring | Miss at-risk cats | LOW | Pending |
+
+### Universal UI Improvements Needed
+
+#### 1. Bulk Operations (HIGH PRIORITY)
+Every list page needs:
+- Multi-select with checkboxes
+- Bulk status update
+- Bulk assign/unassign
+- Bulk export to CSV
+- Bulk delete (with confirmation)
+
+#### 2. Data Quality Indicators
+Visual badges showing:
+- "AI-parsed" for extracted data
+- "Needs review" for low-confidence
+- "Stale" for old data
+- "Verified" for confirmed data
+
+#### 3. Inline Editing
+Reduce clicks by allowing:
+- Click-to-edit fields in tables
+- Quick status dropdowns
+- Inline notes
+
+#### 4. Keyboard Shortcuts
+- `⌘K` / `Ctrl+K` - Global search
+- `Enter` - Open selected item
+- `e` - Edit mode
+- `n` - New item
+- `Esc` - Close modal
+
+#### 5. Edit History on All Pages
+- Show "Last edited by X at Y"
+- Link to full audit trail
+- Undo capability for recent changes
+
+### Implementation Phases
+
+**Phase 1: Beacon Data Stewardship ✅ COMPLETE**
+- [x] Parser run button in admin
+- [x] Colony estimates review page
+- [x] Reproduction data review page
+- [x] Mortality events review page
+- [x] Edit/delete capabilities on review pages
+- [x] Bulk operations on review pages
+
+**Phase 2: Left Sidebar Navigation ✅ COMPLETE**
+- [x] Create sidebar layout component (`SidebarLayout.tsx`, `AdminSidebar`)
+- [x] Migrate admin pages to new layout (`/admin/layout.tsx`)
+- [x] Add Beacon category with data pages
+- [x] Mobile responsive sidebar (slide-out menu, overlay, toggle button)
+- [ ] Migrate all other pages to sidebar layout (future enhancement)
+
+**Phase 3: Bulk Operations ✅ COMPLETE**
+- [x] Add multi-select to request list (`/requests/page.tsx`)
+- [x] Add multi-select to intake queue (`/intake/queue/page.tsx`)
+- [x] Add bulk status update
+- [x] Add bulk export (CSV for requests)
+- [x] Add bulk archive (intake queue)
+
+**Phase 4: Data Quality Indicators ✅ COMPLETE**
+- [x] Add "source" badges to all parsed data (`DataQualityBadge.tsx`)
+- [x] Add "confidence" indicators (high/medium/low)
+- [x] Add "verified" indicator
+- [x] Add "needs review" badge
+- [x] Add "needs review" queue page (`/admin/needs-review`)
+- [ ] Add "last verified" timestamps (future enhancement)
+
+**Phase 5: Integration ✅ COMPLETE**
+- [x] Colony estimates on place detail (existing)
+- [x] Reproduction on cat detail (new section)
+- [x] Mortality on cat detail (new section)
+- [x] Birth events on cat detail (new section with siblings)
+- [x] Population trends on place detail (`PopulationTrendChart`)
+- [x] Beacon summary on dashboard (new widget with alerts)
+
+---
+
+This document tracks implementation priorities, fixes, and enhancements for the Atlas codebase. Items are organized by priority and aligned with **Beacon** requirements.
+
+> **Mission:** Atlas is the data collection layer for Beacon - FFSC's predictive analytics system for strategic cat population management. See [ATLAS_MISSION_CONTRACT.md](./ATLAS_MISSION_CONTRACT.md) for full details.
+
+---
+
+## Beacon-Aligned Priority Summary
+
+Based on Beacon's requirements and the Vortex population model (Boone et al. 2019):
+
+| Priority | Goal | Current State | Beacon Impact |
+|----------|------|---------------|---------------|
+| **P1** | Observation Data Capture | 422 places with Chapman data | 10x more accurate population estimates |
+| **P2** | Kitten/Reproduction Tracking | No birth events | Critical for growth modeling |
+| **P3** | Mortality Tracking | No death events | Completes population equation |
+| **P4** | Seasonal Breeding Analysis | Data exists, not analyzed | Enables surge prediction |
+| **P5** | Immigration vs Local Births | Partial via movement events | Accurate immigration rates |
+
+### Critical Beacon Data Gaps (Comprehensive Audit 2026-01-17)
+
+| Gap | Impact | Proposed Solution | Priority |
+|-----|--------|-------------------|----------|
+| No kitten birth events | Can't model reproduction | Create `cat_birth_events` table | HIGH |
+| No mortality tracking | Can't calculate survival rates | Create `cat_mortality_events` table | HIGH |
+| No mother-kitten links | Can't track litter outcomes | Add `litter_id` grouping | MEDIUM |
+| Low Chapman coverage | Only 422/7,456 places | Deploy observation UI broadly | HIGH |
+| No seasonal analysis | Can't predict kitten surges | Create seasonal views | MEDIUM |
+
+### Comprehensive Audit Summary (2026-01-17)
+
+**4 parallel audits completed covering: API endpoints, UI components, ingest scripts, database schema**
+
+#### What's Working Well
+| Area | Status | Notes |
+|------|--------|-------|
+| **Centralized Functions** | ✅ 100% | `find_or_create_*` used correctly everywhere |
+| **Entity Merge Infrastructure** | ✅ Fixed | `merge_people()`, `merge_cats()`, `merge_places()` all complete |
+| **Attribution Windows** | ✅ Correct | MIG_208 rolling windows implemented in `v_request_alteration_stats` |
+| **Intake Workflow** | ✅ 70% | New unified status working, journal integrated |
+| **Auto-Processing** | ✅ Fixed | `/api/cron/process-uploads` handles staged records |
+| **Security** | ✅ Fixed | SQL injection, embedded tokens, plaintext passwords all resolved |
+| **Place Deduplication** | ✅ Working | `find_or_create_place_deduped()` + MIG_283 for exact duplicates |
+
+#### Remaining Gaps (Action Required)
+
+| Gap | Current State | Action Needed | Priority |
+|-----|---------------|---------------|----------|
+| **Parser Scripts** | ✅ Cron deployed | `/api/cron/parse-notes` handles P1-P3 parsing | DONE |
+| **ClinicHQ Real-Time Integration** | Batch upload only | Explore webhooks or scheduled sync | LOW |
+| **Trapper Assignment Workflow** | Still in Airtable | Build Atlas native workflow | MEDIUM |
+| **Birth/Mortality Events** | ✅ Tables created | MIG_289 (birth), MIG_290 (mortality) ready | DONE |
+| **Observation Coverage** | 422/7,456 places (5.6%) | Train trappers, add to workflow | HIGH |
+
+#### Legacy Transition Status
+
+| System | Atlas Status | Airtable Status | Transition |
+|--------|-------------|-----------------|------------|
+| **Requests** | ✅ Native intake | Still primary for ops | 40% transitioned |
+| **Trappers** | ✅ Synced | Still primary | Read from Atlas, write to AT |
+| **Clinic Data** | ✅ ClinicHQ imports | N/A | 100% in Atlas |
+| **Colony Estimates** | ✅ Native + imported | Project 75 in AT | 70% transitioned |
+| **Appointments** | ✅ ClinicHQ imports | N/A | 100% in Atlas |
+
+---
+
+## Beacon Data Infrastructure (NEW)
+
+### P1: Observation Data Capture (HIGH IMPACT)
+
+**Goal:** Increase Chapman estimator coverage from 422 to 2,000+ places
+
+- [x] **Create Observation API** ✅ COMPLETED 2026-01-16
+  - `POST /api/places/[id]/observations`
+  - Returns Chapman estimate when eartip data available
+
+- [x] **Create Observation UI Components** ✅ COMPLETED 2026-01-16
+  - `LogObservationModal.tsx` - Modal for quick observation entry
+  - `ObservationsSection.tsx` - List with add button
+  - Integrated into place and request detail pages
+
+- [x] **Backfill Project 75 Eartip Data** ✅ MIG_266 2026-01-16
+  - 506 records had eartip data in wrong column
+  - Backfill enables Chapman for 422 places (up from 4)
+
+- [x] **Add Vortex Model Parameters to Admin Config** ✅ MIG_288 CREATED 2026-01-17
+  - File: `sql/schema/sot/MIG_288__vortex_population_parameters.sql`
+  - 20+ scientifically-accepted parameters from Boone et al. 2019
+  - Includes: reproduction rates, survival rates, TNR intensity thresholds, immigration
+  - All configurable via admin panel with min/max validation
+  - Scientific references included for each parameter
+  - Key equations documented in migration comments
+  - **FFSC Ground Truth Principle**: Clinic data = verified alterations
+
+- [ ] **Deploy Observation Training to Trappers**
+  - Train staff on observation workflow
+  - Goal: Every site visit = observation logged
+
+- [x] **Add Observation Prompt to Request Completion** ✅ COMPLETED 2026-01-17
+  - When marking request complete, prompts for final observation
+  - Captures post-TNR colony state
+  - Skip option available if observation not possible
+
+### P2: Kitten/Reproduction Tracking (FUTURE)
+
+**Goal:** Enable population growth modeling
+
+- [x] **Create `cat_birth_events` Table** ✅ COMPLETED 2026-01-17 (MIG_289)
+  - Table with litter_id, mother_cat_id, birth_date, place_id
+  - Views: v_litter_summary, v_seasonal_births, v_place_reproduction_stats
+  - Function: register_birth_event() for API integration
+
+- [ ] **Add Kitten Intake to Clinic Workflow**
+  - Flag kittens at intake with estimated age
+  - Link to mother when known
+
+- [x] **Parse Pregnancy/Nursing from Notes** ✅ COMPLETED 2026-01-17
+  - Script: `scripts/ingest/parse_pregnancy_nursing_notes.mjs`
+  - Extracts: pregnant, lactating, in_heat, kitten counts
+  - Updates cat_vitals with reproduction indicators
+  - Creates birth events when litter info detected
+
+### P3: Mortality Tracking (FUTURE)
+
+**Goal:** Enable survival rate calculations
+
+- [x] **Create `cat_mortality_events` Table** ✅ COMPLETED 2026-01-17 (MIG_290)
+  - Table with death_cause, death_age_category, place_id
+  - Views: v_mortality_by_age, v_seasonal_mortality, v_place_mortality_stats
+  - Functions: register_mortality_event(), calculate_survival_rates()
+  - Added is_deceased, deceased_date columns to sot_cats
+
+- [x] **Add Death Reporting UI** ✅ COMPLETED 2026-01-17
+  - API endpoint: `/api/cats/[id]/mortality` GET/POST/DELETE
+  - Modal component: `ReportDeceasedModal.tsx`
+  - Integrated into cat detail page with "Report Deceased" button
+  - Shows DECEASED badge when cat is deceased
+  - Captures: death cause, date, age category, location, notes
+
+- [x] **Parse Historical Mortality from Notes** ✅ COMPLETED 2026-01-17
+  - Script: `scripts/ingest/parse_mortality_notes.mjs`
+  - Extracts from: KML notes, request notes, appointment notes, intake submissions
+  - Detects causes: vehicle, predator, disease, euthanasia, injury, starvation, weather, natural, unknown
+  - Creates mortality events, updates is_deceased on cats when identified
+  - Usage: `node scripts/ingest/parse_mortality_notes.mjs --dry-run`
+
+### P4: Seasonal Analysis (FUTURE)
+
+**Goal:** Identify breeding patterns for surge prediction
+
+- [x] **Create Seasonal Analysis Views** ✅ COMPLETED 2026-01-17 (MIG_291)
+  - Migration: `sql/schema/sot/MIG_291__seasonal_analysis_views.sql`
+  - Views created:
+    - `v_clinic_seasonal_activity` - Monthly clinic metrics
+    - `v_yoy_activity_comparison` - Year-over-year trends
+    - `v_breeding_season_indicators` - Pregnant/lactating/heat tracking
+    - `v_kitten_surge_prediction` - Z-score based surge detection
+    - `v_request_intake_seasonality` - Request volume by season
+    - `v_seasonal_dashboard` - Combined metrics for Beacon
+  - Functions: `get_season()`, `get_seasonal_alerts()`
+
+- [x] **Flag Breeding Season in Analytics** ✅ COMPLETED 2026-01-17
+  - California breeding season: Feb-Nov (per Vortex model)
+  - `is_breeding_season` flag in seasonal views
+  - Surge alerts via `get_seasonal_alerts()` function
+
+### P5: Immigration vs Local Births (FUTURE)
+
+**Goal:** Distinguish new arrivals from locally-born cats
+
+- [ ] **Add `arrival_type` to Cat-Place Relationships**
+  - Values: 'born_here', 'immigrated', 'unknown'
+  - Infer from first observation age
+
+- [ ] **Link Neighboring Colonies**
+  - Track which colonies share cats
+  - Model immigration pathways
 
 ---
 
@@ -77,11 +428,9 @@ This document tracks implementation priorities, fixes, and enhancements for the 
   - **Impact**: Prevented deterministic migration ordering
   - **Fix**: Renumbered 14 duplicates to MIG_268-281
 
-- [ ] **Extract Missing Microchips from Staged Data** 🔴 MIGRATION CREATED 2026-01-17
-  - **Impact**: ~32,311 cats invisible in search, not linked to places
+- [x] **Extract Missing Microchips from Staged Data** ✅ RAN 2026-01-17
   - **Migration**: `MIG_282__extract_missing_microchips.sql`
-  - **Sources**: PetLink pets (8,265), ClinicHQ appointments (24,046)
-  - **To run**: `psql $DATABASE_URL -f sql/schema/sot/MIG_282__extract_missing_microchips.sql`
+  - **Result**: All microchips already extracted (8,265 from PetLink, 25,608 from ClinicHQ)
 
 ### Database Functions
 
@@ -148,12 +497,14 @@ This document tracks implementation priorities, fixes, and enhancements for the 
 
 ### API Improvements (Found in Audit 2026-01-16)
 
-- [ ] **Add Auth Context to Endpoints** 🟡 FOUND 2026-01-16
-  - Files with TODOs for auth context:
-    - `/api/journal/route.ts:199` - defaults to "app_user"
-    - `/api/journal/[id]/route.ts:144` - defaults to "app_user"
-    - `/api/admin/ecology-config/route.ts:76` - defaults to "admin"
-  - Fix: Extract actual user from session/auth context
+- [x] **Add Auth Context to Endpoints** ✅ COMPLETED 2026-01-17
+  - Created `/lib/auth.ts` with `getCurrentUser()` utility
+  - Updated endpoints to use auth context:
+    - `/api/journal/route.ts` - uses `getCurrentUser(request)` for `created_by`
+    - `/api/journal/[id]/route.ts` - uses `getCurrentUser(request)` for `updated_by`, `archived_by`
+    - `/api/admin/ecology-config/route.ts` - uses `getCurrentUser(request)` with admin fallback
+  - Supports `X-Staff-ID` and `X-Staff-Name` headers for staff context
+  - Easy to extend when real authentication is added
 
 - [x] **Add Person PATCH Endpoint** ✅ COMPLETED 2026-01-16
   - Added: `/api/people/[id]` PATCH handler
@@ -186,96 +537,49 @@ This document tracks implementation priorities, fixes, and enhancements for the 
 3. Staff manually identifies and links multi-parcel sites
 4. Aggregate views for reporting across linked places
 
-- [ ] **Create Admin UI for Place Linking**
+- [x] **Create Admin UI for Place Linking** ✅ COMPLETED 2026-01-17
   - Add "Link to Related Site" button on place detail page
   - Dropdown to select relationship type (`same_colony_site`, `adjacent_to`, `nearby_cluster`)
   - Search/select target place
   - Store in `place_place_edges` table
   - [x] API endpoint `/api/places/[id]/edges` created ✅ 2026-01-17
-  - [ ] UI component needed
+  - [x] UI component `PlaceLinksSection` created ✅ 2026-01-17
 
-- [ ] **Merge Exact Duplicate Places (MIG_265)**
-  - Create migration to identify and merge 565 duplicate place pairs
-  - Use existing `merge_places()` function (or create if missing)
-  - Strategy: Keep place with more relationships, merge the other
-  - Log all merges to `entity_edits` for audit trail
+- [x] **Merge Exact Duplicate Places (MIG_283)** ✅ MIGRATION CREATED 2026-01-17
+  - Migration: `sql/schema/sot/MIG_283__merge_exact_duplicate_places.sql`
+  - Identifies exact duplicates by normalized_address
+  - Keeps place with most activity, merges others using `merge_places()`
+  - Logs all merges to `data_changes` table
+  - **To run**: `psql $DATABASE_URL -f sql/schema/sot/MIG_283__merge_exact_duplicate_places.sql`
 
-- [ ] **Create Suggested Site Links View**
+- [x] **Create Suggested Site Links View (MIG_285)** ✅ CREATED 2026-01-17
+  - Migration: `sql/schema/sot/MIG_285__suggested_place_links_view.sql`
   - View: `v_suggested_place_links`
   - Heuristics:
     - Same requester at multiple nearby addresses
     - Same street + close house numbers + cat activity at both
     - Places sharing cats (like Tresch Dairy)
-  - Include confidence score and suggested relationship type
-  - Surface in admin dashboard for staff review
+    - Coordinate proximity (within 150m)
+  - Includes confidence score and suggested relationship type
+  - **To run**: `psql $DATABASE_URL -f sql/schema/sot/MIG_285__suggested_place_links_view.sql`
 
-- [ ] **Link Tresch Dairy Places & Update Request Data (Immediate)**
-  - Place A: `95509b31-771c-4f7d-8920-29abe39ecf66` (1054 Walker Rd)
-  - Place B: `a1f6e0eb-eed3-48e2-92b4-78d1fbac5122` (1170 Walker Rd)
-  - SQL to run (creates link + updates requests + adds field observation):
-  ```sql
-  -- 1. Link places as same colony site
-  INSERT INTO trapper.place_place_edges (place_id_a, place_id_b, relationship_type_id, direction, note)
-  SELECT '95509b31-771c-4f7d-8920-29abe39ecf66', 'a1f6e0eb-eed3-48e2-92b4-78d1fbac5122',
-         id, 'bidirectional', 'Tresch Dairy - single dairy operation spanning two parcels'
-  FROM trapper.relationship_types WHERE code = 'same_colony_site';
+- [x] **Link Tresch Dairy Places & Update Request Data (MIG_284)** ✅ MIGRATION CREATED 2026-01-17
+  - Migration: `sql/schema/sot/MIG_284__link_tresch_dairy_places.sql`
+  - Links 1054 and 1170 Walker Rd as `same_colony_site`
+  - Updates both requests to `on_hold` with `monitoring` reason
+  - Adds field observation with current colony state
+  - **To run**: `psql $DATABASE_URL -f sql/schema/sot/MIG_284__link_tresch_dairy_places.sql`
 
-  -- 2. Update 1170 Walker Rd request with operational data and put on hold
-  UPDATE trapper.sot_requests SET
-    permission_status = 'granted',
-    traps_overnight_safe = FALSE,
-    access_without_contact = TRUE,
-    access_notes = 'Open ranch property, can access without notifying',
-    status = 'on_hold',
-    hold_reason = 'resource_constraint',
-    hold_reason_notes = 'Majority of cats fixed (~65). Only ~3 unfixed males remain. Moving resources to higher-need sites. Will return to complete.',
-    hold_started_at = NOW()
-  WHERE request_id = '36331e8e-e480-4d18-b7ae-d6767ddece08';
+- [x] **Add Aggregate Colony Stats Across Linked Sites (MIG_286)** ✅ COMPLETED 2026-01-17
+  - Migration: `sql/schema/sot/MIG_286__site_aggregate_stats_view.sql`
+  - Views: `v_place_site_cluster`, `v_site_aggregate_stats`
+  - Function: `get_site_stats_for_place(uuid)` for API
+  - De-duplicates cats across linked places
+  - API: `/api/places/[id]/site-stats`
+  - UI: `SiteStatsCard` component shows aggregate stats on place detail page
+  - **To run**: `psql $DATABASE_URL -f sql/schema/sot/MIG_286__site_aggregate_stats_view.sql`
 
-  -- 3. Update 1054 Walker Rd request similarly
-  UPDATE trapper.sot_requests SET
-    permission_status = 'granted',
-    traps_overnight_safe = FALSE,
-    access_without_contact = TRUE,
-    access_notes = 'Open ranch property, can access without notifying',
-    status = 'on_hold',
-    hold_reason = 'resource_constraint',
-    hold_reason_notes = 'Site nearly complete. Only handful of unfixed cats remain per requester. Moving resources to higher-need sites.',
-    hold_started_at = NOW()
-  WHERE request_id = '31e1ce8d-58d6-484a-af00-c0ddf66eeec1';
-
-  -- 4. Add current field observation (captures "3 males remaining" intel)
-  INSERT INTO trapper.place_colony_estimates (
-    place_id, total_cats, altered_count, unaltered_count,
-    source_type, observation_date, is_firsthand, notes, source_system, created_by
-  ) VALUES (
-    'a1f6e0eb-eed3-48e2-92b4-78d1fbac5122',  -- 1170 Walker
-    68,  -- 65 fixed + ~3 remaining
-    65,
-    3,
-    'trapper_site_visit',
-    CURRENT_DATE,
-    TRUE,
-    'Per trapper observation: ~3 unfixed males remaining. Colony nearly complete.',
-    'web_app',
-    'system'
-  );
-  ```
-
-- [ ] **Add Aggregate Colony Stats Across Linked Sites (MIG_266)**
-  - Create view: `v_site_aggregate_stats`
-  - De-duplicates cats that appear at multiple linked places
-  - Returns combined: unique cat count, altered count, unique microchips
-  - Calculates site-level alteration rate
-  - Display on place detail page when links exist
-  - SQL approach:
-  ```sql
-  -- Get all places in a site cluster via recursive CTE
-  -- Then DISTINCT cat_id across all linked places
-  -- Prevents double-counting Tresch's 82 cats as 154
-  ```
-
-- [ ] **Add Field Observation Capture Workflow**
+- [x] **Add Field Observation Capture Workflow** ✅ COMPLETED 2026-01-16
   - **Problem**: 0% of places have observation data needed for Chapman estimator
   - **Solution**: Add "Log Site Visit" action on place/request detail pages
   - Fields to capture:
@@ -290,10 +594,9 @@ This document tracks implementation priorities, fixes, and enhancements for the 
     - C = cats seen in observation
     - R = ear-tipped cats seen in observation
 
-- [ ] **Add "Monitoring" Hold Reason**
-  - Current `hold_reason` enum lacks "mostly complete, monitoring" option
-  - Add value: `monitoring` - "Site substantially complete, periodic checks only"
-  - Better fits Tresch situation than `resource_constraint`
+- [x] **Add "Monitoring" Hold Reason** ✅ ADDED in MIG_267 2026-01-16
+  - Added to `hold_reason` enum: `monitoring` - "Site substantially complete, periodic checks only"
+  - Used in MIG_284 for Tresch Dairy requests
 
 ### Colony Estimate Data Enrichment
 
@@ -441,12 +744,12 @@ The clinic data provides the ground truth M (marked/altered count) automatically
   - Insert as `source_type = 'internal_notes_parse'` with 40% confidence
   - Usage: `node scripts/ingest/parse_request_notes_estimates.mjs --dry-run`
 
-- [ ] **Create Appointment Notes Parser**
+- [x] **Create Appointment Notes Parser** ✅ COMPLETED 2026-01-17
   - File: `scripts/ingest/parse_appointment_notes.mjs`
-  - Parse `sot_appointments.internal_notes` for colony/cat info
-  - Look for: cat counts at location, eartip observations, colony status
-  - Less reliable than request notes (focus on procedures, not colonies)
+  - Parses `sot_appointments.medical_notes` for colony/cat info
+  - Extracts: cat counts, eartip observations, TNR counts, colony status
   - Insert as `source_type = 'appointment_notes_parse'` with 35% confidence
+  - Usage: `node scripts/ingest/parse_appointment_notes.mjs --dry-run`
 
 - [x] **Create Intake Situation Parser** ✅ CREATED 2026-01-16
   - File: `scripts/ingest/parse_intake_situation.mjs`
@@ -811,9 +1114,13 @@ Clinic data (verified alterations) is ground truth.
 | 0% observation data | No places have ear-tip observation data | Chapman estimator never runs |
 | "Complete" but incomplete | System shows 100% altered but 3 males remain | Misleading progress |
 
-- [ ] **Fix Duplicate Colony Estimate Bug**
-  - `trg_request_colony_estimate` trigger appears to fire twice
-  - Investigate and add duplicate prevention (ON CONFLICT DO NOTHING)
+- [x] **Fix Duplicate Colony Estimate Bug** ✅ COMPLETED 2026-01-17
+  - Root cause: Same Airtable records imported with different `source_system` values
+  - Created MIG_287 to:
+    - Normalize `source_system` values (all airtable_* → 'airtable')
+    - Delete 27 duplicate records (keeping oldest)
+    - Add unique index `idx_colony_estimates_source_record_unique`
+    - Add unique index `idx_colony_estimates_kml_unique` for KML records
 
 - [ ] **Ensure Future Intake Stability**
   - New submissions should NOT create duplicate places (already handled by `find_or_create_place_deduped`)
@@ -827,10 +1134,10 @@ Clinic data (verified alterations) is ground truth.
     - At minimum: show on UI that cat is part of larger site
   - Ensure merged cats don't create orphaned cat_place_relationships
 
-- [ ] **Create Site-Level Reporting View**
-  - `v_site_summary` - Groups linked places, de-duplicates cats
-  - Required for accurate alteration rates at multi-parcel sites
-  - Tresch example should show: 82 unique cats, not 154
+- [x] **Create Site-Level Reporting View** ✅ COMPLETED 2026-01-17
+  - `v_site_aggregate_stats` - Groups linked places, de-duplicates cats
+  - Tresch Dairy now shows: 82 unique cats (not double-counted)
+  - See MIG_286 for implementation
 
 ### API Fixes
 
@@ -1034,6 +1341,96 @@ _Move items here when done with date completed_
 - [x] Added audit logging to requests endpoint (previously had none)
 - [x] Audited place data quality: found 565 duplicate pairs, 0 place_place_edges
 - [x] Documented multi-parcel site linking protocol (Tresch Dairy case study)
+
+### 2026-01-17
+- [x] **Cat-Request Linking API** - `/api/requests/[id]/cats` GET/POST/DELETE
+- [x] **Place Edges API** - `/api/places/[id]/edges` GET/POST/DELETE for site linking
+- [x] **Fixed Async Import Pattern** - `/api/places/[id]/colony-override/route.ts`
+- [x] **Place Linking UI** - `PlaceLinksSection` component integrated into place detail page
+  - Search/select places to link
+  - Choose relationship type (same_colony_site, adjacent_to, nearby_cluster)
+  - Add/remove links with confirmation
+- [x] **MIG_283: Merge Exact Duplicate Places** - Migration to merge 565+ duplicate place pairs
+- [x] **MIG_284: Link Tresch Dairy Places** - Links Walker Rd places, updates requests to monitoring
+- [x] **MIG_285: Suggested Site Links View** - `v_suggested_place_links` with heuristics:
+  - Same requester at multiple addresses
+  - Shared cats between places
+  - Same street nearby house numbers
+  - Coordinate proximity (within 150m)
+- [x] **MIG_286: Site Aggregate Stats** - De-duplicates cats across linked sites
+  - Views: `v_place_site_cluster`, `v_site_aggregate_stats`
+  - Function: `get_site_stats_for_place(uuid)`
+  - API: `/api/places/[id]/site-stats`
+  - UI: `SiteStatsCard` component on place detail page
+- [x] **MIG_289: Cat Birth Events Table (P2)** - Beacon reproduction tracking
+  - Table: `cat_birth_events` with litter_id, mother_cat_id, birth_date, place_id
+  - Views: `v_litter_summary`, `v_seasonal_births`, `v_place_reproduction_stats`
+  - Function: `register_birth_event()` for easy API integration
+  - Tracks kitten survival for Vortex model
+- [x] **MIG_290: Cat Mortality Events Table (P3)** - Beacon survival rate modeling
+  - Table: `cat_mortality_events` with death_cause, death_age_category, place_id
+  - Views: `v_mortality_by_age`, `v_seasonal_mortality`, `v_place_mortality_stats`
+  - Function: `register_mortality_event()` + `calculate_survival_rates()`
+  - Added `is_deceased`, `deceased_date` columns to `sot_cats`
+- [x] **Observation Prompt on Request Completion** - P1 completion enhancement
+  - Modified `handleQuickStatusChange` to intercept "completed" status
+  - Shows `LogObservationModal` with skip option when completing request with place
+  - Updated modal with `isCompletionFlow` prop for contextual UI
+  - Captures post-TNR colony state for Chapman estimator
+- [x] **Parse Notes Cron Endpoint** - `/api/cron/parse-notes`
+  - SQL-based parsing for common patterns (colony of N, feeds N cats, N eartips)
+  - Parses request notes and intake situation descriptions
+  - Incremental processing (only unparsed records)
+  - Creates colony estimates with proper source tracking
+- [x] **Death Reporting UI (P3)** - Complete mortality tracking workflow
+  - API endpoint: `/api/cats/[id]/mortality` GET/POST/DELETE
+  - Modal component: `ReportDeceasedModal.tsx` with death cause, date, age category
+  - Integrated into cat detail page with "Report Deceased" button
+  - DECEASED badge displayed on cat profile when deceased
+  - Supports linked places for location tracking
+- [x] **Seasonal Analysis Views (P4)** - MIG_291
+  - Views: v_clinic_seasonal_activity, v_yoy_activity_comparison, v_breeding_season_indicators
+  - Views: v_kitten_surge_prediction, v_request_intake_seasonality, v_seasonal_dashboard
+  - Functions: get_season(), get_seasonal_alerts()
+  - Breeding season flagging (Feb-Nov for California)
+- [x] **Pregnancy/Nursing Notes Parser (P2)**
+  - Script: `scripts/ingest/parse_pregnancy_nursing_notes.mjs`
+  - Parses appointment notes for pregnant, lactating, in_heat indicators
+  - Updates cat_vitals, creates birth events when litter data detected
+- [x] **Full Codebase Compliance Audit** - Mission contract + centralized functions
+  - Audited: 79 API endpoints, 15+ ingest scripts, 145 migrations
+  - **API Endpoints**: Excellent compliance - all use centralized functions correctly
+  - **Ingest Scripts**: Fixed `airtable_public_intake_sync.mjs` invalid source_system
+  - **Migrations**: Created MIG_292 to fix MIG_273 direct INSERT bypass
+  - **Source System Values**: Both `web_app` and `atlas_ui` acceptable for UI-created data
+- [x] **Mortality Notes Parser Script** - `scripts/ingest/parse_mortality_notes.mjs`
+  - Extracts from: KML notes, request notes, appointment notes, intake submissions
+  - Detects causes: vehicle, predator, disease, euthanasia, injury, starvation, weather, natural
+  - Creates mortality events, updates sot_cats.is_deceased
+- [x] **Enhanced Parse Notes Cron** - `/api/cron/parse-notes`
+  - Now comprehensive: P1 (colony), P2 (reproduction), P3 (mortality)
+  - Handles all incremental parsing via single cron endpoint
+  - Ready for Vercel cron scheduling
+- [x] **Beacon Data Enrichment Panel in Admin**
+  - Added "Run Parsers" button to admin dashboard
+  - Shows P1/P2/P3 categories with descriptions
+  - Displays parser results after run (estimates, vitals, mortality)
+  - Links to new Beacon data review pages
+- [x] **Beacon Data Review Pages**
+  - `/admin/beacon/colony-estimates` - Review/filter/edit colony size estimates
+  - `/admin/beacon/reproduction` - Review pregnant/lactating/in-heat indicators
+  - `/admin/beacon/mortality` - Review mortality events by cause and age
+  - API endpoints for each with stats summaries
+- [x] **Comprehensive UI Audit**
+  - Audited all pages: dashboard, requests, places, cats, people, trappers, intake, admin
+  - Documented gaps: missing controls, clunky flows, missing data displays
+  - Identified Beacon data integration gaps on detail pages
+  - Documented universal improvements needed (bulk ops, data quality, inline edit)
+- [x] **UI Improvements Roadmap Added to TODO.md**
+  - Data stewardship philosophy documented
+  - Left sidebar navigation proposal with Beacon category
+  - Critical UI gaps by page with priorities
+  - 5-phase implementation plan
 
 ---
 

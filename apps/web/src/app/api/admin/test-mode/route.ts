@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error enabling test mode:", error);
     return NextResponse.json(
-      { error: "Failed to enable test mode", details: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Failed to enable test mode" },
       { status: 500 }
     );
   }
@@ -245,7 +245,7 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error("Error disabling test mode:", error);
     return NextResponse.json(
-      { error: "Failed to disable test mode", details: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Failed to disable test mode" },
       { status: 500 }
     );
   }

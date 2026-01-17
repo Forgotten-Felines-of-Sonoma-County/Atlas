@@ -26,8 +26,13 @@ import crypto from 'crypto';
 
 const { Client } = pg;
 
-// Airtable config
-const AIRTABLE_PAT = process.env.AIRTABLE_PAT || 'patcjKFzC852FH3sI.ac4874470b704b94ed1545a6d7d67bab536f576d6f3292bdccc9d1eadf635351';
+// Airtable config - AIRTABLE_PAT is REQUIRED (no hardcoded fallback for security)
+const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
+if (!AIRTABLE_PAT) {
+  console.error('ERROR: AIRTABLE_PAT environment variable is required');
+  console.error('Set it with: export AIRTABLE_PAT=your_token_here');
+  process.exit(1);
+}
 const BASE_ID = 'appl6zLrRFDvsz0dh';
 const TABLE_ID = 'tbltFEFUPMS6KZU8Y';  // Appointment Requests
 

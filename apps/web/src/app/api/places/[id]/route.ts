@@ -22,6 +22,12 @@ interface PlaceDetailRow {
   person_count: number;
 }
 
+interface VerificationInfo {
+  verified_at: string | null;
+  verified_by: string | null;
+  verified_by_name: string | null;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -77,16 +83,35 @@ export async function GET(
       );
     }
 
+    // Fetch verification info from places table
+    const verification = await queryOne<VerificationInfo>(
+      `SELECT
+         p.verified_at,
+         p.verified_by,
+         s.display_name AS verified_by_name
+       FROM trapper.places p
+       LEFT JOIN trapper.staff s ON p.verified_by = s.staff_id::text
+       WHERE p.place_id = $1`,
+      [placeId]
+    );
+
+    const response = {
+      ...place,
+      verified_at: verification?.verified_at || null,
+      verified_by: verification?.verified_by || null,
+      verified_by_name: verification?.verified_by_name || null,
+    };
+
     // Include redirect info if the original ID was merged
     if (mergeCheck?.merged_into_place_id) {
       return NextResponse.json({
-        ...place,
+        ...response,
         _merged_from: id,
         _canonical_id: placeId,
       });
     }
 
-    return NextResponse.json(place);
+    return NextResponse.json(response);
   } catch (error) {
     console.error("Error fetching place detail:", error);
     return NextResponse.json(

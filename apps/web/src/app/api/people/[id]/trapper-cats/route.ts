@@ -116,7 +116,7 @@ export async function POST(
 
     // Handle specific error messages from the function
     const errorMessage =
-      error instanceof Error ? error.message : "Failed to add catch";
+      error instanceof Error ? error.message : "";
 
     if (errorMessage.includes("not an active trapper")) {
       return NextResponse.json(
@@ -125,6 +125,6 @@ export async function POST(
       );
     }
 
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    return NextResponse.json({ error: "Failed to add catch" }, { status: 500 });
   }
 }

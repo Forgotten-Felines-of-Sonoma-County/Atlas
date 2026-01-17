@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 
 interface JournalEntryRow {
   id: string;
@@ -141,7 +142,8 @@ export async function PATCH(
     }
 
     // Always update updated_by and updated_at
-    const updatedBy = data.updated_by || "app_user"; // TODO: Get from auth context
+    const user = getCurrentUser(request);
+    const updatedBy = data.updated_by || user.displayName;
     updates.push(`updated_by = $${paramIndex}`);
     values.push(updatedBy);
     paramIndex++;
@@ -193,7 +195,8 @@ export async function DELETE(
 
   // Get optional reason from query params
   const reason = request.nextUrl.searchParams.get("reason");
-  const archivedBy = request.nextUrl.searchParams.get("archived_by") || "app_user";
+  const user = getCurrentUser(request);
+  const archivedBy = request.nextUrl.searchParams.get("archived_by") || user.displayName;
 
   try {
     const result = await queryOne<{ id: string }>(

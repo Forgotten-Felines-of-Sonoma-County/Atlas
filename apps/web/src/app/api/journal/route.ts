@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryRows, query, queryOne } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 
-// Modern journal entry schema (MIG_140 + MIG_244)
+// Modern journal entry schema (MIG_140 + MIG_244 + MIG_276)
 interface JournalEntryRow {
   id: string;
   entry_kind: string;
@@ -11,6 +12,9 @@ interface JournalEntryRow {
   primary_person_id: string | null;
   primary_place_id: string | null;
   primary_request_id: string | null;
+  primary_submission_id: string | null;
+  contact_method: string | null;
+  contact_result: string | null;
   created_by: string | null;
   created_by_staff_id: string | null;
   created_at: string;
@@ -26,6 +30,7 @@ interface JournalEntryRow {
   cat_name?: string;
   person_name?: string;
   place_name?: string;
+  submission_name?: string;
   created_by_staff_name?: string;
   created_by_staff_role?: string;
 }
@@ -38,6 +43,7 @@ export async function GET(request: NextRequest) {
   const personId = searchParams.get("person_id");
   const placeId = searchParams.get("place_id");
   const requestId = searchParams.get("request_id");
+  const submissionId = searchParams.get("submission_id");
   const entryKind = searchParams.get("entry_kind");
   const includeArchived = searchParams.get("include_archived") === "true";
   const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
@@ -76,6 +82,12 @@ export async function GET(request: NextRequest) {
     paramIndex++;
   }
 
+  if (submissionId) {
+    conditions.push(`je.primary_submission_id = $${paramIndex}`);
+    params.push(submissionId);
+    paramIndex++;
+  }
+
   if (entryKind) {
     conditions.push(`je.entry_kind = $${paramIndex}::trapper.journal_entry_kind`);
     params.push(entryKind);
@@ -95,6 +107,9 @@ export async function GET(request: NextRequest) {
         je.primary_person_id,
         je.primary_place_id,
         je.primary_request_id,
+        je.primary_submission_id,
+        je.contact_method,
+        je.contact_result,
         je.created_by,
         je.created_by_staff_id,
         je.created_at,
@@ -109,12 +124,14 @@ export async function GET(request: NextRequest) {
         c.display_name AS cat_name,
         p.display_name AS person_name,
         pl.display_name AS place_name,
+        sub.first_name || ' ' || sub.last_name AS submission_name,
         s.display_name AS created_by_staff_name,
         s.role AS created_by_staff_role
       FROM trapper.journal_entries je
       LEFT JOIN trapper.sot_cats c ON c.cat_id = je.primary_cat_id
       LEFT JOIN trapper.sot_people p ON p.person_id = je.primary_person_id
       LEFT JOIN trapper.places pl ON pl.place_id = je.primary_place_id
+      LEFT JOIN trapper.web_intake_submissions sub ON sub.submission_id = je.primary_submission_id
       LEFT JOIN trapper.staff s ON s.staff_id = je.created_by_staff_id
       ${whereClause}
       ORDER BY je.is_pinned DESC, COALESCE(je.occurred_at, je.created_at) DESC
@@ -158,6 +175,10 @@ interface CreateEntryBody {
   person_id?: string;
   place_id?: string;
   request_id?: string;
+  submission_id?: string;
+  // Contact attempt fields (for entry_kind = 'contact_attempt')
+  contact_method?: string;
+  contact_result?: string;
   occurred_at?: string;
   created_by?: string;
   created_by_staff_id?: string;
@@ -188,15 +209,17 @@ export async function POST(request: NextRequest) {
     }
 
     // At least one entity must be linked
-    if (!data.cat_id && !data.person_id && !data.place_id && !data.request_id) {
+    if (!data.cat_id && !data.person_id && !data.place_id && !data.request_id && !data.submission_id) {
       return NextResponse.json(
-        { error: "At least one of cat_id, person_id, place_id, or request_id is required" },
+        { error: "At least one of cat_id, person_id, place_id, request_id, or submission_id is required" },
         { status: 400 }
       );
     }
 
     const entryKind = data.entry_kind || "note";
-    const createdBy = data.created_by || "app_user"; // TODO: Get from auth context
+    const user = getCurrentUser(request);
+    const createdBy = data.created_by || user.displayName;
+    const createdByStaffId = data.created_by_staff_id || user.staffId;
 
     const result = await queryOne<{ id: string }>(
       `INSERT INTO trapper.journal_entries (
@@ -207,6 +230,9 @@ export async function POST(request: NextRequest) {
         primary_person_id,
         primary_place_id,
         primary_request_id,
+        primary_submission_id,
+        contact_method,
+        contact_result,
         created_by,
         created_by_staff_id,
         occurred_at,
@@ -222,7 +248,10 @@ export async function POST(request: NextRequest) {
         $8,
         $9,
         $10,
-        $11
+        $11,
+        $12,
+        $13,
+        $14
       )
       RETURNING id`,
       [
@@ -233,8 +262,11 @@ export async function POST(request: NextRequest) {
         data.person_id || null,
         data.place_id || null,
         data.request_id || null,
+        data.submission_id || null,
+        data.contact_method || null,
+        data.contact_result || null,
         createdBy,
-        data.created_by_staff_id || null,
+        createdByStaffId,
         data.occurred_at || null,
         data.tags || [],
       ]
@@ -244,6 +276,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Failed to create journal entry" },
         { status: 500 }
+      );
+    }
+
+    // If this is a contact_attempt on a submission, update the denormalized contact fields
+    if (data.submission_id && entryKind === "contact_attempt") {
+      await query(
+        `UPDATE trapper.web_intake_submissions
+         SET
+           last_contacted_at = COALESCE($2, NOW()),
+           last_contact_method = $3,
+           contact_attempt_count = COALESCE(contact_attempt_count, 0) + 1,
+           updated_at = NOW()
+         WHERE submission_id = $1`,
+        [
+          data.submission_id,
+          data.occurred_at || null,
+          data.contact_method || null,
+        ]
       );
     }
 

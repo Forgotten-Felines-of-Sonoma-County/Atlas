@@ -9,6 +9,8 @@ interface IntakeSubmission {
   submission_id: string;
   submitted_at: string;
   submitter_name: string;
+  first_name?: string;  // Optional - may come from detail fetch
+  last_name?: string;   // Optional - may come from detail fetch
   email: string;
   phone: string | null;
   cats_address: string;
@@ -67,6 +69,10 @@ interface CommunicationLog {
   notes: string | null;
   contacted_at: string;
   contacted_by: string | null;
+  // New fields from journal integration
+  entry_kind?: string;
+  created_by_staff_name?: string | null;
+  created_by_staff_role?: string | null;
 }
 
 interface StaffMember {
@@ -407,6 +413,85 @@ function IntakeQueueContent() {
   const [situationEdit, setSituationEdit] = useState("");
   const [savingSection, setSavingSection] = useState(false);
 
+  // Contact info editing state
+  const [editingContact, setEditingContact] = useState(false);
+  const [contactEdits, setContactEdits] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+  });
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkStatusTarget, setBulkStatusTarget] = useState<string>("");
+
+  const toggleSelect = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedIds(newSet);
+  };
+
+  const toggleSelectAll = (currentSubs: IntakeSubmission[]) => {
+    if (selectedIds.size === currentSubs.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(currentSubs.map((s) => s.submission_id)));
+    }
+  };
+
+  const handleBulkStatusUpdate = async () => {
+    if (selectedIds.size === 0 || !bulkStatusTarget) return;
+    if (!confirm(`Update ${selectedIds.size} submissions to "${bulkStatusTarget}"?`)) return;
+
+    setBulkUpdating(true);
+    try {
+      const promises = Array.from(selectedIds).map((id) =>
+        fetch(`/api/intake/queue/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ submission_status: bulkStatusTarget }),
+        })
+      );
+      await Promise.all(promises);
+      setSelectedIds(new Set());
+      setBulkStatusTarget("");
+      await fetchSubmissions();
+    } catch (err) {
+      alert("Error updating submissions");
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  const handleBulkArchive = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Archive ${selectedIds.size} submissions?`)) return;
+
+    setBulkUpdating(true);
+    try {
+      const promises = Array.from(selectedIds).map((id) =>
+        fetch(`/api/intake/queue/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ submission_status: "archived" }),
+        })
+      );
+      await Promise.all(promises);
+      setSelectedIds(new Set());
+      await fetchSubmissions();
+    } catch (err) {
+      alert("Error archiving submissions");
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   const fetchSubmissions = useCallback(async () => {
     setLoading(true);
     try {
@@ -686,6 +771,7 @@ function IntakeQueueContent() {
     // Reset section edit states
     setEditingCats(false);
     setEditingSituation(false);
+    setEditingContact(false);
   };
 
   const handleSaveStatus = async () => {
@@ -1176,6 +1262,85 @@ function IntakeQueueContent() {
         });
 
         return (
+        <div>
+          {/* Bulk Action Bar */}
+          {selectedIds.size > 0 && (
+            <div
+              style={{
+                padding: "0.75rem 1rem",
+                background: "#dbeafe",
+                borderRadius: "8px",
+                marginBottom: "1rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "0.5rem",
+              }}
+            >
+              <span style={{ fontWeight: 500, color: "#1e40af" }}>
+                {selectedIds.size} submission{selectedIds.size !== 1 ? "s" : ""} selected
+              </span>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                <select
+                  value={bulkStatusTarget}
+                  onChange={(e) => setBulkStatusTarget(e.target.value)}
+                  style={{ minWidth: "140px", padding: "0.4rem 0.5rem", fontSize: "0.875rem" }}
+                >
+                  <option value="">Change status to...</option>
+                  <option value="new">New</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="complete">Complete</option>
+                </select>
+                <button
+                  onClick={handleBulkStatusUpdate}
+                  disabled={!bulkStatusTarget || bulkUpdating}
+                  style={{
+                    padding: "0.4rem 0.75rem",
+                    border: "none",
+                    borderRadius: "6px",
+                    background: bulkStatusTarget ? "#2563eb" : "#94a3b8",
+                    color: "white",
+                    cursor: bulkStatusTarget && !bulkUpdating ? "pointer" : "not-allowed",
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  {bulkUpdating ? "Updating..." : "Apply"}
+                </button>
+                <button
+                  onClick={handleBulkArchive}
+                  disabled={bulkUpdating}
+                  style={{
+                    padding: "0.4rem 0.75rem",
+                    border: "1px solid #dc2626",
+                    borderRadius: "6px",
+                    background: "transparent",
+                    color: "#dc2626",
+                    cursor: bulkUpdating ? "not-allowed" : "pointer",
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  Archive
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  style={{
+                    padding: "0.4rem 0.75rem",
+                    border: "1px solid #64748b",
+                    borderRadius: "6px",
+                    background: "transparent",
+                    color: "#64748b",
+                    cursor: "pointer",
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+
         <div className="table-container">
           {sortedGroups.map(([groupName, groupSubs]) => (
             <div key={groupName || "all"} style={{ marginBottom: groupBy ? "2rem" : 0 }}>
@@ -1199,6 +1364,13 @@ function IntakeQueueContent() {
           <table>
             <thead>
               <tr>
+                <th style={{ width: "40px", textAlign: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === sortedSubmissions.length && sortedSubmissions.length > 0}
+                    onChange={() => toggleSelectAll(sortedSubmissions)}
+                  />
+                </th>
                 <th style={{ width: "60px" }}>Type</th>
                 <th style={{ width: "180px" }}>Submitter</th>
                 <th style={{ width: "200px" }}>Location</th>
@@ -1213,7 +1385,9 @@ function IntakeQueueContent() {
                 <tr
                   key={sub.submission_id}
                   style={{
-                    background: sub.is_emergency
+                    background: selectedIds.has(sub.submission_id)
+                      ? "#dbeafe"
+                      : sub.is_emergency
                       ? "rgba(220, 53, 69, 0.1)"
                       : sub.submission_status === "scheduled"
                       ? "rgba(25, 135, 84, 0.05)"
@@ -1222,6 +1396,13 @@ function IntakeQueueContent() {
                       : undefined,
                   }}
                 >
+                  <td style={{ textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(sub.submission_id)}
+                      onChange={() => toggleSelect(sub.submission_id)}
+                    />
+                  </td>
                   <td>
                     <span
                       className="badge"
@@ -1246,6 +1427,11 @@ function IntakeQueueContent() {
                     {sub.is_third_party_report && (
                       <span style={{ fontSize: "0.65rem", background: "#ffc107", color: "#000", padding: "1px 4px", borderRadius: "3px" }}>
                         3RD PARTY
+                      </span>
+                    )}
+                    {sub.is_test && (
+                      <span style={{ fontSize: "0.65rem", background: "#dc3545", color: "#fff", padding: "1px 4px", borderRadius: "3px", marginLeft: "4px" }}>
+                        TEST
                       </span>
                     )}
                   </td>
@@ -1275,7 +1461,14 @@ function IntakeQueueContent() {
                   <td>
                     <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                       {/* Unified status badge */}
-                      <SubmissionStatusBadge status={sub.submission_status} />
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <SubmissionStatusBadge status={sub.submission_status} />
+                        {sub.overdue && (
+                          <span style={{ fontSize: "0.6rem", background: "#ffc107", color: "#000", padding: "1px 4px", borderRadius: "3px" }} title="No activity for 48+ hours">
+                            STALE
+                          </span>
+                        )}
+                      </div>
                       {/* Triage category if available */}
                       {sub.triage_category && (
                         <span
@@ -1425,6 +1618,7 @@ function IntakeQueueContent() {
             </div>
           ))}
         </div>
+        </div>
         );
       })()}
 
@@ -1457,19 +1651,139 @@ function IntakeQueueContent() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
+            {/* Header with Contact Editing */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "1rem" }}>
-              <div>
-                <h2 style={{ margin: 0 }}>{normalizeName(selectedSubmission.submitter_name)}</h2>
-                <p style={{ color: "var(--muted)", margin: "0.25rem 0", fontSize: "0.9rem" }}>
-                  {selectedSubmission.email}
-                  {selectedSubmission.phone && ` | ${selectedSubmission.phone}`}
-                </p>
+              <div style={{ flex: 1 }}>
+                {editingContact ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.7rem", color: "var(--muted)", marginBottom: "0.125rem" }}>First Name</label>
+                        <input
+                          type="text"
+                          value={contactEdits.first_name}
+                          onChange={(e) => setContactEdits({ ...contactEdits, first_name: e.target.value })}
+                          style={{ width: "100%", padding: "0.375rem", fontSize: "0.9rem", borderRadius: "4px", border: "1px solid var(--border)" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.7rem", color: "var(--muted)", marginBottom: "0.125rem" }}>Last Name</label>
+                        <input
+                          type="text"
+                          value={contactEdits.last_name}
+                          onChange={(e) => setContactEdits({ ...contactEdits, last_name: e.target.value })}
+                          style={{ width: "100%", padding: "0.375rem", fontSize: "0.9rem", borderRadius: "4px", border: "1px solid var(--border)" }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.7rem", color: "var(--muted)", marginBottom: "0.125rem" }}>Email</label>
+                        <input
+                          type="email"
+                          value={contactEdits.email}
+                          onChange={(e) => setContactEdits({ ...contactEdits, email: e.target.value })}
+                          style={{ width: "100%", padding: "0.375rem", fontSize: "0.9rem", borderRadius: "4px", border: "1px solid var(--border)" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.7rem", color: "var(--muted)", marginBottom: "0.125rem" }}>Phone</label>
+                        <input
+                          type="tel"
+                          value={contactEdits.phone}
+                          onChange={(e) => setContactEdits({ ...contactEdits, phone: e.target.value })}
+                          style={{ width: "100%", padding: "0.375rem", fontSize: "0.9rem", borderRadius: "4px", border: "1px solid var(--border)" }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.25rem" }}>
+                      <button
+                        onClick={async () => {
+                          setSavingSection(true);
+                          try {
+                            const res = await fetch(`/api/intake/queue/${selectedSubmission.submission_id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                first_name: contactEdits.first_name || null,
+                                last_name: contactEdits.last_name || null,
+                                email: contactEdits.email || null,
+                                phone: contactEdits.phone || null,
+                              }),
+                            });
+                            if (res.ok) {
+                              const data = await res.json();
+                              // Update local state with new name constructed from first/last
+                              const newName = `${contactEdits.first_name || ""} ${contactEdits.last_name || ""}`.trim();
+                              setSelectedSubmission({
+                                ...selectedSubmission,
+                                ...data.submission,
+                                submitter_name: newName || selectedSubmission.submitter_name,
+                                email: contactEdits.email || selectedSubmission.email,
+                                phone: contactEdits.phone || selectedSubmission.phone,
+                              });
+                              setEditingContact(false);
+                              fetchSubmissions();
+                            }
+                          } catch (err) {
+                            console.error("Failed to save contact:", err);
+                          } finally {
+                            setSavingSection(false);
+                          }
+                        }}
+                        disabled={savingSection}
+                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", background: "#198754", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                      >
+                        {savingSection ? "..." : "Save"}
+                      </button>
+                      <button
+                        onClick={() => setEditingContact(false)}
+                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer" }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <h2 style={{ margin: 0 }}>{normalizeName(selectedSubmission.submitter_name)}</h2>
+                      <button
+                        onClick={() => {
+                          // Parse submitter_name into first/last name
+                          const nameParts = (selectedSubmission.submitter_name || "").trim().split(" ");
+                          const firstName = nameParts[0] || "";
+                          const lastName = nameParts.slice(1).join(" ") || "";
+                          setContactEdits({
+                            first_name: selectedSubmission.first_name || firstName,
+                            last_name: selectedSubmission.last_name || lastName,
+                            email: selectedSubmission.email || "",
+                            phone: selectedSubmission.phone || "",
+                          });
+                          setEditingContact(true);
+                        }}
+                        style={{ padding: "0.125rem 0.375rem", fontSize: "0.7rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer", color: "var(--muted)" }}
+                        title="Edit contact info"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <p style={{ color: "var(--muted)", margin: "0.25rem 0", fontSize: "0.9rem" }}>
+                      {selectedSubmission.email}
+                      {selectedSubmission.phone && ` | ${selectedSubmission.phone}`}
+                    </p>
+                  </>
+                )}
                 <p style={{ color: "var(--muted)", margin: 0, fontSize: "0.8rem" }}>
                   Submitted {formatDate(selectedSubmission.submitted_at)}
                 </p>
               </div>
               <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                {selectedSubmission.is_test && (
+                  <span style={{ background: "#dc3545", color: "#fff", padding: "0.25rem 0.5rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: "bold" }}>
+                    TEST
+                  </span>
+                )}
                 {selectedSubmission.is_legacy && (
                   <span style={{ background: "#6c757d", color: "#fff", padding: "0.25rem 0.5rem", borderRadius: "4px", fontSize: "0.75rem" }}>
                     Legacy
@@ -2598,60 +2912,85 @@ function IntakeQueueContent() {
                 <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>Loading...</p>
               ) : communicationLogs.length === 0 ? (
                 <p style={{ color: "var(--muted)", fontSize: "0.9rem", margin: 0 }}>
-                  No contact attempts logged yet.
+                  No journal entries logged yet.
                 </p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  {communicationLogs.map((log) => (
-                    <div
-                      key={log.log_id}
-                      style={{
-                        padding: "0.5rem 0.75rem",
-                        background: "var(--background)",
-                        borderRadius: "6px",
-                        border: "1px solid var(--border)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div>
-                          <span style={{ fontWeight: 500 }}>
-                            {CONTACT_METHODS.find(m => m.value === log.contact_method)?.label || log.contact_method}
-                          </span>
-                          <span style={{ color: "var(--muted)", margin: "0 0.5rem" }}>→</span>
-                          <span style={{
-                            padding: "0.125rem 0.5rem",
-                            borderRadius: "4px",
-                            fontSize: "0.8rem",
-                            background: log.contact_result === "answered" || log.contact_result === "scheduled"
-                              ? "rgba(25, 135, 84, 0.15)"
-                              : log.contact_result === "no_answer"
-                              ? "rgba(108, 117, 125, 0.15)"
-                              : "rgba(13, 110, 253, 0.15)",
-                            color: log.contact_result === "answered" || log.contact_result === "scheduled"
-                              ? "#198754"
-                              : log.contact_result === "no_answer"
-                              ? "#6c757d"
-                              : "#0d6efd",
-                          }}>
-                            {CONTACT_RESULTS.find(r => r.value === log.contact_result)?.label || log.contact_result}
+                  {communicationLogs.map((log) => {
+                    const isNote = log.entry_kind === "note" || !log.contact_method;
+                    const displayName = log.created_by_staff_name || log.contacted_by;
+
+                    return (
+                      <div
+                        key={log.log_id}
+                        style={{
+                          padding: "0.5rem 0.75rem",
+                          background: "var(--background)",
+                          borderRadius: "6px",
+                          border: "1px solid var(--border)",
+                          borderLeft: `3px solid ${isNote ? "#0d6efd" : "#6f42c1"}`,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.25rem" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            {/* Entry type badge */}
+                            <span style={{
+                              padding: "0.125rem 0.4rem",
+                              borderRadius: "3px",
+                              fontSize: "0.7rem",
+                              fontWeight: 500,
+                              background: isNote ? "#0d6efd" : "#6f42c1",
+                              color: "#fff",
+                            }}>
+                              {isNote ? "Note" : "Contact"}
+                            </span>
+
+                            {/* Contact method and result (only for contact attempts) */}
+                            {!isNote && (
+                              <>
+                                <span style={{ fontWeight: 500, fontSize: "0.85rem" }}>
+                                  {CONTACT_METHODS.find(m => m.value === log.contact_method)?.label || log.contact_method}
+                                </span>
+                                <span style={{ color: "var(--muted)" }}>→</span>
+                                <span style={{
+                                  padding: "0.125rem 0.5rem",
+                                  borderRadius: "4px",
+                                  fontSize: "0.75rem",
+                                  background: log.contact_result === "answered" || log.contact_result === "scheduled"
+                                    ? "rgba(25, 135, 84, 0.15)"
+                                    : log.contact_result === "no_answer"
+                                    ? "rgba(108, 117, 125, 0.15)"
+                                    : "rgba(13, 110, 253, 0.15)",
+                                  color: log.contact_result === "answered" || log.contact_result === "scheduled"
+                                    ? "#198754"
+                                    : log.contact_result === "no_answer"
+                                    ? "#6c757d"
+                                    : "#0d6efd",
+                                }}>
+                                  {CONTACT_RESULTS.find(r => r.value === log.contact_result)?.label || log.contact_result}
+                                </span>
+                              </>
+                            )}
+
+                            {/* Staff name */}
+                            {displayName && (
+                              <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                                by {displayName}{log.created_by_staff_role ? ` (${log.created_by_staff_role})` : ""}
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                            {new Date(log.contacted_at).toLocaleString()}
                           </span>
                         </div>
-                        <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                          {new Date(log.contacted_at).toLocaleString()}
-                        </span>
+                        {log.notes && (
+                          <div style={{ fontSize: "0.85rem", marginTop: "0.35rem", whiteSpace: "pre-wrap" }}>
+                            {log.notes}
+                          </div>
+                        )}
                       </div>
-                      {log.contacted_by && (
-                        <div style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: "0.25rem" }}>
-                          By: {log.contacted_by}
-                        </div>
-                      )}
-                      {log.notes && (
-                        <div style={{ fontSize: "0.85rem", marginTop: "0.25rem", whiteSpace: "pre-wrap" }}>
-                          {log.notes}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/geocode",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/entity-linking",
+      "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/cron/send-emails",
+      "schedule": "0 8 * * *"
     }
   ]
 }

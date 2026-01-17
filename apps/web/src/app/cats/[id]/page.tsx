@@ -7,19 +7,10 @@ import { BackButton } from "@/components/BackButton";
 import { EditHistory } from "@/components/EditHistory";
 import { OwnershipTransferWizard } from "@/components/OwnershipTransferWizard";
 import { CatMovementSection } from "@/components/CatMovementSection";
-
-// Format date string without timezone shift (for date-only values like "2026-01-12")
-function formatDateLocal(dateStr: string | null | undefined): string {
-  if (!dateStr) return "";
-  // Parse YYYY-MM-DD format directly to avoid timezone issues
-  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (match) {
-    const [, year, month, day] = match;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day)).toLocaleDateString();
-  }
-  // Fallback for other formats
-  return new Date(dateStr).toLocaleDateString();
-}
+import { EntityLink } from "@/components/EntityLink";
+import { VerificationBadge, LastVerified } from "@/components/VerificationBadge";
+import { formatDateLocal } from "@/lib/formatters";
+import ReportDeceasedModal from "@/components/ReportDeceasedModal";
 
 interface Owner {
   person_id: string;
@@ -101,6 +92,43 @@ interface CatVisit {
   treatments: string[];
 }
 
+interface MortalityEvent {
+  mortality_event_id: string;
+  death_date: string | null;
+  death_cause: string;
+  death_age_category: string;
+  source_system: string;
+  notes: string | null;
+  created_at: string;
+}
+
+interface BirthEvent {
+  birth_event_id: string;
+  litter_id: string;
+  mother_cat_id: string | null;
+  mother_name: string | null;
+  birth_date: string | null;
+  birth_date_precision: string;
+  birth_year: number | null;
+  birth_month: number | null;
+  birth_season: string | null;
+  place_id: string | null;
+  place_name: string | null;
+  kitten_count_in_litter: number | null;
+  survived_to_weaning: boolean | null;
+  litter_survived_count: number | null;
+  source_system: string;
+  notes: string | null;
+  created_at: string;
+}
+
+interface Sibling {
+  cat_id: string;
+  display_name: string;
+  sex: string | null;
+  microchip: string | null;
+}
+
 interface CatDetail {
   cat_id: string;
   display_name: string;
@@ -128,8 +156,16 @@ interface CatDetail {
   first_visit_date: string | null;
   total_visits: number;
   photo_url: string | null;
+  is_deceased: boolean | null;
+  deceased_date: string | null;
+  mortality_event: MortalityEvent | null;
+  birth_event: BirthEvent | null;
+  siblings: Sibling[];
   created_at: string;
   updated_at: string;
+  verified_at: string | null;
+  verified_by: string | null;
+  verified_by_name: string | null;
 }
 
 // Medical chart condition checklist item
@@ -356,53 +392,6 @@ function Section({
   );
 }
 
-// Clickable link pill for related entities
-function EntityLink({
-  href,
-  label,
-  badge,
-  badgeColor,
-}: {
-  href: string;
-  label: string;
-  badge?: string;
-  badgeColor?: string;
-}) {
-  return (
-    <a
-      href={href}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.5rem",
-        padding: "0.5rem 1rem",
-        background: "var(--card-bg, #f8f9fa)",
-        borderRadius: "8px",
-        textDecoration: "none",
-        color: "var(--foreground, #212529)",
-        border: "1px solid var(--border, #dee2e6)",
-        transition: "all 0.15s",
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.borderColor = "#adb5bd";
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = "var(--border, #dee2e6)";
-      }}
-    >
-      <span>{label}</span>
-      {badge && (
-        <span
-          className="badge"
-          style={{ background: badgeColor || "#6c757d", color: "#fff", fontSize: "0.7rem" }}
-        >
-          {badge}
-        </span>
-      )}
-    </a>
-  );
-}
-
 export default function CatDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -428,6 +417,7 @@ export default function CatDetailPage() {
   // Edit history and transfer wizard
   const [showHistory, setShowHistory] = useState(false);
   const [showTransferWizard, setShowTransferWizard] = useState(false);
+  const [showDeceasedModal, setShowDeceasedModal] = useState(false);
 
   const fetchCat = useCallback(async () => {
     try {
@@ -608,7 +598,16 @@ export default function CatDetailPage() {
           {/* Patient Info */}
           <div style={{ flex: 1, minWidth: "200px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-              <h1 style={{ margin: 0, fontSize: "1.75rem", color: "#212529" }}>{cat.display_name}</h1>
+              <h1 style={{ margin: 0, fontSize: "1.75rem", color: cat.is_deceased ? "#6c757d" : "#212529" }}>{cat.display_name}</h1>
+              {cat.is_deceased && (
+                <span
+                  className="badge"
+                  style={{ background: "#dc3545", color: "#fff", fontSize: "0.6em" }}
+                  title={cat.deceased_date ? `Deceased: ${formatDateLocal(cat.deceased_date)}` : "Deceased"}
+                >
+                  DECEASED
+                </span>
+              )}
               <DataSourceBadge dataSource={cat.data_source} />
               <OwnershipTypeBadge ownershipType={cat.ownership_type} />
               {!editingBasic && (
@@ -649,6 +648,20 @@ export default function CatDetailPage() {
                   >
                     Edit
                   </button>
+                  {!cat.is_deceased && (
+                    <button
+                      onClick={() => setShowDeceasedModal(true)}
+                      style={{
+                        padding: "0.25rem 0.75rem",
+                        fontSize: "0.875rem",
+                        background: "transparent",
+                        color: "#dc3545",
+                        border: "1px solid #dc3545",
+                      }}
+                    >
+                      Report Deceased
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -905,6 +918,300 @@ export default function CatDetailPage() {
         </div>
       </Section>
 
+      {/* Reproduction Status - More prominent display */}
+      {cat.sex === "female" && cat.vitals && cat.vitals.length > 0 && (
+        (() => {
+          const reproVitals = cat.vitals.filter(v => v.is_pregnant || v.is_lactating || v.is_in_heat);
+          const hasReproData = reproVitals.length > 0;
+          const latestRepro = reproVitals[0];
+
+          return (
+            <Section title="Reproduction Status">
+              {hasReproData ? (
+                <div>
+                  <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+                    {latestRepro?.is_pregnant && (
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.75rem 1rem",
+                        background: "#fdf2f8",
+                        border: "2px solid #ec4899",
+                        borderRadius: "8px",
+                      }}>
+                        <span style={{ fontSize: "1.5rem" }}>🤰</span>
+                        <div>
+                          <div style={{ fontWeight: 600, color: "#ec4899" }}>Pregnant</div>
+                          <div className="text-muted text-sm">{formatDateLocal(latestRepro.recorded_at)}</div>
+                        </div>
+                      </div>
+                    )}
+                    {latestRepro?.is_lactating && (
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.75rem 1rem",
+                        background: "#f5f3ff",
+                        border: "2px solid #8b5cf6",
+                        borderRadius: "8px",
+                      }}>
+                        <span style={{ fontSize: "1.5rem" }}>🍼</span>
+                        <div>
+                          <div style={{ fontWeight: 600, color: "#8b5cf6" }}>Lactating</div>
+                          <div className="text-muted text-sm">{formatDateLocal(latestRepro.recorded_at)}</div>
+                        </div>
+                      </div>
+                    )}
+                    {latestRepro?.is_in_heat && (
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.75rem 1rem",
+                        background: "#fff7ed",
+                        border: "2px solid #f97316",
+                        borderRadius: "8px",
+                      }}>
+                        <span style={{ fontSize: "1.5rem" }}>🔥</span>
+                        <div>
+                          <div style={{ fontWeight: 600, color: "#f97316" }}>In Heat</div>
+                          <div className="text-muted text-sm">{formatDateLocal(latestRepro.recorded_at)}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Historical reproduction data */}
+                  {reproVitals.length > 1 && (
+                    <div>
+                      <h4 style={{ fontSize: "0.875rem", color: "#6c757d", marginBottom: "0.5rem" }}>Reproduction History</h4>
+                      <div className="table-container">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reproVitals.slice(0, 5).map(v => (
+                              <tr key={v.vital_id}>
+                                <td>{formatDateLocal(v.recorded_at)}</td>
+                                <td>
+                                  <div style={{ display: "flex", gap: "0.25rem" }}>
+                                    {v.is_pregnant && (
+                                      <span style={{ padding: "0.2rem 0.5rem", background: "#fdf2f8", color: "#ec4899", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 500 }}>
+                                        Pregnant
+                                      </span>
+                                    )}
+                                    {v.is_lactating && (
+                                      <span style={{ padding: "0.2rem 0.5rem", background: "#f5f3ff", color: "#8b5cf6", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 500 }}>
+                                        Lactating
+                                      </span>
+                                    )}
+                                    {v.is_in_heat && (
+                                      <span style={{ padding: "0.2rem 0.5rem", background: "#fff7ed", color: "#f97316", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 500 }}>
+                                        In Heat
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-muted text-sm" style={{ marginTop: "0.75rem" }}>
+                    Reproduction indicators are extracted from clinic appointment notes. Used by Beacon for birth rate estimation and kitten surge prediction.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-muted">No reproduction indicators recorded for this cat.</p>
+              )}
+            </Section>
+          );
+        })()
+      )}
+
+      {/* Birth Information */}
+      {cat.birth_event && (
+        <Section title="Birth Information">
+          <div
+            style={{
+              padding: "1rem",
+              background: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              borderRadius: "8px",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
+              <div>
+                <div className="text-muted text-sm">Birth Date</div>
+                <div style={{ fontWeight: 600 }}>
+                  {cat.birth_event.birth_date
+                    ? formatDateLocal(cat.birth_event.birth_date)
+                    : cat.birth_event.birth_year
+                    ? `${cat.birth_event.birth_season || ""} ${cat.birth_event.birth_year}`
+                    : "Unknown"}
+                  {cat.birth_event.birth_date_precision && cat.birth_event.birth_date_precision !== "exact" && (
+                    <span className="text-muted text-sm" style={{ marginLeft: "0.25rem" }}>
+                      ({cat.birth_event.birth_date_precision})
+                    </span>
+                  )}
+                </div>
+              </div>
+              {cat.birth_event.mother_cat_id && (
+                <div>
+                  <div className="text-muted text-sm">Mother</div>
+                  <div>
+                    <a href={`/cats/${cat.birth_event.mother_cat_id}`} style={{ fontWeight: 500, color: "#0d6efd" }}>
+                      {cat.birth_event.mother_name || "Unknown"}
+                    </a>
+                  </div>
+                </div>
+              )}
+              {cat.birth_event.place_id && (
+                <div>
+                  <div className="text-muted text-sm">Birth Location</div>
+                  <div>
+                    <a href={`/places/${cat.birth_event.place_id}`} style={{ fontWeight: 500, color: "#0d6efd" }}>
+                      {cat.birth_event.place_name || "Unknown"}
+                    </a>
+                  </div>
+                </div>
+              )}
+              {cat.birth_event.kitten_count_in_litter && (
+                <div>
+                  <div className="text-muted text-sm">Litter Size</div>
+                  <div style={{ fontWeight: 500 }}>
+                    {cat.birth_event.kitten_count_in_litter} kittens
+                    {cat.birth_event.litter_survived_count !== null && (
+                      <span className="text-muted text-sm" style={{ marginLeft: "0.25rem" }}>
+                        ({cat.birth_event.litter_survived_count} survived)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {cat.birth_event.survived_to_weaning !== null && (
+                <div>
+                  <div className="text-muted text-sm">Survived to Weaning</div>
+                  <div style={{ fontWeight: 500, color: cat.birth_event.survived_to_weaning ? "#16a34a" : "#dc2626" }}>
+                    {cat.birth_event.survived_to_weaning ? "Yes" : "No"}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Siblings */}
+            {cat.siblings && cat.siblings.length > 0 && (
+              <div style={{ borderTop: "1px solid #bbf7d0", paddingTop: "0.75rem", marginTop: "0.75rem" }}>
+                <div className="text-muted text-sm" style={{ marginBottom: "0.5rem" }}>Littermates ({cat.siblings.length})</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                  {cat.siblings.map(sibling => (
+                    <a
+                      key={sibling.cat_id}
+                      href={`/cats/${sibling.cat_id}`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.5rem 0.75rem",
+                        background: "#fff",
+                        border: "1px solid #d1d5db",
+                        borderRadius: "6px",
+                        textDecoration: "none",
+                        color: "inherit",
+                      }}
+                    >
+                      <span style={{ fontSize: "1.25rem" }}>🐱</span>
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{sibling.display_name}</div>
+                        {sibling.sex && (
+                          <div className="text-muted text-sm">{sibling.sex}</div>
+                        )}
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cat.birth_event.notes && (
+              <div style={{ borderTop: "1px solid #bbf7d0", paddingTop: "0.75rem", marginTop: "0.75rem" }}>
+                <div className="text-muted text-sm" style={{ marginBottom: "0.25rem" }}>Notes</div>
+                <p style={{ margin: 0, fontSize: "0.9rem" }}>{cat.birth_event.notes}</p>
+              </div>
+            )}
+
+            <p className="text-muted text-sm" style={{ marginTop: "0.75rem", fontSize: "0.8rem" }}>
+              Birth data used by Beacon for population modeling and litter tracking.
+            </p>
+          </div>
+        </Section>
+      )}
+
+      {/* Mortality Event Details */}
+      {cat.is_deceased && cat.mortality_event && (
+        <Section title="Mortality Record">
+          <div
+            style={{
+              padding: "1rem",
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: "8px",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
+              <div>
+                <div className="text-muted text-sm">Cause of Death</div>
+                <div style={{ fontWeight: 600, textTransform: "capitalize", color: "#dc2626" }}>
+                  {cat.mortality_event.death_cause}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted text-sm">Age Category</div>
+                <div style={{ fontWeight: 500, textTransform: "capitalize" }}>
+                  {cat.mortality_event.death_age_category}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted text-sm">Date of Death</div>
+                <div style={{ fontWeight: 500 }}>
+                  {cat.mortality_event.death_date
+                    ? formatDateLocal(cat.mortality_event.death_date)
+                    : cat.deceased_date
+                    ? formatDateLocal(cat.deceased_date)
+                    : "Unknown"}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted text-sm">Recorded</div>
+                <div className="text-muted text-sm">
+                  {formatDateLocal(cat.mortality_event.created_at)}
+                </div>
+              </div>
+            </div>
+
+            {cat.mortality_event.notes && (
+              <div style={{ borderTop: "1px solid #fecaca", paddingTop: "0.75rem" }}>
+                <div className="text-muted text-sm" style={{ marginBottom: "0.25rem" }}>Notes</div>
+                <p style={{ margin: 0, fontSize: "0.9rem" }}>{cat.mortality_event.notes}</p>
+              </div>
+            )}
+
+            <p className="text-muted text-sm" style={{ marginTop: "0.75rem", fontSize: "0.8rem" }}>
+              Mortality data used by Beacon for survival rate calculations and population modeling.
+            </p>
+          </div>
+        </Section>
+      )}
+
       {/* Latest Vitals */}
       {latestVital && (
         <Section title="Latest Vitals">
@@ -921,18 +1228,6 @@ export default function CatDetailPage() {
                 <span className="detail-value">{latestVital.weight_lbs} lbs</span>
               </div>
             )}
-            <div className="detail-item">
-              <span className="detail-label">Pregnant</span>
-              <span className="detail-value">{latestVital.is_pregnant ? "Yes" : "No"}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Lactating</span>
-              <span className="detail-value">{latestVital.is_lactating ? "Yes" : "No"}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">In Heat</span>
-              <span className="detail-value">{latestVital.is_in_heat ? "Yes" : "No"}</span>
-            </div>
             <div className="detail-item">
               <span className="detail-label">Recorded</span>
               <span className="detail-value">{formatDateLocal(latestVital.recorded_at)}</span>
@@ -1406,6 +1701,21 @@ export default function CatDetailPage() {
               {formatDateLocal(cat.updated_at)}
             </span>
           </div>
+          <div className="detail-item">
+            <span className="detail-label">Verification</span>
+            <span className="detail-value" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <VerificationBadge
+                table="cats"
+                recordId={cat.cat_id}
+                verifiedAt={cat.verified_at}
+                verifiedBy={cat.verified_by_name}
+                onVerify={() => fetchCat()}
+              />
+              {cat.verified_at && (
+                <LastVerified verifiedAt={cat.verified_at} verifiedBy={cat.verified_by_name} />
+              )}
+            </span>
+          </div>
         </div>
       </Section>
 
@@ -1469,6 +1779,18 @@ export default function CatDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Report Deceased Modal */}
+      <ReportDeceasedModal
+        isOpen={showDeceasedModal}
+        onClose={() => setShowDeceasedModal(false)}
+        catId={id}
+        catName={cat.display_name}
+        linkedPlaces={cat.places?.map(p => ({ place_id: p.place_id, label: p.label })) || []}
+        onSuccess={() => {
+          fetchCat(); // Refresh to show deceased status
+        }}
+      />
     </div>
   );
 }

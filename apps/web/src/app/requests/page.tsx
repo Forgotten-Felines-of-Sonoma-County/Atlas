@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatDateLocal } from "@/lib/formatters";
 
 interface Request {
   request_id: string;
@@ -276,7 +277,7 @@ function RequestCard({ request }: { request: Request }) {
             }}
           >
             <span>{request.requester_name || "Unknown requester"}</span>
-            <span>{new Date(request.source_created_at || request.created_at).toLocaleDateString()}</span>
+            <span>{formatDateLocal(request.source_created_at || request.created_at)}</span>
           </div>
         </div>
       </div>
@@ -294,6 +295,92 @@ export default function RequestsPage() {
   const [sortBy, setSortBy] = useState<"created" | "status" | "priority" | "type">("status");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [groupBy, setGroupBy] = useState<"" | "status" | "type">("");
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkStatusTarget, setBulkStatusTarget] = useState<string>("");
+
+  const toggleSelect = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedIds(newSet);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === requests.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(requests.map((r) => r.request_id)));
+    }
+  };
+
+  const handleBulkStatusUpdate = async () => {
+    if (selectedIds.size === 0 || !bulkStatusTarget) return;
+    if (!confirm(`Update ${selectedIds.size} requests to "${bulkStatusTarget.replace(/_/g, " ")}"?`)) return;
+
+    setBulkUpdating(true);
+    try {
+      const promises = Array.from(selectedIds).map((id) =>
+        fetch(`/api/requests/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: bulkStatusTarget }),
+        })
+      );
+      await Promise.all(promises);
+      setSelectedIds(new Set());
+      setBulkStatusTarget("");
+      // Refresh the list
+      const params = new URLSearchParams();
+      if (statusFilter) params.set("status", statusFilter);
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      params.set("sort_by", sortBy);
+      params.set("sort_order", sortOrder);
+      params.set("limit", "100");
+      const response = await fetch(`/api/requests?${params.toString()}`);
+      if (response.ok) {
+        const data = await response.json();
+        setRequests(data.requests || []);
+      }
+    } catch (err) {
+      alert("Error updating requests");
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedRequests = requests.filter((r) => selectedIds.has(r.request_id));
+    const csv = [
+      ["ID", "Status", "Priority", "Summary", "Location", "City", "Requester", "Cats", "Created"],
+      ...selectedRequests.map((r) => [
+        r.request_id,
+        r.status,
+        r.priority,
+        r.summary || "",
+        r.place_name || "",
+        r.place_city || "",
+        r.requester_name || "",
+        r.estimated_cat_count?.toString() || "",
+        r.source_created_at || r.created_at,
+      ]),
+    ]
+      .map((row) => row.map((cell) => `"${cell}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `requests-export-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // Debounce search input
   useEffect(() => {
@@ -487,6 +574,86 @@ export default function RequestsPage() {
         </div>
       </div>
 
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div
+          style={{
+            padding: "0.75rem 1rem",
+            background: "#dbeafe",
+            borderRadius: "8px",
+            marginBottom: "1rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+          }}
+        >
+          <span style={{ fontWeight: 500, color: "#1e40af" }}>
+            {selectedIds.size} request{selectedIds.size !== 1 ? "s" : ""} selected
+          </span>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              value={bulkStatusTarget}
+              onChange={(e) => setBulkStatusTarget(e.target.value)}
+              style={{ minWidth: "140px", padding: "0.4rem 0.5rem", fontSize: "0.875rem" }}
+            >
+              <option value="">Change status to...</option>
+              <option value="new">New</option>
+              <option value="triaged">Triaged</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="in_progress">In Progress</option>
+              <option value="on_hold">On Hold</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <button
+              onClick={handleBulkStatusUpdate}
+              disabled={!bulkStatusTarget || bulkUpdating}
+              style={{
+                padding: "0.4rem 0.75rem",
+                border: "none",
+                borderRadius: "6px",
+                background: bulkStatusTarget ? "#2563eb" : "#94a3b8",
+                color: "white",
+                cursor: bulkStatusTarget && !bulkUpdating ? "pointer" : "not-allowed",
+                fontSize: "0.875rem",
+              }}
+            >
+              {bulkUpdating ? "Updating..." : "Apply"}
+            </button>
+            <button
+              onClick={handleExportSelected}
+              style={{
+                padding: "0.4rem 0.75rem",
+                border: "1px solid #2563eb",
+                borderRadius: "6px",
+                background: "transparent",
+                color: "#2563eb",
+                cursor: "pointer",
+                fontSize: "0.875rem",
+              }}
+            >
+              Export CSV
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              style={{
+                padding: "0.4rem 0.75rem",
+                border: "1px solid #64748b",
+                borderRadius: "6px",
+                background: "transparent",
+                color: "#64748b",
+                cursor: "pointer",
+                fontSize: "0.875rem",
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Helper to group requests */}
       {(() => {
         // Group requests if groupBy is set
@@ -563,6 +730,13 @@ export default function RequestsPage() {
           <table>
             <thead>
               <tr>
+                <th style={{ width: "40px", textAlign: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === requests.length && requests.length > 0}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
                 <th>Type</th>
                 <th>Status</th>
                 <th>Priority</th>
@@ -575,7 +749,19 @@ export default function RequestsPage() {
             </thead>
             <tbody>
               {requests.map((req) => (
-                <tr key={req.request_id}>
+                <tr
+                  key={req.request_id}
+                  style={{
+                    background: selectedIds.has(req.request_id) ? "#dbeafe" : undefined,
+                  }}
+                >
+                  <td style={{ textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(req.request_id)}
+                      onChange={() => toggleSelect(req.request_id)}
+                    />
+                  </td>
                   <td>
                     <span
                       className="badge"
@@ -627,7 +813,7 @@ export default function RequestsPage() {
                     )}
                   </td>
                   <td className="text-sm text-muted">
-                    {new Date(req.source_created_at || req.created_at).toLocaleDateString()}
+                    {formatDateLocal(req.source_created_at || req.created_at)}
                   </td>
                 </tr>
               ))}

@@ -238,6 +238,14 @@ async function findOrCreatePlace(address, lat, lng) {
 
 /**
  * Sync a single Trapping Request to Atlas
+ *
+ * Uses the centralized find_or_create_request() function per CLAUDE.md guidelines.
+ * This function handles:
+ * - Deduplication by source_system + source_record_id
+ * - Auto-creation of places from raw address
+ * - Auto-creation of people from contact info
+ * - Proper source_created_at tracking for attribution windows
+ * - Audit logging to entity_edits
  */
 async function syncTrappingRequest(record) {
   const f = record.fields;
@@ -257,21 +265,6 @@ async function syncTrappingRequest(record) {
   const internalNotes = f["Internal Notes "] || "";
   const journalEntries = parseInternalNotes(internalNotes);
 
-  // Find or create place and person
-  const placeId = await findOrCreatePlace(address, lat, lng);
-  const personId = await findOrCreatePerson(firstName, lastName, phone, email);
-
-  // Check if request already exists (from any Airtable source)
-  const existingResult = await pool.query(
-    `SELECT request_id, source_system FROM trapper.sot_requests
-     WHERE source_record_id = $1
-     AND source_system IN ('airtable_ffsc', 'airtable')`,
-    [record.id]
-  );
-
-  let requestId;
-  const status = mapCaseStatus(f["Case Status"]);
-
   // Build summary: prefer client name, then Client Name field, then address/place name
   let summary;
   if (firstName || lastName) {
@@ -286,55 +279,55 @@ async function syncTrappingRequest(record) {
     summary = `Case #${f["Case Number"] || record.id.slice(0, 8)}`;
   }
 
-  if (existingResult.rows.length > 0) {
-    // Update existing request
-    requestId = existingResult.rows[0].request_id;
+  const status = mapCaseStatus(f["Case Status"]);
 
-    await pool.query(
-      `UPDATE trapper.sot_requests SET
-        source_system = 'airtable',
-        status = $1,
-        estimated_cat_count = $2,
-        notes = $3,
-        place_id = COALESCE($4, place_id),
-        requester_person_id = COALESCE($5, requester_person_id),
-        summary = $6,
-        updated_at = NOW()
-       WHERE request_id = $7`,
-      [
-        status,
-        parseInt(f["Total Cats to be trapped"]) || null,
-        f["Case Info"] || null,
-        placeId,
-        personId,
-        summary,
-        requestId,
-      ]
-    );
-  } else {
-    // Create new request
-    const insertResult = await pool.query(
-      `INSERT INTO trapper.sot_requests (
-        source_system, source_record_id, source_created_at,
-        status, estimated_cat_count, notes,
-        place_id, requester_person_id, summary,
-        created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-      RETURNING request_id`,
-      [
-        "airtable",
-        record.id,
-        f["Case opened date"] ? new Date(f["Case opened date"]) : new Date(),
-        status,
-        parseInt(f["Total Cats to be trapped"]) || null,
-        f["Case Info"] || null,
-        placeId,
-        personId,
-        summary,
-      ]
-    );
-    requestId = insertResult.rows[0].request_id;
+  // Find or create place first (if we have lat/lng, use that)
+  // Otherwise, find_or_create_request will create place from raw address
+  let placeId = null;
+  if (lat && lng) {
+    placeId = await findOrCreatePlace(address, lat, lng);
   }
+
+  // Use centralized find_or_create_request() function
+  // This handles deduplication, person/place creation, and audit logging
+  const result = await pool.query(
+    `SELECT trapper.find_or_create_request(
+      p_source_system := $1,
+      p_source_record_id := $2,
+      p_source_created_at := $3,
+      p_place_id := $4,
+      p_raw_address := $5,
+      p_requester_email := $6,
+      p_requester_phone := $7,
+      p_requester_name := $8,
+      p_summary := $9,
+      p_notes := $10,
+      p_estimated_cat_count := $11,
+      p_status := $12,
+      p_request_purpose := $13,
+      p_internal_notes := $14,
+      p_created_by := $15
+    ) as request_id`,
+    [
+      "airtable",                                              // source_system
+      record.id,                                               // source_record_id
+      f["Case opened date"] ? new Date(f["Case opened date"]) : null, // source_created_at
+      placeId,                                                 // place_id (if we have coords)
+      placeId ? null : address || null,                        // raw_address (only if no place_id)
+      email || null,                                           // requester_email
+      phone || null,                                           // requester_phone
+      (firstName || lastName) ? `${firstName} ${lastName}`.trim() : (f["Client Name"] || null), // requester_name
+      summary,                                                 // summary
+      f["Case Info"] || null,                                  // notes
+      parseInt(f["Total Cats to be trapped"]) || null,        // estimated_cat_count
+      status,                                                  // status
+      "tnr",                                                   // request_purpose
+      internalNotes || null,                                   // internal_notes
+      "airtable_ffsc_sync",                                    // created_by
+    ]
+  );
+
+  const requestId = result.rows[0]?.request_id;
 
   // Sync journal entries from Internal Notes
   for (const entry of journalEntries) {

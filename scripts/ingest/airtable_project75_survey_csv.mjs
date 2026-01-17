@@ -31,7 +31,8 @@ const { Client } = pg;
 const { green, red, yellow, cyan, reset, bold } = colors;
 
 // Source identification
-const SOURCE_SYSTEM = 'airtable_project75';
+// NOTE: Per CLAUDE.md, source_system MUST be exactly 'airtable', 'clinichq', or 'web_intake'
+const SOURCE_SYSTEM = 'airtable';
 const SOURCE_TABLE = 'project75_survey';
 
 // Default ingest path

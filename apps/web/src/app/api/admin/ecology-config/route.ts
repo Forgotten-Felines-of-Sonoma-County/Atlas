@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryRows, query } from "@/lib/db";
+import { getCurrentUser, getAdminUser } from "@/lib/auth";
 
 interface EcologyConfigRow {
   config_id: string;
@@ -60,6 +61,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get user context (admin endpoints default to "admin" if no auth)
+    const user = getCurrentUser(request);
+    const updatedBy = user.isAuthenticated ? user.displayName : getAdminUser().displayName;
+
     // Use the update function which handles validation and audit
     const sql = `
       SELECT * FROM trapper.update_ecology_config(
@@ -73,7 +78,7 @@ export async function POST(request: NextRequest) {
     const result = await query(sql, [
       config_key,
       config_value,
-      "admin",  // TODO: Use actual user from auth
+      updatedBy,
       reason || null,
     ]);
 

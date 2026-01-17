@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatDateLocal } from "@/lib/formatters";
 
 interface ActiveRequest {
   request_id: string;
@@ -16,6 +17,35 @@ interface ActiveRequest {
   has_kittens: boolean;
   latitude: number | null;
   longitude: number | null;
+  updated_at?: string;
+}
+
+interface OverdueCounts {
+  overdue_requests: number;
+  overdue_intake: number;
+  stale_requests: number; // No activity in 14+ days
+  urgent_unscheduled: number; // Urgent priority but not scheduled
+}
+
+interface BeaconSummary {
+  total_colony_estimates: number;
+  places_with_estimates: number;
+  avg_colony_size: number;
+  cats_with_reproduction_data: number;
+  pregnant_cats: number;
+  lactating_cats: number;
+  mortality_events: number;
+  deaths_this_year: number;
+  birth_events: number;
+  litters_tracked: number;
+  active_alerts: number;
+  recent_estimates: number;
+}
+
+interface SeasonalAlert {
+  alert_type: string;
+  severity: string;
+  message: string;
 }
 
 interface IntakeSubmission {
@@ -223,6 +253,9 @@ function RequestMapPreview({ requestId, latitude, longitude }: {
 }
 
 function RequestCard({ request }: { request: ActiveRequest }) {
+  const isRequestStale = isStale(request.updated_at || request.created_at, 14) && request.status !== "on_hold";
+  const isUrgentUnscheduled = (request.priority === "urgent" || request.priority === "high") && !request.scheduled_date && request.status !== "scheduled";
+
   return (
     <a
       href={`/requests/${request.request_id}`}
@@ -236,10 +269,11 @@ function RequestCard({ request }: { request: ActiveRequest }) {
         className="card"
         style={{
           padding: 0,
-          border: "1px solid var(--card-border)",
+          border: (isRequestStale || isUrgentUnscheduled) ? "2px solid #dc3545" : "1px solid var(--card-border)",
           borderRadius: "10px",
           overflow: "hidden",
           transition: "transform 0.15s, box-shadow 0.15s",
+          position: "relative",
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = "translateY(-2px)";
@@ -250,6 +284,26 @@ function RequestCard({ request }: { request: ActiveRequest }) {
           e.currentTarget.style.boxShadow = "none";
         }}
       >
+        {/* Attention indicator */}
+        {(isRequestStale || isUrgentUnscheduled) && (
+          <div
+            style={{
+              position: "absolute",
+              top: "8px",
+              right: "8px",
+              zIndex: 10,
+              background: "#dc3545",
+              color: "#fff",
+              padding: "2px 6px",
+              borderRadius: "4px",
+              fontSize: "0.65rem",
+              fontWeight: 600,
+            }}
+            title={isRequestStale ? "No activity in 14+ days" : "Urgent but not scheduled"}
+          >
+            {isRequestStale ? "STALE" : "NEEDS SCHED"}
+          </div>
+        )}
         {/* Map Preview */}
         <RequestMapPreview
           requestId={request.request_id}
@@ -312,9 +366,7 @@ function RequestCard({ request }: { request: ActiveRequest }) {
           >
             <span>{request.requester_name || "Unknown"}</span>
             <span>
-              {request.scheduled_date
-                ? new Date(request.scheduled_date).toLocaleDateString()
-                : new Date(request.created_at).toLocaleDateString()}
+              {formatDateLocal(request.scheduled_date || request.created_at)}
             </span>
           </div>
         </div>
@@ -323,40 +375,143 @@ function RequestCard({ request }: { request: ActiveRequest }) {
   );
 }
 
+// Helper to check if a date is stale (more than N days ago)
+function isStale(dateStr: string | null | undefined, daysThreshold: number): boolean {
+  if (!dateStr) return false;
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffDays = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays > daysThreshold;
+}
+
 export default function Home() {
   const [requests, setRequests] = useState<ActiveRequest[]>([]);
   const [intakeSubmissions, setIntakeSubmissions] = useState<IntakeSubmission[]>([]);
+  const [beaconSummary, setBeaconSummary] = useState<BeaconSummary | null>(null);
+  const [beaconAlerts, setBeaconAlerts] = useState<SeasonalAlert[]>([]);
+  const [overdueCounts, setOverdueCounts] = useState<OverdueCounts>({
+    overdue_requests: 0,
+    overdue_intake: 0,
+    stale_requests: 0,
+    urgent_unscheduled: 0,
+  });
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [loadingIntake, setLoadingIntake] = useState(true);
+  const [loadingBeacon, setLoadingBeacon] = useState(true);
 
   useEffect(() => {
     // Fetch active requests (not completed/cancelled)
-    fetch("/api/requests?limit=8")
+    fetch("/api/requests?limit=50")
       .then((res) => (res.ok ? res.json() : { requests: [] }))
       .then((data) => {
         // Filter out completed/cancelled for dashboard
         const active = (data.requests || []).filter(
           (r: ActiveRequest) => !["completed", "cancelled"].includes(r.status)
         );
-        setRequests(active.slice(0, 8)); // Limit to 8 cards
+        setRequests(active.slice(0, 8)); // Limit to 8 cards for display
+
+        // Calculate overdue counts from all active requests
+        const staleCount = active.filter((r: ActiveRequest) =>
+          isStale(r.updated_at || r.created_at, 14) && r.status !== "on_hold"
+        ).length;
+        const urgentUnscheduled = active.filter((r: ActiveRequest) =>
+          (r.priority === "urgent" || r.priority === "high") &&
+          !r.scheduled_date &&
+          r.status !== "scheduled"
+        ).length;
+
+        setOverdueCounts((prev) => ({
+          ...prev,
+          stale_requests: staleCount,
+          urgent_unscheduled: urgentUnscheduled,
+        }));
       })
       .catch(() => setRequests([]))
       .finally(() => setLoadingRequests(false));
 
     // Fetch intake submissions needing attention using unified status
-    fetch("/api/intake/queue?mode=attention&limit=10")
+    fetch("/api/intake/queue?mode=attention&limit=50")
       .then((res) => (res.ok ? res.json() : { submissions: [] }))
       .then((data) => {
-        // The API already filters to new/in_progress status
-        setIntakeSubmissions(data.submissions || []);
+        const subs = data.submissions || [];
+        setIntakeSubmissions(subs.slice(0, 10)); // Limit display to 10
+
+        // Calculate overdue intake count
+        const overdueCount = subs.filter((s: IntakeSubmission) => s.overdue).length;
+        setOverdueCounts((prev) => ({
+          ...prev,
+          overdue_intake: overdueCount,
+        }));
       })
       .catch(() => setIntakeSubmissions([]))
       .finally(() => setLoadingIntake(false));
+
+    // Fetch Beacon summary
+    fetch("/api/admin/beacon/summary")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setBeaconSummary(data.summary);
+          setBeaconAlerts(data.alerts || []);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingBeacon(false));
   }, []);
+
+  const totalAttentionNeeded =
+    overdueCounts.overdue_intake + overdueCounts.stale_requests + overdueCounts.urgent_unscheduled;
 
   return (
     <div>
       <h1>Atlas Dashboard</h1>
+
+      {/* Needs Attention Alert */}
+      {!loadingRequests && !loadingIntake && totalAttentionNeeded > 0 && (
+        <div
+          style={{
+            marginTop: "1rem",
+            padding: "1rem",
+            background: "rgba(220, 53, 69, 0.1)",
+            borderRadius: "8px",
+            borderLeft: "4px solid #dc3545",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: 600, color: "#dc3545", marginBottom: "0.25rem" }}>
+                {totalAttentionNeeded} Item{totalAttentionNeeded > 1 ? "s" : ""} Need Attention
+              </div>
+              <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.85rem" }}>
+                {overdueCounts.overdue_intake > 0 && (
+                  <a
+                    href="/intake/queue?filter=overdue"
+                    style={{ color: "#dc3545", textDecoration: "none" }}
+                  >
+                    {overdueCounts.overdue_intake} overdue intake submission{overdueCounts.overdue_intake > 1 ? "s" : ""}
+                  </a>
+                )}
+                {overdueCounts.stale_requests > 0 && (
+                  <a
+                    href="/requests?filter=stale"
+                    style={{ color: "#dc3545", textDecoration: "none" }}
+                  >
+                    {overdueCounts.stale_requests} stale request{overdueCounts.stale_requests > 1 ? "s" : ""} (14+ days)
+                  </a>
+                )}
+                {overdueCounts.urgent_unscheduled > 0 && (
+                  <a
+                    href="/requests?filter=urgent-unscheduled"
+                    style={{ color: "#dc3545", textDecoration: "none" }}
+                  >
+                    {overdueCounts.urgent_unscheduled} urgent unscheduled
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Links: Cats, People, Places */}
       <div
@@ -381,6 +536,122 @@ export default function Home() {
           <h2 style={{ fontSize: "1.5rem" }}>Places</h2>
           <p className="text-muted text-sm">Addresses and locations</p>
         </a>
+      </div>
+
+      {/* Beacon Population Analytics Summary */}
+      <div style={{ marginTop: "2rem" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "0.75rem",
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0 }}>Beacon Analytics</h2>
+            <p className="text-muted text-sm" style={{ margin: 0 }}>
+              Population modeling and seasonal insights
+            </p>
+          </div>
+          <a
+            href="/admin"
+            style={{
+              padding: "0.4rem 0.8rem",
+              borderRadius: "6px",
+              textDecoration: "none",
+              border: "1px solid var(--card-border)",
+              fontSize: "0.875rem",
+            }}
+          >
+            Admin Panel →
+          </a>
+        </div>
+
+        {loadingBeacon ? (
+          <div className="text-muted">Loading Beacon data...</div>
+        ) : beaconSummary ? (
+          <div>
+            {/* Alerts */}
+            {beaconAlerts.length > 0 && (
+              <div
+                style={{
+                  marginBottom: "0.75rem",
+                  padding: "0.75rem",
+                  background: beaconAlerts.some((a) => a.severity === "high")
+                    ? "rgba(220, 53, 69, 0.1)"
+                    : "rgba(255, 193, 7, 0.1)",
+                  borderRadius: "8px",
+                  borderLeft: `3px solid ${
+                    beaconAlerts.some((a) => a.severity === "high") ? "#dc3545" : "#ffc107"
+                  }`,
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.25rem" }}>
+                  {beaconAlerts.length} Active Alert{beaconAlerts.length > 1 ? "s" : ""}
+                </div>
+                {beaconAlerts.slice(0, 2).map((alert, i) => (
+                  <div key={i} style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                    {alert.message}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Stats Grid */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                gap: "0.75rem",
+              }}
+            >
+              <div className="card" style={{ padding: "0.75rem", textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 600, color: "#0d6efd" }}>
+                  {beaconSummary.places_with_estimates}
+                </div>
+                <div className="text-muted text-sm">Colonies Tracked</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                  avg {beaconSummary.avg_colony_size} cats
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: "0.75rem", textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 600, color: "#dc3545" }}>
+                  {beaconSummary.pregnant_cats}
+                </div>
+                <div className="text-muted text-sm">Pregnant</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                  {beaconSummary.lactating_cats} lactating
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: "0.75rem", textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 600, color: "#198754" }}>
+                  {beaconSummary.birth_events}
+                </div>
+                <div className="text-muted text-sm">Births Tracked</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                  {beaconSummary.litters_tracked} litters
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: "0.75rem", textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 600, color: "#6c757d" }}>
+                  {beaconSummary.deaths_this_year}
+                </div>
+                <div className="text-muted text-sm">Deaths (Year)</div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                  {beaconSummary.mortality_events} total
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="card" style={{ textAlign: "center", padding: "1.5rem" }}>
+            <p className="text-muted">Beacon data unavailable</p>
+          </div>
+        )}
       </div>
 
       {/* Active Trapping Requests Section */}
@@ -597,7 +868,7 @@ export default function Home() {
                         {/* Appointment date if scheduled */}
                         {sub.appointment_date && (
                           <span style={{ fontSize: "0.7rem", color: "#198754" }}>
-                            {new Date(sub.appointment_date).toLocaleDateString()}
+                            {formatDateLocal(sub.appointment_date)}
                           </span>
                         )}
                         {sub.is_emergency && (
@@ -615,7 +886,7 @@ export default function Home() {
                     </td>
                     {/* Submitted column */}
                     <td className="text-sm text-muted">
-                      {new Date(sub.submitted_at).toLocaleDateString()}
+                      {formatDateLocal(sub.submitted_at)}
                       {sub.overdue && (
                         <div style={{ fontSize: "0.65rem", color: "#dc3545", fontWeight: 500 }}>
                           overdue

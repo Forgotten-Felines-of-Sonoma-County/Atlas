@@ -10,6 +10,28 @@ Atlas is a TNR (Trap-Neuter-Return) management system for Forgotten Felines of S
 - **Requests** (trapping requests, TNR operations)
 - **Places** (addresses where cats are)
 
+**Mission:** Atlas is the data collection layer for **Beacon** - FFSC's predictive analytics system for strategic cat population management. See `docs/ATLAS_MISSION_CONTRACT.md` for full alignment with Beacon's requirements.
+
+## Beacon / Ground Truth Principle
+
+**FFSC is the ONLY dedicated spay/neuter clinic for community cats in Sonoma County.**
+
+- FFSC clinic data = **verified alterations (ground truth)**
+- External alteration rate ≈ 2% (negligible)
+- All alteration calculations use FFSC clinic records as the numerator
+
+**Key Equation (Chapman Mark-Recapture):**
+```
+N̂ = ((M+1)(C+1)/(R+1)) - 1
+
+Where:
+  M = Marked cats (FFSC verified alterations - ground truth)
+  C = Total cats observed
+  R = Ear-tipped cats observed
+```
+
+**Population Model Parameters:** Configurable via `ecology_config` table (MIG_220, MIG_288). Defaults from Boone et al. 2019.
+
 ## Architecture
 
 ### Three-Layer Data Model
@@ -37,10 +59,12 @@ Atlas is a TNR (Trap-Neuter-Return) management system for Forgotten Felines of S
 | Person | `trapper.find_or_create_person(email, phone, first, last, addr, source)` | For all person creation |
 | Place | `trapper.find_or_create_place_deduped(address, name, lat, lng, source)` | For all place creation |
 | Cat | `trapper.find_or_create_cat_by_microchip(chip, name, sex, breed, ...)` | For all cat creation |
+| Request | `trapper.find_or_create_request(source, record_id, source_created_at, ...)` | For all request creation (MIG_297) |
 
 **Why:**
 - These functions handle normalization, deduplication, identity matching, merged entities, and geocoding queue
 - Direct INSERTs bypass critical business logic and create duplicates
+- For requests: Properly sets source_created_at for attribution windows, auto-creates places/people from raw data
 
 **source_system values (use EXACTLY):**
 - `'airtable'` - All Airtable data (not 'airtable_staff' or 'airtable_project75')
@@ -255,7 +279,8 @@ Trappers are linked to appointments directly for accurate stats:
 - **Don't INSERT directly into sot_people** - Use `find_or_create_person()`
 - **Don't INSERT directly into places** - Use `find_or_create_place_deduped()`
 - **Don't INSERT directly into sot_cats** - Use `find_or_create_cat_by_microchip()`
-- **Don't use custom source_system values** - Use 'airtable', 'clinichq', or 'web_intake'
+- **Don't INSERT directly into sot_requests** - Use `find_or_create_request()`
+- **Don't use custom source_system values** - Use 'airtable', 'clinichq', 'web_intake', or 'atlas_ui'
 - Don't match people by name only - Email/phone only
 - Don't create fixed time windows for new features
 - Don't skip `entity_edits` logging for important changes

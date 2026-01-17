@@ -20,6 +20,8 @@ interface RequestListRow {
   place_city: string | null;
   requester_person_id: string | null;
   requester_name: string | null;
+  requester_email: string | null;
+  requester_phone: string | null;
   latitude: number | null;
   longitude: number | null;
   linked_cat_count: number;
@@ -148,6 +150,8 @@ export async function GET(request: NextRequest) {
         place_city,
         requester_person_id,
         requester_name,
+        requester_email,
+        requester_phone,
         latitude,
         longitude,
         linked_cat_count,
@@ -533,78 +537,18 @@ export async function POST(request: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("Error creating request:", errorMessage);
 
-    // If raw_intake_request table doesn't exist yet, fall back to direct write
-    // This maintains backwards compatibility during migration
-    if (body && (errorMessage.includes("raw_intake_request") || errorMessage.includes("does not exist"))) {
-      console.warn("raw_intake_request table not found, falling back to direct write");
-      return handleLegacyDirectWrite(body);
+    // Check for missing table - this is a deployment issue that must be fixed
+    if (errorMessage.includes("raw_intake_request") || errorMessage.includes("does not exist")) {
+      console.error("CRITICAL: raw_intake_request table missing - run migrations");
+      return NextResponse.json(
+        { error: "Database not properly configured. Please contact administrator." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json(
-      { error: `Failed to create request: ${errorMessage}` },
+      { error: "Failed to create request" },
       { status: 500 }
     );
-  }
-}
-
-// Legacy fallback for backwards compatibility during migration
-async function handleLegacyDirectWrite(body: CreateRequestBody) {
-  try {
-
-    const result = await queryOne<{ request_id: string }>(
-      `INSERT INTO trapper.sot_requests (
-        request_purpose,
-        place_id, property_type, location_description,
-        requester_person_id, property_owner_contact, property_owner_name, property_owner_phone,
-        authorization_pending, best_contact_times,
-        permission_status, access_notes, traps_overnight_safe, access_without_contact,
-        estimated_cat_count, wellness_cat_count, count_confidence, colony_duration, eartip_count, eartip_estimate, cats_are_friendly,
-        has_kittens, kitten_count, kitten_age_weeks,
-        is_being_fed, feeder_name, feeding_schedule, best_times_seen,
-        urgency_reasons, urgency_deadline, urgency_notes, priority,
-        summary, notes, internal_notes, data_source, source_system, created_by
-      ) VALUES (
-        COALESCE($1, 'tnr')::trapper.request_purpose,
-        $2, $3::trapper.property_type, $4, $5, $6, $7, $8, $9, $10,
-        COALESCE($11, 'unknown')::trapper.permission_status, $12, $13, $14,
-        $15, $16, COALESCE($17, 'unknown')::trapper.count_confidence,
-        COALESCE($18, 'unknown')::trapper.colony_duration, $19,
-        COALESCE($20, 'unknown')::trapper.eartip_estimate, $21,
-        $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
-        COALESCE($32, 'normal')::trapper.request_priority, $33, $34, $35,
-        'app', 'atlas_ui', $36
-      )
-      RETURNING request_id`,
-      [
-        body.request_purpose || "tnr",
-        body.place_id || null, body.property_type || null, body.location_description || null,
-        body.requester_person_id || null, body.property_owner_contact || null,
-        body.property_owner_name || null, body.property_owner_phone || null,
-        body.authorization_pending ?? false, body.best_contact_times || null,
-        body.permission_status || null, body.access_notes || null, body.traps_overnight_safe ?? null, body.access_without_contact ?? null,
-        body.estimated_cat_count || null, body.wellness_cat_count || null, body.count_confidence || null, body.colony_duration || null,
-        body.eartip_count || null, body.eartip_estimate || null, body.cats_are_friendly ?? null,
-        body.has_kittens || false, body.kitten_count || null, body.kitten_age_weeks || null,
-        body.is_being_fed ?? null, body.feeder_name || null, body.feeding_schedule || null, body.best_times_seen || null,
-        body.urgency_reasons || null, body.urgency_deadline || null, body.urgency_notes || null,
-        body.priority || null, body.summary || null, body.notes || null, body.internal_notes || null,
-        body.created_by || "app_user",
-      ]
-    );
-
-    if (!result) {
-      return NextResponse.json({ error: "Failed to create request" }, { status: 500 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      request_id: result.request_id,
-      status: "promoted",
-      legacy: true,
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Legacy write failed:", errorMessage);
-    return NextResponse.json({ error: `Failed to create request: ${errorMessage}` }, { status: 500 });
   }
 }

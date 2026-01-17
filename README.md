@@ -169,6 +169,7 @@ All cleanup migrations create backup tables (`backup_*_mig15X`) for data rescue 
 - [START_HERE.md](docs/runbooks/START_HERE.md) — Full onboarding guide
 - [ATLAS_REPO_MAP.md](docs/ATLAS_REPO_MAP.md) — Where things live
 - [DECISIONS.md](docs/DECISIONS.md) — Architecture decision records
+- [TECHNICAL_METHODOLOGY.md](docs/TECHNICAL_METHODOLOGY.md) — Population estimation, data quality, and known limitations
 
 ## Architecture: Atlas + Beacon
 
@@ -176,13 +177,15 @@ All cleanup migrations create backup tables (`backup_*_mig15X`) for data rescue 
 ┌─────────────────────────────────────────────────────────────┐
 │                        BEACON                               │
 │  TNR prioritization, population estimates, alteration rates │
+│  Vortex model simulations, strategic targeting              │
 └─────────────────────────────────────────────────────────────┘
                               ▲
-                              │ Clean data
+                              │ Clean data + equations
 ┌─────────────────────────────────────────────────────────────┐
 │                        ATLAS                                │
 │  Unified search, canonical data, identity linking           │
 │  Staff lookup tool, data collection, review queues          │
+│  Colony estimates, Chapman mark-recapture, observation data │
 └─────────────────────────────────────────────────────────────┘
                               ▲
                               │ Ingest
@@ -192,6 +195,36 @@ All cleanup migrations create backup tables (`backup_*_mig15X`) for data rescue 
 └──────────────┴──────────────┴──────────────┴───────────────┘
 ```
 
+### Ground Truth Principle
+
+**FFSC is the ONLY dedicated spay/neuter clinic for community cats in Sonoma County.** Other organizations do small quantities; FFSC does mass quantities (4,000+/year). Therefore:
+
+- **FFSC clinic data = verified alterations (ground truth)**
+- External alteration rate ≈ 2% (negligible)
+- Alteration Rate = `FFSC_altered / Population_estimate`
+
+### Key Equations (Beacon Population Model)
+
+Based on Boone et al. 2019 (Vortex model):
+
+```
+Chapman Estimator:  N̂ = ((M+1)(C+1)/(R+1)) - 1
+                    Where M = FFSC verified alterations
+
+Alteration Rate:    p = A / N
+
+Population Growth:  N(t+1) = N(t) + Births - Deaths + Immigration
+
+Key Finding:        75% TNR intensity → 70% population reduction in 6 years
+                    50% TNR intensity → minimal reduction
+```
+
+All parameters are configurable via admin panel with scientific defaults. See:
+- [ATLAS_MISSION_CONTRACT.md](docs/ATLAS_MISSION_CONTRACT.md) — Full equations and Beacon alignment
+- [TODO.md](docs/TODO.md) — Beacon-aligned implementation priorities
+- `MIG_220` — Ecology configuration table
+- `MIG_288` — Vortex population model parameters
+
 ---
 
-*Atlas: Making messy trapping locations make sense in data.*
+*Atlas: Making messy trapping locations make sense in data, powering Beacon for strategic TNR.*

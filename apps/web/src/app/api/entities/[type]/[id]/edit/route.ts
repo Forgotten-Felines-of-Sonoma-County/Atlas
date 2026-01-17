@@ -227,7 +227,6 @@ export async function PATCH(
     console.error("Edit error:", error);
     return NextResponse.json({
       error: "Failed to apply edit",
-      details: error instanceof Error ? error.message : "Unknown error",
     }, { status: 500 });
   } finally {
     client.release();
@@ -333,7 +332,6 @@ async function handleOwnershipTransfer(req: TransferRequest) {
     console.error("Transfer error:", error);
     return NextResponse.json({
       error: "Failed to transfer ownership",
-      details: error instanceof Error ? error.message : "Unknown error",
     }, { status: 500 });
   } finally {
     client.release();

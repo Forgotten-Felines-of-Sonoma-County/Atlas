@@ -284,6 +284,7 @@ async function runMigration() {
     `);
     console.log('  ✓ Function created');
 
+    // NOTE: Per CLAUDE.md, we use find_or_create_cat_by_microchip() instead of direct INSERTs
     console.log('\nStep 4: Creating sync_cats_from_visits function...');
     await client.query(`
       CREATE OR REPLACE FUNCTION trapper.sync_cats_from_visits()
@@ -294,6 +295,7 @@ async function runMigration() {
           v_idents INT := 0;
           v_rec RECORD;
           v_cat_id UUID;
+          v_existing_cat_id UUID;
       BEGIN
           FOR v_rec IN
               SELECT
@@ -308,46 +310,39 @@ async function runMigration() {
                   EXISTS(SELECT 1 FROM trapper.clinichq_visits WHERE microchip = v.microchip AND (is_spay OR is_neuter)) AS altered_by_clinic
               FROM (SELECT DISTINCT microchip FROM trapper.clinichq_visits) v
           LOOP
-              SELECT ci.cat_id INTO v_cat_id
+              -- Check if cat already exists before calling find_or_create
+              SELECT ci.cat_id INTO v_existing_cat_id
               FROM trapper.cat_identifiers ci
               WHERE ci.id_type = 'microchip' AND ci.id_value = v_rec.microchip;
 
-              IF v_cat_id IS NULL THEN
-                  INSERT INTO trapper.sot_cats (
-                      display_name, sex, altered_status, breed, primary_color,
-                      secondary_color, data_source, ownership_type, altered_by_clinic,
-                      needs_microchip
-                  ) VALUES (
-                      COALESCE(v_rec.animal_name, 'Unknown (Clinic ' || v_rec.microchip || ')'),
-                      v_rec.sex, v_rec.altered_status, v_rec.breed, v_rec.primary_color,
-                      v_rec.secondary_color, 'clinichq', v_rec.ownership_type,
-                      v_rec.altered_by_clinic, FALSE
-                  )
-                  RETURNING cat_id INTO v_cat_id;
+              -- Use centralized find_or_create_cat_by_microchip function (per CLAUDE.md)
+              -- This handles deduplication, normalization, and identifier creation
+              v_cat_id := trapper.find_or_create_cat_by_microchip(
+                  p_microchip := v_rec.microchip,
+                  p_name := COALESCE(v_rec.animal_name, 'Unknown (Clinic ' || v_rec.microchip || ')'),
+                  p_sex := v_rec.sex,
+                  p_breed := v_rec.breed,
+                  p_altered_status := v_rec.altered_status,
+                  p_primary_color := v_rec.primary_color,
+                  p_secondary_color := v_rec.secondary_color,
+                  p_ownership_type := v_rec.ownership_type,
+                  p_source_system := 'clinichq'
+              );
 
-                  v_created := v_created + 1;
+              IF v_cat_id IS NOT NULL THEN
+                  IF v_existing_cat_id IS NULL THEN
+                      v_created := v_created + 1;
+                      v_idents := v_idents + 1;
+                  ELSE
+                      v_updated := v_updated + 1;
+                  END IF;
 
-                  INSERT INTO trapper.cat_identifiers (cat_id, id_type, id_value, source_system, source_table)
-                  VALUES (v_cat_id, 'microchip', v_rec.microchip, 'clinichq', 'clinichq_visits')
-                  ON CONFLICT DO NOTHING;
-
-                  IF FOUND THEN v_idents := v_idents + 1; END IF;
-              ELSE
-                  UPDATE trapper.sot_cats SET
-                      display_name = COALESCE(display_name, v_rec.animal_name),
-                      sex = COALESCE(sex, v_rec.sex),
-                      altered_status = COALESCE(altered_status, v_rec.altered_status),
-                      breed = COALESCE(breed, v_rec.breed),
-                      primary_color = COALESCE(primary_color, v_rec.primary_color),
-                      secondary_color = COALESCE(secondary_color, v_rec.secondary_color),
-                      ownership_type = COALESCE(ownership_type, v_rec.ownership_type),
-                      altered_by_clinic = altered_by_clinic OR v_rec.altered_by_clinic,
-                      data_source = 'clinichq',
-                      needs_microchip = FALSE,
-                      updated_at = NOW()
-                  WHERE cat_id = v_cat_id;
-
-                  v_updated := v_updated + 1;
+                  -- Update altered_by_clinic flag separately (not in find_or_create)
+                  IF v_rec.altered_by_clinic THEN
+                      UPDATE trapper.sot_cats
+                      SET altered_by_clinic = TRUE
+                      WHERE cat_id = v_cat_id AND (altered_by_clinic IS NULL OR altered_by_clinic = FALSE);
+                  END IF;
               END IF;
           END LOOP;
 

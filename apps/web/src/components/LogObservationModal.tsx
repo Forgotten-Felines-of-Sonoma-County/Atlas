@@ -8,6 +8,8 @@ interface LogObservationModalProps {
   placeId: string;
   placeName: string;
   onSuccess?: () => void;
+  isCompletionFlow?: boolean;  // If true, show as completion prompt
+  onSkip?: () => void;         // Callback for skipping observation
 }
 
 interface ObservationResult {
@@ -36,6 +38,8 @@ export default function LogObservationModal({
   placeId,
   placeName,
   onSuccess,
+  isCompletionFlow = false,
+  onSkip,
 }: LogObservationModalProps) {
   const [catsSeen, setCatsSeen] = useState<number | ''>('');
   const [eartipsSeen, setEartipsSeen] = useState<number | ''>('');
@@ -143,11 +147,16 @@ export default function LogObservationModal({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>Log Site Observation</span>
+              <span>{isCompletionFlow ? 'Final Site Observation' : 'Log Site Observation'}</span>
             </h2>
             <p style={{ margin: '0.25rem 0 0', color: 'var(--muted)', fontSize: '0.9rem' }}>
               {placeName}
             </p>
+            {isCompletionFlow && (
+              <p style={{ margin: '0.5rem 0 0', color: '#198754', fontSize: '0.85rem', fontWeight: 500 }}>
+                Before completing this request, log a final observation to capture the post-TNR colony state.
+              </p>
+            )}
           </div>
           <button
             onClick={handleClose}
@@ -212,7 +221,7 @@ export default function LogObservationModal({
               style={{
                 width: '100%',
                 padding: '0.75rem',
-                background: 'var(--primary, #0d6efd)',
+                background: isCompletionFlow ? '#198754' : 'var(--primary, #0d6efd)',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '6px',
@@ -220,7 +229,7 @@ export default function LogObservationModal({
                 fontWeight: 500,
               }}
             >
-              Done
+              {isCompletionFlow ? 'Complete Request' : 'Done'}
             </button>
           </div>
         ) : (
@@ -351,40 +360,81 @@ export default function LogObservationModal({
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button
-                type="button"
-                onClick={handleClose}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  background: 'var(--bg-tertiary, #f5f5f5)',
-                  color: 'var(--text, #333)',
-                  border: '1px solid var(--border-color, #ddd)',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontWeight: 500,
-                }}
-                disabled={submitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  background: submitting ? '#6c757d' : 'var(--primary, #28a745)',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: submitting ? 'not-allowed' : 'pointer',
-                  fontWeight: 500,
-                }}
-              >
-                {submitting ? 'Saving...' : 'Log Observation'}
-              </button>
+            <div style={{ display: 'flex', gap: '0.75rem', flexDirection: isCompletionFlow ? 'column' : 'row' }}>
+              {isCompletionFlow ? (
+                <>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: submitting ? '#6c757d' : '#198754',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: submitting ? 'not-allowed' : 'pointer',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {submitting ? 'Saving...' : 'Log Observation & Complete Request'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onSkip}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: 'var(--bg-tertiary, #f5f5f5)',
+                      color: 'var(--text, #666)',
+                      border: '1px solid var(--border-color, #ddd)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      fontSize: '0.9rem',
+                    }}
+                    disabled={submitting}
+                  >
+                    Skip & Complete Without Observation
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem',
+                      background: 'var(--bg-tertiary, #f5f5f5)',
+                      color: 'var(--text, #333)',
+                      border: '1px solid var(--border-color, #ddd)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                    }}
+                    disabled={submitting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem',
+                      background: submitting ? '#6c757d' : 'var(--primary, #28a745)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: submitting ? 'not-allowed' : 'pointer',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {submitting ? 'Saving...' : 'Log Observation'}
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Help Text */}

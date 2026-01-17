@@ -117,6 +117,9 @@ export async function PATCH(
     let paramIndex = 1;
 
     // Status and workflow fields (no audit needed)
+    // NOTE: Contact tracking fields (last_contacted_at, last_contact_method, contact_attempt_count)
+    // are NOT included here - they should be updated via journal entries (contact_attempt)
+    // to maintain proper audit trail. Use POST /api/journal with entry_kind='contact_attempt'.
     const statusFields = [
       // Unified status (primary)
       'submission_status',
@@ -132,10 +135,6 @@ export async function PATCH(
       'review_notes',
       'matched_person_id',
       'final_category',
-      // Contact tracking
-      'last_contacted_at',
-      'last_contact_method',
-      'contact_attempt_count',
       // Triage overrides
       'is_emergency',
     ];

@@ -3,6 +3,16 @@
  * clinichq_owner_info_xlsx.mjs
  *
  * Ingests ClinicHQ owner_info XLSX into trapper.staged_records.
+ *
+ * ⚠️  PROCESSING ORDER (CRITICAL)
+ * ================================
+ * ClinicHQ files MUST be processed in this order:
+ *   1. appointment_info.xlsx  (creates sot_appointments)
+ *   2. owner_info.xlsx        ← THIS FILE (creates people, places, links to appointments)
+ *   3. cat_info.xlsx          (creates cats, links orphaned appointments)
+ *
+ * After staging, call the post-processing API:
+ *   curl -X POST /api/ingest/process/{ingest_run_id}
  */
 
 import fs from 'fs';

@@ -143,7 +143,7 @@ async function syncToAtlas(record) {
   // Map Airtable fields to Atlas intake API format
   const payload = {
     source: "web",
-    source_system: "jotform_public",
+    source_system: "web_intake",  // Jotform submissions via Airtable
 
     // Contact
     first_name: firstName || "",

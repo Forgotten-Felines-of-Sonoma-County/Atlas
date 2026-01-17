@@ -9,6 +9,9 @@ import { EditHistory } from "@/components/EditHistory";
 import { TrapperBadge } from "@/components/TrapperBadge";
 import { TrapperStatsCard } from "@/components/TrapperStatsCard";
 import { SubmissionsSection } from "@/components/SubmissionsSection";
+import { EntityLink } from "@/components/EntityLink";
+import { VerificationBadge, LastVerified } from "@/components/VerificationBadge";
+import { formatDateLocal } from "@/lib/formatters";
 
 interface Cat {
   cat_id: string;
@@ -78,6 +81,9 @@ interface PersonDetail {
   data_source: string | null;
   identifiers: PersonIdentifier[] | null;
   entity_type: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
+  verified_by_name: string | null;
 }
 
 interface RelatedRequest {
@@ -154,42 +160,6 @@ function Section({
       </div>
       {children}
     </div>
-  );
-}
-
-// Source badge for cats - ClinicHQ patients vs PetLink-only
-function SourceBadge({ dataSource }: { dataSource: string }) {
-  if (dataSource === "clinichq") {
-    return (
-      <span
-        className="badge"
-        style={{ background: "#198754", color: "#fff", fontSize: "0.65rem" }}
-        title="Actual ClinicHQ patient - has been to clinic"
-      >
-        ClinicHQ
-      </span>
-    );
-  }
-  if (dataSource === "petlink") {
-    return (
-      <span
-        className="badge"
-        style={{ background: "#6c757d", color: "#fff", fontSize: "0.65rem" }}
-        title="PetLink microchip registration only - no clinic history"
-      >
-        PetLink
-      </span>
-    );
-  }
-  // legacy_import
-  return (
-    <span
-      className="badge"
-      style={{ background: "#ffc107", color: "#000", fontSize: "0.65rem" }}
-      title="Imported from legacy system"
-    >
-      Legacy
-    </span>
   );
 }
 
@@ -282,66 +252,6 @@ function DataSourceBadge({ dataSource }: { dataSource: string | null }) {
     >
       {info.label}
     </span>
-  );
-}
-
-// Clickable link pill for related entities
-function EntityLink({
-  href,
-  label,
-  sublabel,
-  badge,
-  badgeColor,
-  dataSource,
-}: {
-  href: string;
-  label: string;
-  sublabel?: string;
-  badge?: string;
-  badgeColor?: string;
-  dataSource?: string;
-}) {
-  return (
-    <a
-      href={href}
-      style={{
-        display: "inline-flex",
-        flexDirection: "column",
-        padding: "0.75rem 1rem",
-        background: "var(--card-bg, #f8f9fa)",
-        borderRadius: "8px",
-        textDecoration: "none",
-        color: "var(--foreground, #212529)",
-        border: `1px solid ${dataSource === "clinichq" ? "#198754" : "var(--border, #dee2e6)"}`,
-        borderLeftWidth: dataSource === "clinichq" ? "3px" : "1px",
-        transition: "all 0.15s",
-        minWidth: "150px",
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.borderColor = "#adb5bd";
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = dataSource === "clinichq" ? "#198754" : "var(--border, #dee2e6)";
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 500 }}>{label}</span>
-        {dataSource && <SourceBadge dataSource={dataSource} />}
-        {badge && (
-          <span
-            className="badge"
-            style={{ background: badgeColor || "#6c757d", color: "#fff", fontSize: "0.7rem" }}
-          >
-            {badge}
-          </span>
-        )}
-      </div>
-      {sublabel && (
-        <span className="text-muted text-sm" style={{ marginTop: "0.25rem" }}>
-          {sublabel}
-        </span>
-      )}
-    </a>
   );
 }
 
@@ -638,13 +548,28 @@ export default function PersonDetailPage() {
           <div className="detail-item">
             <span className="detail-label">Created</span>
             <span className="detail-value">
-              {new Date(person.created_at).toLocaleDateString()}
+              {formatDateLocal(person.created_at)}
             </span>
           </div>
           <div className="detail-item">
             <span className="detail-label">Updated</span>
             <span className="detail-value">
-              {new Date(person.updated_at).toLocaleDateString()}
+              {formatDateLocal(person.updated_at)}
+            </span>
+          </div>
+          <div className="detail-item">
+            <span className="detail-label">Verification</span>
+            <span className="detail-value" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <VerificationBadge
+                table="people"
+                recordId={person.person_id}
+                verifiedAt={person.verified_at}
+                verifiedBy={person.verified_by_name}
+                onVerify={() => fetchPerson()}
+              />
+              {person.verified_at && (
+                <LastVerified verifiedAt={person.verified_at} verifiedBy={person.verified_by_name} />
+              )}
             </span>
           </div>
         </div>
@@ -895,7 +820,7 @@ export default function PersonDetailPage() {
                   {req.summary || req.place_name || "No summary"}
                 </span>
                 <span className="text-muted text-sm">
-                  {new Date(req.created_at).toLocaleDateString()}
+                  {formatDateLocal(req.created_at)}
                 </span>
               </a>
             ))}

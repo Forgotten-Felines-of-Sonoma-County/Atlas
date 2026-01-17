@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryOne, queryRows, query } from "@/lib/db";
+import { logFieldEdits, detectChanges } from "@/lib/audit";
 
 interface CatDetailRow {
   cat_id: string;
@@ -23,6 +24,11 @@ interface CatDetailRow {
   updated_at: string;
   first_visit_date: string | null;
   total_visits: number;
+  is_deceased: boolean | null;
+  deceased_date: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
+  verified_by_name: string | null;
 }
 
 interface ClinicVisit {
@@ -102,27 +108,34 @@ export async function GET(
   try {
     const sql = `
       SELECT
-        cat_id,
-        display_name,
-        sex,
-        altered_status,
-        altered_by_clinic,
-        breed,
-        color,
-        coat_pattern,
-        microchip,
-        data_source,
-        ownership_type,
-        quality_tier,
-        quality_reason,
-        notes,
-        identifiers,
-        owners,
-        places,
-        created_at,
-        updated_at
-      FROM trapper.v_cat_detail
-      WHERE cat_id = $1
+        v.cat_id,
+        v.display_name,
+        v.sex,
+        v.altered_status,
+        v.altered_by_clinic,
+        v.breed,
+        v.color,
+        v.coat_pattern,
+        v.microchip,
+        v.data_source,
+        v.ownership_type,
+        v.quality_tier,
+        v.quality_reason,
+        v.notes,
+        v.identifiers,
+        v.owners,
+        v.places,
+        v.created_at,
+        v.updated_at,
+        c.is_deceased,
+        c.deceased_date::TEXT,
+        c.verified_at,
+        c.verified_by,
+        s.display_name AS verified_by_name
+      FROM trapper.v_cat_detail v
+      JOIN trapper.sot_cats c ON c.cat_id = v.cat_id
+      LEFT JOIN trapper.staff s ON c.verified_by = s.staff_id::text
+      WHERE v.cat_id = $1
     `;
 
     const cat = await queryOne<CatDetailRow>(sql, [id]);
@@ -264,13 +277,103 @@ export async function GET(
       ORDER BY v.appointment_date DESC
     `;
 
-    const [clinicHistory, vitals, conditions, tests, procedures, visits] = await Promise.all([
+    // Fetch mortality event if cat is deceased
+    const mortalitySql = `
+      SELECT
+        mortality_event_id,
+        death_date::TEXT,
+        death_cause::TEXT,
+        death_age_category::TEXT,
+        source_system,
+        notes,
+        created_at::TEXT
+      FROM trapper.cat_mortality_events
+      WHERE cat_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    // Fetch birth event
+    const birthSql = `
+      SELECT
+        be.birth_event_id,
+        be.litter_id,
+        be.mother_cat_id,
+        mc.display_name AS mother_name,
+        be.birth_date::TEXT,
+        be.birth_date_precision::TEXT,
+        be.birth_year,
+        be.birth_month,
+        be.birth_season,
+        be.place_id,
+        p.label AS place_name,
+        be.kitten_count_in_litter,
+        be.survived_to_weaning,
+        be.litter_survived_count,
+        be.source_system,
+        be.notes,
+        be.created_at::TEXT
+      FROM trapper.cat_birth_events be
+      LEFT JOIN trapper.sot_cats mc ON mc.cat_id = be.mother_cat_id
+      LEFT JOIN trapper.places p ON p.place_id = be.place_id
+      WHERE be.cat_id = $1
+    `;
+
+    // Fetch sibling info if part of a litter
+    const siblingsSql = `
+      SELECT
+        c.cat_id,
+        c.display_name,
+        c.sex,
+        c.microchip
+      FROM trapper.cat_birth_events be
+      JOIN trapper.cat_birth_events be2 ON be2.litter_id = be.litter_id AND be2.cat_id != be.cat_id
+      JOIN trapper.sot_cats c ON c.cat_id = be2.cat_id
+      WHERE be.cat_id = $1
+      LIMIT 10
+    `;
+
+    const [clinicHistory, vitals, conditions, tests, procedures, visits, mortalityRows, birthRows, siblingRows] = await Promise.all([
       queryRows<ClinicVisit>(clinicHistorySql, [id]),
       queryRows<CatVital>(vitalsSql, [id]),
       queryRows<CatCondition>(conditionsSql, [id]),
       queryRows<CatTestResult>(testsSql, [id]),
       queryRows<CatProcedure>(proceduresSql, [id]),
       queryRows<CatVisitSummary>(visitsSql, [id]),
+      queryRows<{
+        mortality_event_id: string;
+        death_date: string | null;
+        death_cause: string;
+        death_age_category: string;
+        source_system: string;
+        notes: string | null;
+        created_at: string;
+      }>(mortalitySql, [id]),
+      queryRows<{
+        birth_event_id: string;
+        litter_id: string;
+        mother_cat_id: string | null;
+        mother_name: string | null;
+        birth_date: string | null;
+        birth_date_precision: string;
+        birth_year: number | null;
+        birth_month: number | null;
+        birth_season: string | null;
+        place_id: string | null;
+        place_name: string | null;
+        kitten_count_in_litter: number | null;
+        survived_to_weaning: boolean | null;
+        litter_survived_count: number | null;
+        source_system: string;
+        notes: string | null;
+        created_at: string;
+      }>(birthSql, [id]),
+      queryRows<{
+        cat_id: string;
+        display_name: string;
+        sex: string | null;
+        microchip: string | null;
+      }>(siblingsSql, [id]),
     ]);
 
     return NextResponse.json({
@@ -281,6 +384,9 @@ export async function GET(
       tests,
       procedures,
       visits,
+      mortality_event: mortalityRows[0] || null,
+      birth_event: birthRows[0] || null,
+      siblings: siblingRows,
     });
   } catch (error) {
     console.error("Error fetching cat detail:", error);
@@ -346,44 +452,36 @@ export async function PATCH(
     const updates: string[] = [];
     const values: unknown[] = [];
     let paramIndex = 1;
-    const auditInserts: string[] = [];
+    const auditChanges: Array<{ field: string; oldVal: string | null; newVal: string | null }> = [];
 
     // Check each field for changes
     if (body.name !== undefined && body.name !== current.name) {
-      auditInserts.push(`
-        INSERT INTO trapper.cat_changes (cat_id, field_name, old_value, new_value, change_reason, change_notes, changed_by)
-        VALUES ('${id}', 'name', ${current.name ? `'${current.name.replace(/'/g, "''")}'` : 'NULL'}, '${(body.name || '').replace(/'/g, "''")}', '${change_reason}', ${change_notes ? `'${change_notes.replace(/'/g, "''")}'` : 'NULL'}, '${changed_by}')
-      `);
+      auditChanges.push({ field: "name", oldVal: current.name, newVal: body.name || null });
       updates.push(`name = $${paramIndex}`);
       values.push(body.name);
       paramIndex++;
     }
 
     if (body.sex !== undefined && body.sex !== current.sex) {
-      auditInserts.push(`
-        INSERT INTO trapper.cat_changes (cat_id, field_name, old_value, new_value, change_reason, change_notes, changed_by)
-        VALUES ('${id}', 'sex', ${current.sex ? `'${current.sex}'` : 'NULL'}, '${body.sex}', '${change_reason}', ${change_notes ? `'${change_notes.replace(/'/g, "''")}'` : 'NULL'}, '${changed_by}')
-      `);
+      auditChanges.push({ field: "sex", oldVal: current.sex, newVal: body.sex });
       updates.push(`sex = $${paramIndex}::trapper.cat_sex`);
       values.push(body.sex);
       paramIndex++;
     }
 
     if (body.is_eartipped !== undefined && body.is_eartipped !== current.is_eartipped) {
-      auditInserts.push(`
-        INSERT INTO trapper.cat_changes (cat_id, field_name, old_value, new_value, change_reason, change_notes, changed_by)
-        VALUES ('${id}', 'is_eartipped', '${current.is_eartipped}', '${body.is_eartipped}', '${change_reason}', ${change_notes ? `'${change_notes.replace(/'/g, "''")}'` : 'NULL'}, '${changed_by}')
-      `);
+      auditChanges.push({
+        field: "is_eartipped",
+        oldVal: current.is_eartipped?.toString() ?? null,
+        newVal: body.is_eartipped?.toString() ?? null
+      });
       updates.push(`is_eartipped = $${paramIndex}`);
       values.push(body.is_eartipped);
       paramIndex++;
     }
 
     if (body.color_pattern !== undefined && body.color_pattern !== current.color_pattern) {
-      auditInserts.push(`
-        INSERT INTO trapper.cat_changes (cat_id, field_name, old_value, new_value, change_reason, change_notes, changed_by)
-        VALUES ('${id}', 'color_pattern', ${current.color_pattern ? `'${current.color_pattern.replace(/'/g, "''")}'` : 'NULL'}, '${(body.color_pattern || '').replace(/'/g, "''")}', '${change_reason}', ${change_notes ? `'${change_notes.replace(/'/g, "''")}'` : 'NULL'}, '${changed_by}')
-      `);
+      auditChanges.push({ field: "color_pattern", oldVal: current.color_pattern, newVal: body.color_pattern || null });
       updates.push(`color_pattern = $${paramIndex}`);
       values.push(body.color_pattern);
       paramIndex++;
@@ -399,14 +497,22 @@ export async function PATCH(
       return NextResponse.json({ success: true, message: "No changes detected" });
     }
 
-    // Execute audit inserts
-    for (const auditSql of auditInserts) {
-      try {
-        await query(auditSql, []);
-      } catch (err) {
-        console.error("Audit log error:", err);
-        // Continue even if audit fails
-      }
+    // Log changes to centralized entity_edits table
+    if (auditChanges.length > 0) {
+      await logFieldEdits(
+        "cat",
+        id,
+        auditChanges.map((c) => ({
+          field: c.field,
+          oldValue: c.oldVal,
+          newValue: c.newVal,
+        })),
+        {
+          editedBy: changed_by,
+          reason: change_reason,
+          editSource: "web_ui",
+        }
+      );
     }
 
     // Add updated_at and place_id for WHERE

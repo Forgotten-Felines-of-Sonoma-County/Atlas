@@ -3,6 +3,16 @@
 import { useState, useEffect } from "react";
 import { GeocodingControls } from "@/components/GeocodingControls";
 
+interface ParserResults {
+  success: boolean;
+  estimates_created?: number;
+  vitals_updated?: number;
+  mortality_events_created?: number;
+  duration_ms?: number;
+  message?: string;
+  error?: string;
+}
+
 interface QueueStats {
   total: number;
   by_status: Record<string, number>;
@@ -31,6 +41,22 @@ export default function AdminPage() {
   const [stats, setStats] = useState<QueueStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDocs, setShowDocs] = useState(false);
+  const [parserRunning, setParserRunning] = useState(false);
+  const [parserResults, setParserResults] = useState<ParserResults | null>(null);
+
+  const runParsers = async () => {
+    setParserRunning(true);
+    setParserResults(null);
+    try {
+      const res = await fetch("/api/cron/parse-notes");
+      const data = await res.json();
+      setParserResults(data);
+    } catch (err) {
+      setParserResults({ success: false, error: "Failed to run parsers" });
+    } finally {
+      setParserRunning(false);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/admin/stats")
@@ -41,15 +67,15 @@ export default function AdminPage() {
   }, []);
 
   return (
-    <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "0 1rem" }}>
+    <div>
       {/* Header */}
       <div style={{ marginBottom: "2rem" }}>
         <h1 style={{ marginBottom: "0.25rem" }}>Admin Dashboard</h1>
         <p className="text-muted">System configuration and monitoring</p>
       </div>
 
-      {/* Two Column Layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: "2rem", alignItems: "start" }}>
+      {/* Two Column Layout - responsive */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(280px, 320px)", gap: "1.5rem", alignItems: "start" }}>
 
         {/* Main Content */}
         <div>
@@ -133,6 +159,92 @@ export default function AdminPage() {
                   icon="🧪"
                   accent="#fff7ed"
                 />
+              </div>
+            </section>
+
+            {/* Beacon Data Enrichment Section */}
+            <section className="card" style={{ padding: "1.25rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: "1.125rem" }}>Beacon Data Enrichment</h2>
+                  <p className="text-muted text-sm" style={{ margin: "0.25rem 0 0 0" }}>
+                    Parse notes for colony sizes, reproduction, and mortality data
+                  </p>
+                </div>
+                <button
+                  onClick={runParsers}
+                  disabled={parserRunning}
+                  className="btn btn-primary"
+                  style={{
+                    padding: "0.5rem 1rem",
+                    fontSize: "0.875rem",
+                    opacity: parserRunning ? 0.6 : 1,
+                  }}
+                >
+                  {parserRunning ? "Running..." : "Run Parsers"}
+                </button>
+              </div>
+
+              {/* Parser Categories */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.75rem", marginBottom: "1rem" }}>
+                <div style={{ padding: "0.75rem", background: "var(--card-border)", borderRadius: "8px" }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.25rem" }}>P1: Colony Estimates</div>
+                  <div className="text-muted text-sm">Request notes, intake descriptions</div>
+                </div>
+                <div style={{ padding: "0.75rem", background: "var(--card-border)", borderRadius: "8px" }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.25rem" }}>P2: Reproduction</div>
+                  <div className="text-muted text-sm">Pregnant, lactating, in-heat indicators</div>
+                </div>
+                <div style={{ padding: "0.75rem", background: "var(--card-border)", borderRadius: "8px" }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.25rem" }}>P3: Mortality</div>
+                  <div className="text-muted text-sm">Death events from all note sources</div>
+                </div>
+              </div>
+
+              {/* Results */}
+              {parserResults && (
+                <div style={{
+                  padding: "0.75rem",
+                  background: parserResults.success ? "#ecfdf5" : "#fef2f2",
+                  borderRadius: "8px",
+                  border: `1px solid ${parserResults.success ? "#10b981" : "#ef4444"}`,
+                }}>
+                  {parserResults.success ? (
+                    <div>
+                      <div style={{ fontWeight: 600, color: "#059669", marginBottom: "0.5rem" }}>
+                        Parser completed ({parserResults.duration_ms}ms)
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem", fontSize: "0.875rem" }}>
+                        <div>
+                          <span className="text-muted">Colony estimates:</span>{" "}
+                          <strong>{parserResults.estimates_created || 0}</strong>
+                        </div>
+                        <div>
+                          <span className="text-muted">Repro vitals:</span>{" "}
+                          <strong>{parserResults.vitals_updated || 0}</strong>
+                        </div>
+                        <div>
+                          <span className="text-muted">Mortality events:</span>{" "}
+                          <strong>{parserResults.mortality_events_created || 0}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ color: "#dc2626" }}>
+                      Error: {parserResults.error || "Unknown error"}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Links to review parsed data */}
+              <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--card-border)" }}>
+                <div className="text-muted text-sm" style={{ marginBottom: "0.5rem" }}>Review parsed data:</div>
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <a href="/admin/beacon/colony-estimates" style={{ fontSize: "0.875rem" }}>Colony Estimates →</a>
+                  <a href="/admin/beacon/reproduction" style={{ fontSize: "0.875rem" }}>Reproduction Data →</a>
+                  <a href="/admin/beacon/mortality" style={{ fontSize: "0.875rem" }}>Mortality Events →</a>
+                </div>
               </div>
             </section>
 

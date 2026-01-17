@@ -10,6 +10,7 @@ import { TrapperAssignments } from "@/components/TrapperAssignments";
 import JournalSection, { JournalEntry } from "@/components/JournalSection";
 import { LinkedCatsSection } from "@/components/LinkedCatsSection";
 import LogObservationModal from "@/components/LogObservationModal";
+import { ColonyEstimates } from "@/components/ColonyEstimates";
 
 interface MediaItem {
   media_id: string;
@@ -266,6 +267,7 @@ export default function RequestDetailPage() {
 
   // Observation modal state
   const [showObservationModal, setShowObservationModal] = useState(false);
+  const [pendingCompletion, setPendingCompletion] = useState(false); // Track if we're completing after observation
 
   // Kitten assessment state
   const [editingKittens, setEditingKittens] = useState(false);
@@ -628,6 +630,20 @@ export default function RequestDetailPage() {
   // Quick status change handler (without entering edit mode)
   const handleQuickStatusChange = async (newStatus: string) => {
     if (!request) return;
+
+    // If completing a request with a place, show observation prompt first
+    if (newStatus === "completed" && request.place_id) {
+      setPendingCompletion(true);
+      setShowObservationModal(true);
+      return;
+    }
+
+    await executeStatusChange(newStatus);
+  };
+
+  // Actually perform the status change (called directly or after observation)
+  const executeStatusChange = async (newStatus: string) => {
+    if (!request) return;
     const oldStatus = request.status;
     setSaving(true);
     setError(null);
@@ -655,6 +671,16 @@ export default function RequestDetailPage() {
       setError("Failed to update status");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Handle observation modal close (either after logging or skipping)
+  const handleObservationModalClose = () => {
+    setShowObservationModal(false);
+    if (pendingCompletion) {
+      // Proceed with completing the request
+      executeStatusChange("completed");
+      setPendingCompletion(false);
     }
   };
 
@@ -1418,6 +1444,14 @@ export default function RequestDetailPage() {
               <p className="text-muted">No location linked</p>
             )}
           </div>
+
+          {/* Colony Estimates Card */}
+          {request.place_id && (
+            <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
+              <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Colony Status</h2>
+              <ColonyEstimates placeId={request.place_id} />
+            </div>
+          )}
 
           {/* Requester Card */}
           <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
@@ -2359,9 +2393,11 @@ export default function RequestDetailPage() {
       {request?.place_id && (
         <LogObservationModal
           isOpen={showObservationModal}
-          onClose={() => setShowObservationModal(false)}
+          onClose={handleObservationModalClose}
           placeId={request.place_id}
           placeName={request.place_name || request.place_address || 'This location'}
+          isCompletionFlow={pendingCompletion}
+          onSkip={pendingCompletion ? handleObservationModalClose : undefined}
         />
       )}
     </div>

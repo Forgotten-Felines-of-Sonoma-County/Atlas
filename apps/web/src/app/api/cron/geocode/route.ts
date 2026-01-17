@@ -125,7 +125,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: "Geocoding failed",
-        message: error instanceof Error ? error.message : "Unknown error",
         duration_ms: Date.now() - startTime,
       },
       { status: 500 }

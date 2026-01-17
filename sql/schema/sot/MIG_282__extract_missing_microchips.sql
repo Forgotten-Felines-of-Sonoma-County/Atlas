@@ -18,9 +18,9 @@ DECLARE
 BEGIN
   FOR v_rec IN
     SELECT
-      sr.source_record_id,
-      sr.raw_data,
-      sr.source_created_at
+      sr.source_row_id,
+      sr.payload as raw_data,
+      sr.created_at as source_created_at
     FROM trapper.staged_records sr
     WHERE sr.source_system = 'petlink'
       AND sr.source_table = 'pets'
@@ -29,9 +29,9 @@ BEGIN
         SELECT 1 FROM trapper.cat_identifiers ci
         WHERE ci.id_type = 'microchip'
           AND ci.id_value = COALESCE(
-            sr.raw_data->>'Microchip Number',
-            sr.raw_data->>'microchip',
-            sr.raw_data->>'Pet ID'
+            sr.payload->>'Microchip Number',
+            sr.payload->>'microchip',
+            sr.payload->>'Pet ID'
           )
       )
     LIMIT 10000  -- Process in batches
@@ -71,7 +71,7 @@ BEGIN
       p_primary_color := v_rec.raw_data->>'Color',
       p_source_system := 'petlink',
       p_source_table := 'pets',
-      p_source_record_id := v_rec.source_record_id
+      p_source_record_id := v_rec.source_row_id
     );
 
     v_created := v_created + 1;
@@ -94,18 +94,18 @@ DECLARE
 BEGIN
   FOR v_rec IN
     SELECT
-      sr.source_record_id,
-      sr.raw_data,
-      sr.source_created_at
+      sr.source_row_id,
+      sr.payload as raw_data,
+      sr.created_at as source_created_at
     FROM trapper.staged_records sr
     WHERE sr.source_system = 'clinichq'
       AND sr.source_table = 'appointment_info'
       -- Only process if has microchip and not already extracted
-      AND (sr.raw_data->>'Microchip' IS NOT NULL AND sr.raw_data->>'Microchip' != '')
+      AND (sr.payload->>'Microchip' IS NOT NULL AND sr.payload->>'Microchip' != '')
       AND NOT EXISTS (
         SELECT 1 FROM trapper.cat_identifiers ci
         WHERE ci.id_type = 'microchip'
-          AND ci.id_value = TRIM(sr.raw_data->>'Microchip')
+          AND ci.id_value = TRIM(sr.payload->>'Microchip')
       )
     LIMIT 25000  -- Process in larger batch
   LOOP
@@ -139,7 +139,7 @@ BEGIN
       p_primary_color := v_rec.raw_data->>'Color',
       p_source_system := 'clinichq',
       p_source_table := 'appointment_info',
-      p_source_record_id := v_rec.source_record_id
+      p_source_record_id := v_rec.source_row_id
     );
 
     v_created := v_created + 1;

@@ -8,10 +8,15 @@ import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { EditHistory } from "@/components/EditHistory";
 import { PlaceAlterationHistory } from "@/components/PlaceAlterationHistory";
 import { ColonyEstimates } from "@/components/ColonyEstimates";
+import { PopulationTrendChart } from "@/components/PopulationTrendChart";
+import { PopulationTimeline } from "@/components/PopulationTimeline";
 import { HistoricalContextCard } from "@/components/HistoricalContextCard";
 import ObservationsSection from "@/components/ObservationsSection";
 import { SubmissionsSection } from "@/components/SubmissionsSection";
 import { EntityLink } from "@/components/EntityLink";
+import { PlaceLinksSection } from "@/components/PlaceLinksSection";
+import { SiteStatsCard } from "@/components/SiteStatsCard";
+import { VerificationBadge, LastVerified } from "@/components/VerificationBadge";
 import { formatDateLocal } from "@/lib/formatters";
 
 interface Cat {
@@ -53,6 +58,9 @@ interface PlaceDetail {
   place_relationships: PlaceRelationship[] | null;
   cat_count: number;
   person_count: number;
+  verified_at: string | null;
+  verified_by: string | null;
+  verified_by_name: string | null;
 }
 
 interface RelatedRequest {
@@ -644,6 +652,9 @@ export default function PlaceDetailPage() {
         )}
       </Section>
 
+      {/* Site Stats Card (shows if place is part of a linked site) */}
+      <SiteStatsCard placeId={place.place_id} />
+
       {/* Activity Summary */}
       <Section title="Activity">
         <div className="detail-grid">
@@ -706,21 +717,13 @@ export default function PlaceDetailPage() {
         )}
       </Section>
 
-      {/* Related Places */}
-      {place.place_relationships && place.place_relationships.length > 0 && (
-        <Section title="Related Places">
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
-            {place.place_relationships.map((rel) => (
-              <EntityLink
-                key={rel.place_id}
-                href={`/places/${rel.place_id}`}
-                label={rel.place_name}
-                badge={rel.relationship_label}
-              />
-            ))}
-          </div>
-        </Section>
-      )}
+      {/* Linked Places (Multi-Parcel Sites) */}
+      <Section title="Linked Places">
+        <PlaceLinksSection
+          placeId={place.place_id}
+          placeName={place.display_name || place.formatted_address || "This place"}
+        />
+      </Section>
 
       {/* Related Requests */}
       <Section title="Related Requests">
@@ -789,6 +792,11 @@ export default function PlaceDetailPage() {
         <ColonyEstimates placeId={id} />
       </Section>
 
+      {/* Birth/Death Timeline */}
+      <Section title="Population Events">
+        <PopulationTimeline placeId={id} />
+      </Section>
+
       {/* Site Observations (for Chapman estimator) */}
       <Section title="Site Observations">
         <ObservationsSection
@@ -803,6 +811,11 @@ export default function PlaceDetailPage() {
       {/* FFR Activity / Alteration History */}
       <Section title="FFR Activity">
         <PlaceAlterationHistory placeId={id} />
+      </Section>
+
+      {/* Population Trend Chart */}
+      <Section title="Activity Trend">
+        <PopulationTrendChart placeId={id} />
       </Section>
 
       {/* Journal / Notes */}
@@ -834,6 +847,21 @@ export default function PlaceDetailPage() {
             <span className="detail-label">Updated</span>
             <span className="detail-value">
               {formatDateLocal(place.updated_at)}
+            </span>
+          </div>
+          <div className="detail-item">
+            <span className="detail-label">Verification</span>
+            <span className="detail-value" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <VerificationBadge
+                table="places"
+                recordId={place.place_id}
+                verifiedAt={place.verified_at}
+                verifiedBy={place.verified_by_name}
+                onVerify={() => fetchPlace()}
+              />
+              {place.verified_at && (
+                <LastVerified verifiedAt={place.verified_at} verifiedBy={place.verified_by_name} />
+              )}
             </span>
           </div>
         </div>

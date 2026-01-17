@@ -20,6 +20,9 @@ interface PersonDetailRow {
   data_source: string | null;
   identifiers: object[] | null;
   entity_type: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
+  verified_by_name: string | null;
 }
 
 export async function GET(
@@ -56,6 +59,9 @@ export async function GET(
         a.locality AS primary_address_locality,
         p.data_source,
         p.entity_type,
+        p.verified_at,
+        p.verified_by,
+        s.display_name AS verified_by_name,
         (
           SELECT jsonb_agg(jsonb_build_object(
             'id_type', pi.id_type,
@@ -69,6 +75,7 @@ export async function GET(
       FROM trapper.v_person_detail pd
       JOIN trapper.sot_people p ON p.person_id = pd.person_id
       LEFT JOIN trapper.sot_addresses a ON a.address_id = p.primary_address_id
+      LEFT JOIN trapper.staff s ON p.verified_by = s.staff_id::text
       WHERE pd.person_id = $1
     `;
 

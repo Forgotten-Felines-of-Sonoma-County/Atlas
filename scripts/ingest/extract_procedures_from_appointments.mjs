@@ -3,11 +3,18 @@
  * extract_procedures_from_appointments.mjs
  *
  * After ingesting ClinicHQ appointment data, run this script to:
- * 1. Create sot_appointments from staged_records (if not exists)
+ * 1. Create sot_appointments from staged_records using centralized SQL functions
  * 2. Create cat_procedures from sot_appointments based on service_type
  *
- * This uses service_type (what the clinic did) NOT is_spay/is_neuter flags
- * (which indicate cat status, not whether surgery was performed).
+ * This uses the centralized functions from MIG_261:
+ * - process_pending_clinichq_appointments(): Converts staged records to appointments
+ * - create_procedures_from_appointments(): Creates procedures and updates cat status
+ *
+ * These functions properly:
+ * - Look up cats via centralized patterns
+ * - Follow merge chains for cats
+ * - Handle duplicates safely
+ * - Update cat altered_status
  *
  * Usage:
  *   set -a && source .env && set +a
@@ -33,220 +40,72 @@ async function main() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
   try {
-    // Step 1: Create sot_appointments from new staged_records
-    console.log('Step 1: Creating sot_appointments from staged_records...');
-
-    const insertAppointmentsSQL = `
-      INSERT INTO trapper.sot_appointments (
-        cat_id,
-        appointment_date,
-        appointment_number,
-        service_type,
-        is_spay,
-        is_neuter,
-        vet_name,
-        technician,
-        temperature,
-        medical_notes,
-        is_lactating,
-        is_pregnant,
-        is_in_heat,
-        data_source,
-        source_system,
-        source_record_id,
-        source_row_hash
-      )
-      SELECT
-        c.cat_id,
-        TO_DATE(sr.payload->>'Date', 'MM/DD/YYYY') AS appointment_date,
-        sr.payload->>'Number' AS appointment_number,
-        sr.payload->>'Service / Subsidy' AS service_type,
-        sr.payload->>'Spay' = 'Yes' AS is_spay,
-        sr.payload->>'Neuter' = 'Yes' AS is_neuter,
-        sr.payload->>'Vet Name' AS vet_name,
-        sr.payload->>'Technician' AS technician,
-        NULLIF(sr.payload->>'Temperature', '')::NUMERIC(4,1) AS temperature,
-        sr.payload->>'Internal Medical Notes' AS medical_notes,
-        sr.payload->>'Lactating' = 'Yes' OR sr.payload->>'Lactating_2' = 'Yes' AS is_lactating,
-        sr.payload->>'Pregnant' = 'Yes' AS is_pregnant,
-        sr.payload->>'In Heat' = 'Yes' AS is_in_heat,
-        'clinichq' AS data_source,
-        'clinichq' AS source_system,
-        sr.source_row_id,
-        sr.row_hash
-      FROM trapper.staged_records sr
-      LEFT JOIN trapper.cat_identifiers ci ON
-        ci.id_type = 'microchip'
-        AND ci.id_value = sr.payload->>'Microchip Number'
-      LEFT JOIN trapper.sot_cats c ON c.cat_id = ci.cat_id
-      WHERE sr.source_system = 'clinichq'
-        AND sr.source_table = 'appointment_info'
-        AND sr.payload->>'Date' IS NOT NULL
-        AND sr.payload->>'Date' <> ''
-        AND NOT EXISTS (
-          SELECT 1 FROM trapper.sot_appointments a
-          WHERE a.appointment_number = sr.payload->>'Number'
-        )
-      ON CONFLICT DO NOTHING
-    `;
+    // Step 1: Process staged appointments using centralized function
+    console.log('Step 1: Processing staged ClinicHQ appointments...');
 
     if (dryRun) {
-      const countSQL = `
+      // Count pending records
+      const countResult = await pool.query(`
         SELECT COUNT(*) as cnt
-        FROM trapper.staged_records sr
-        WHERE sr.source_system = 'clinichq'
-          AND sr.source_table = 'appointment_info'
-          AND sr.payload->>'Date' IS NOT NULL
-          AND sr.payload->>'Date' <> ''
-          AND NOT EXISTS (
-            SELECT 1 FROM trapper.sot_appointments a
-            WHERE a.appointment_number = sr.payload->>'Number'
-          )
-      `;
-      const result = await pool.query(countSQL);
-      console.log(`  Would create ${result.rows[0].cnt} new appointments`);
+        FROM trapper.staged_records
+        WHERE source_system = 'clinichq'
+          AND source_table = 'appointment_info'
+          AND processed_at IS NULL
+          AND payload->>'Date' IS NOT NULL
+          AND payload->>'Date' <> ''
+      `);
+      console.log(`  Would process ${countResult.rows[0].cnt} pending appointment records`);
     } else {
-      const result = await pool.query(insertAppointmentsSQL);
-      console.log(`  Created ${result.rowCount} new appointments`);
+      // Use centralized function
+      const result = await pool.query(`
+        SELECT trapper.process_pending_clinichq_appointments(1000) AS result
+      `);
+      const summary = result.rows[0].result;
+      console.log(`  Processed: ${summary.processed}`);
+      console.log(`  Created: ${summary.created}`);
+      console.log(`  Skipped (already exist): ${summary.skipped}`);
+      if (summary.errors > 0) {
+        console.log(`  Errors: ${summary.errors}`);
+      }
     }
 
-    // Step 2: Create cat_procedures from appointments with spay service_type
-    console.log('\nStep 2: Creating cat_procedures for SPAY appointments...');
-
-    const insertSpaySQL = `
-      INSERT INTO trapper.cat_procedures (
-        cat_id, appointment_id, procedure_type, procedure_date, status,
-        performed_by, technician,
-        is_spay, is_neuter, is_cryptorchid, is_pre_scrotal,
-        staples_used,
-        source_system, source_record_id
-      )
-      SELECT
-        a.cat_id,
-        a.appointment_id,
-        'spay',
-        a.appointment_date,
-        'completed'::trapper.procedure_status,
-        a.vet_name,
-        a.technician,
-        TRUE,
-        FALSE,
-        FALSE,
-        FALSE,
-        FALSE,
-        'clinichq',
-        a.appointment_number
-      FROM trapper.sot_appointments a
-      WHERE a.cat_id IS NOT NULL
-        AND a.service_type ILIKE '%spay%'
-        AND NOT EXISTS (
-          SELECT 1 FROM trapper.cat_procedures cp
-          WHERE cp.appointment_id = a.appointment_id
-            AND cp.is_spay = TRUE
-        )
-      ON CONFLICT DO NOTHING
-    `;
+    // Step 2: Create procedures from appointments using centralized function
+    console.log('\nStep 2: Creating procedures from appointments...');
 
     if (dryRun) {
-      const countSQL = `
+      // Count potential spays
+      const spayCount = await pool.query(`
         SELECT COUNT(*) as cnt
         FROM trapper.sot_appointments a
         WHERE a.cat_id IS NOT NULL
           AND a.service_type ILIKE '%spay%'
           AND NOT EXISTS (
             SELECT 1 FROM trapper.cat_procedures cp
-            WHERE cp.appointment_id = a.appointment_id
-              AND cp.is_spay = TRUE
+            WHERE cp.appointment_id = a.appointment_id AND cp.is_spay = TRUE
           )
-      `;
-      const result = await pool.query(countSQL);
-      console.log(`  Would create ${result.rows[0].cnt} new spay procedures`);
-    } else {
-      const result = await pool.query(insertSpaySQL);
-      console.log(`  Created ${result.rowCount} new spay procedures`);
-    }
-
-    // Step 3: Create cat_procedures from appointments with neuter service_type
-    console.log('\nStep 3: Creating cat_procedures for NEUTER appointments...');
-
-    const insertNeuterSQL = `
-      INSERT INTO trapper.cat_procedures (
-        cat_id, appointment_id, procedure_type, procedure_date, status,
-        performed_by, technician,
-        is_spay, is_neuter, is_cryptorchid, is_pre_scrotal,
-        staples_used,
-        source_system, source_record_id
-      )
-      SELECT
-        a.cat_id,
-        a.appointment_id,
-        'neuter',
-        a.appointment_date,
-        'completed'::trapper.procedure_status,
-        a.vet_name,
-        a.technician,
-        FALSE,
-        TRUE,
-        FALSE,
-        FALSE,
-        FALSE,
-        'clinichq',
-        a.appointment_number
-      FROM trapper.sot_appointments a
-      WHERE a.cat_id IS NOT NULL
-        AND a.service_type ILIKE '%neuter%'
-        AND NOT EXISTS (
-          SELECT 1 FROM trapper.cat_procedures cp
-          WHERE cp.appointment_id = a.appointment_id
-            AND cp.is_neuter = TRUE
-        )
-      ON CONFLICT DO NOTHING
-    `;
-
-    if (dryRun) {
-      const countSQL = `
+      `);
+      // Count potential neuters
+      const neuterCount = await pool.query(`
         SELECT COUNT(*) as cnt
         FROM trapper.sot_appointments a
         WHERE a.cat_id IS NOT NULL
           AND a.service_type ILIKE '%neuter%'
           AND NOT EXISTS (
             SELECT 1 FROM trapper.cat_procedures cp
-            WHERE cp.appointment_id = a.appointment_id
-              AND cp.is_neuter = TRUE
+            WHERE cp.appointment_id = a.appointment_id AND cp.is_neuter = TRUE
           )
-      `;
-      const result = await pool.query(countSQL);
-      console.log(`  Would create ${result.rows[0].cnt} new neuter procedures`);
+      `);
+      console.log(`  Would create ${spayCount.rows[0].cnt} spay procedures`);
+      console.log(`  Would create ${neuterCount.rows[0].cnt} neuter procedures`);
     } else {
-      const result = await pool.query(insertNeuterSQL);
-      console.log(`  Created ${result.rowCount} new neuter procedures`);
-    }
-
-    // Step 4: Update sot_cats.altered_status
-    if (!dryRun) {
-      console.log('\nStep 4: Updating sot_cats.altered_status...');
-
-      await pool.query(`
-        UPDATE trapper.sot_cats c
-        SET altered_status = 'spayed'
-        WHERE c.altered_status IS DISTINCT FROM 'spayed'
-          AND EXISTS (
-            SELECT 1 FROM trapper.cat_procedures cp
-            WHERE cp.cat_id = c.cat_id AND cp.is_spay = TRUE
-          )
+      // Use centralized function
+      const result = await pool.query(`
+        SELECT trapper.create_procedures_from_appointments(1000) AS result
       `);
-
-      await pool.query(`
-        UPDATE trapper.sot_cats c
-        SET altered_status = 'neutered'
-        WHERE c.altered_status IS DISTINCT FROM 'neutered'
-          AND EXISTS (
-            SELECT 1 FROM trapper.cat_procedures cp
-            WHERE cp.cat_id = c.cat_id AND cp.is_neuter = TRUE
-          )
-      `);
-
-      console.log('  Updated altered_status for cats with procedures');
+      const summary = result.rows[0].result;
+      console.log(`  Spay procedures created: ${summary.spays_created}`);
+      console.log(`  Neuter procedures created: ${summary.neuters_created}`);
+      console.log(`  Cats updated (altered_status): ${summary.cats_updated}`);
     }
 
     // Summary
@@ -254,12 +113,16 @@ async function main() {
     const summary = await pool.query(`
       SELECT
         (SELECT COUNT(*) FROM trapper.sot_appointments) as total_appointments,
+        (SELECT COUNT(*) FROM trapper.sot_appointments WHERE cat_id IS NULL) as orphaned_appointments,
         (SELECT COUNT(*) FROM trapper.cat_procedures WHERE is_spay) as total_spays,
-        (SELECT COUNT(*) FROM trapper.cat_procedures WHERE is_neuter) as total_neuters
+        (SELECT COUNT(*) FROM trapper.cat_procedures WHERE is_neuter) as total_neuters,
+        (SELECT COUNT(*) FROM trapper.sot_cats WHERE altered_status IN ('spayed', 'neutered')) as altered_cats
     `);
     console.log(`Total appointments: ${summary.rows[0].total_appointments}`);
+    console.log(`Orphaned appointments (no cat linked): ${summary.rows[0].orphaned_appointments}`);
     console.log(`Total spay procedures: ${summary.rows[0].total_spays}`);
     console.log(`Total neuter procedures: ${summary.rows[0].total_neuters}`);
+    console.log(`Cats with altered_status set: ${summary.rows[0].altered_cats}`);
 
   } finally {
     await pool.end();

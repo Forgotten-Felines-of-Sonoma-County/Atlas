@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error updating source confidence:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update" },
+      { error: "Failed to update source confidence" },
       { status: 500 }
     );
   }
@@ -108,7 +108,7 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error("Error deleting source confidence:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete" },
+      { error: "Failed to delete source confidence" },
       { status: 500 }
     );
   }

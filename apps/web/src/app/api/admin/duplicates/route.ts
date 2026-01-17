@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error resolving duplicate:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to resolve duplicate" },
+      { error: "Failed to resolve duplicate" },
       { status: 500 }
     );
   }

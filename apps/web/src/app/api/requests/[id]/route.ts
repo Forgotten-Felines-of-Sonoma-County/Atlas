@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { queryOne, queryRows } from "@/lib/db";
+import { logFieldEdits } from "@/lib/audit";
 
 interface CurrentTrapper {
   trapper_person_id: string;
@@ -212,18 +213,20 @@ export async function GET(
         (SELECT COALESCE(pi.id_value_raw, pi.id_value_norm) FROM trapper.person_identifiers pi
          WHERE pi.person_id = r.requester_person_id AND pi.id_type = 'phone'
          ORDER BY pi.confidence DESC NULLS LAST LIMIT 1) AS requester_phone,
-        -- Linked cats (from request_cat_links table)
+        -- Linked cats (from request_cat_links table, following merge chains)
         (SELECT jsonb_agg(jsonb_build_object(
-            'cat_id', rcl.cat_id,
-            'cat_name', c.display_name,
+            'cat_id', COALESCE(c.merged_into_cat_id, c.cat_id),
+            'cat_name', COALESCE(canonical_cat.display_name, c.display_name),
             'link_purpose', rcl.link_purpose::TEXT,
             'linked_at', rcl.linked_at,
             'microchip', (SELECT ci.id_value FROM trapper.cat_identifiers ci
-                          WHERE ci.cat_id = rcl.cat_id AND ci.id_type = 'microchip' LIMIT 1),
-            'altered_status', c.altered_status
+                          WHERE ci.cat_id = COALESCE(c.merged_into_cat_id, c.cat_id)
+                          AND ci.id_type = 'microchip' LIMIT 1),
+            'altered_status', COALESCE(canonical_cat.altered_status, c.altered_status)
         ) ORDER BY rcl.linked_at DESC)
          FROM trapper.request_cat_links rcl
          JOIN trapper.sot_cats c ON c.cat_id = rcl.cat_id
+         LEFT JOIN trapper.sot_cats canonical_cat ON canonical_cat.cat_id = c.merged_into_cat_id
          WHERE rcl.request_id = r.request_id) AS cats,
         (SELECT COUNT(*) FROM trapper.request_cat_links rcl WHERE rcl.request_id = r.request_id) AS linked_cat_count,
         -- Computed scores (handle if functions don't exist yet)
@@ -419,12 +422,56 @@ export async function PATCH(
       );
     }
 
+    // Get current request data for audit comparison
+    const currentSql = `
+      SELECT status::TEXT, priority::TEXT, summary, notes, estimated_cat_count,
+             has_kittens, cats_are_friendly, assigned_to, assigned_trapper_type::TEXT,
+             scheduled_date::TEXT, scheduled_time_range, hold_reason::TEXT, hold_reason_notes,
+             cats_trapped, cats_returned, resolution_notes, permission_status::TEXT,
+             access_notes, traps_overnight_safe, access_without_contact,
+             kitten_count, kitten_age_weeks, kitten_assessment_status
+      FROM trapper.sot_requests WHERE request_id = $1
+    `;
+    const current = await queryOne<{
+      status: string | null;
+      priority: string | null;
+      summary: string | null;
+      notes: string | null;
+      estimated_cat_count: number | null;
+      has_kittens: boolean | null;
+      cats_are_friendly: boolean | null;
+      assigned_to: string | null;
+      assigned_trapper_type: string | null;
+      scheduled_date: string | null;
+      scheduled_time_range: string | null;
+      hold_reason: string | null;
+      hold_reason_notes: string | null;
+      cats_trapped: number | null;
+      cats_returned: number | null;
+      resolution_notes: string | null;
+      permission_status: string | null;
+      access_notes: string | null;
+      traps_overnight_safe: boolean | null;
+      access_without_contact: boolean | null;
+      kitten_count: number | null;
+      kitten_age_weeks: number | null;
+      kitten_assessment_status: string | null;
+    }>(currentSql, [id]);
+
+    if (!current) {
+      return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    }
+
+    // Track changes for audit logging
+    const auditChanges: Array<{ field: string; oldValue: unknown; newValue: unknown }> = [];
+
     // Build dynamic update query
     const updates: string[] = [];
     const values: unknown[] = [];
     let paramIndex = 1;
 
-    if (body.status !== undefined) {
+    if (body.status !== undefined && body.status !== current.status) {
+      auditChanges.push({ field: "status", oldValue: current.status, newValue: body.status });
       updates.push(`status = $${paramIndex}::trapper.request_status`);
       values.push(body.status);
       paramIndex++;
@@ -441,7 +488,8 @@ export async function PATCH(
       }
     }
 
-    if (body.priority !== undefined) {
+    if (body.priority !== undefined && body.priority !== current.priority) {
+      auditChanges.push({ field: "priority", oldValue: current.priority, newValue: body.priority });
       updates.push(`priority = $${paramIndex}::trapper.request_priority`);
       values.push(body.priority);
       paramIndex++;
@@ -486,7 +534,8 @@ export async function PATCH(
     // DEPRECATED: Use POST /api/requests/[id]/trappers instead
     // This field is kept for backward compatibility with legacy data
     // New code should use the request_trapper_assignments table
-    if (body.assigned_to !== undefined) {
+    if (body.assigned_to !== undefined && body.assigned_to !== current.assigned_to) {
+      auditChanges.push({ field: "assigned_to", oldValue: current.assigned_to, newValue: body.assigned_to || null });
       updates.push(`assigned_to = $${paramIndex}`);
       values.push(body.assigned_to || null);
       paramIndex++;
@@ -498,7 +547,8 @@ export async function PATCH(
       }
     }
 
-    if (body.assigned_trapper_type !== undefined) {
+    if (body.assigned_trapper_type !== undefined && body.assigned_trapper_type !== current.assigned_trapper_type) {
+      auditChanges.push({ field: "assigned_trapper_type", oldValue: current.assigned_trapper_type, newValue: body.assigned_trapper_type || null });
       updates.push(`assigned_trapper_type = $${paramIndex}::trapper.trapper_type`);
       values.push(body.assigned_trapper_type || null);
       paramIndex++;
@@ -510,13 +560,15 @@ export async function PATCH(
       paramIndex++;
     }
 
-    if (body.scheduled_date !== undefined) {
+    if (body.scheduled_date !== undefined && body.scheduled_date !== current.scheduled_date) {
+      auditChanges.push({ field: "scheduled_date", oldValue: current.scheduled_date, newValue: body.scheduled_date || null });
       updates.push(`scheduled_date = $${paramIndex}`);
       values.push(body.scheduled_date || null);
       paramIndex++;
     }
 
-    if (body.scheduled_time_range !== undefined) {
+    if (body.scheduled_time_range !== undefined && body.scheduled_time_range !== current.scheduled_time_range) {
+      auditChanges.push({ field: "scheduled_time_range", oldValue: current.scheduled_time_range, newValue: body.scheduled_time_range || null });
       updates.push(`scheduled_time_range = $${paramIndex}`);
       values.push(body.scheduled_time_range || null);
       paramIndex++;
@@ -528,20 +580,23 @@ export async function PATCH(
       paramIndex++;
     }
 
-    if (body.cats_trapped !== undefined) {
+    if (body.cats_trapped !== undefined && body.cats_trapped !== current.cats_trapped) {
+      auditChanges.push({ field: "cats_trapped", oldValue: current.cats_trapped, newValue: body.cats_trapped });
       updates.push(`cats_trapped = $${paramIndex}`);
       values.push(body.cats_trapped);
       paramIndex++;
     }
 
-    if (body.cats_returned !== undefined) {
+    if (body.cats_returned !== undefined && body.cats_returned !== current.cats_returned) {
+      auditChanges.push({ field: "cats_returned", oldValue: current.cats_returned, newValue: body.cats_returned });
       updates.push(`cats_returned = $${paramIndex}`);
       values.push(body.cats_returned);
       paramIndex++;
     }
 
     // Hold management
-    if (body.hold_reason !== undefined) {
+    if (body.hold_reason !== undefined && body.hold_reason !== current.hold_reason) {
+      auditChanges.push({ field: "hold_reason", oldValue: current.hold_reason, newValue: body.hold_reason });
       if (body.hold_reason === null) {
         updates.push(`hold_reason = NULL`);
       } else {
@@ -657,6 +712,14 @@ export async function PATCH(
 
     // Add updated_at
     updates.push(`updated_at = NOW()`);
+
+    // Log changes to centralized entity_edits table
+    if (auditChanges.length > 0) {
+      await logFieldEdits("request", id, auditChanges, {
+        editedBy: "web_user",
+        editSource: "web_ui",
+      });
+    }
 
     // Add request_id to values
     values.push(id);

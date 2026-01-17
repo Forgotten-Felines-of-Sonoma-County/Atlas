@@ -144,14 +144,8 @@ export async function POST(
     });
   } catch (error) {
     console.error("Error upgrading request:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      {
-        error: "Failed to upgrade request",
-        details: errorMessage,
-        // Include stack in dev only
-        ...(process.env.NODE_ENV === "development" && { stack: error instanceof Error ? error.stack : undefined })
-      },
+      { error: "Failed to upgrade request" },
       { status: 500 }
     );
   }

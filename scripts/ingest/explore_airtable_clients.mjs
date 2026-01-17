@@ -3,7 +3,11 @@
  * Explore Airtable Clients and Locations tables
  */
 
-const AIRTABLE_PAT = process.env.AIRTABLE_PAT || 'patcjKFzC852FH3sI.ac4874470b704b94ed1545a6d7d67bab536f576d6f3292bdccc9d1eadf635351';
+const AIRTABLE_PAT = process.env.AIRTABLE_PAT;
+if (!AIRTABLE_PAT) {
+  console.error('ERROR: AIRTABLE_PAT environment variable is required');
+  process.exit(1);
+}
 const BASE_ID = 'appl6zLrRFDvsz0dh';
 
 // Known table IDs from the codebase

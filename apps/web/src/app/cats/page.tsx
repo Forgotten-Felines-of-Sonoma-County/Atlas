@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { formatDateLocal } from "@/lib/formatters";
 
 interface Cat {
   cat_id: string;
@@ -165,7 +166,7 @@ export default function CatsPage() {
                     <td className="text-sm">
                       {cat.last_visit_date ? (
                         <span title={`${cat.visit_count} visit${cat.visit_count !== 1 ? "s" : ""}`}>
-                          {new Date(cat.last_visit_date).toLocaleDateString()}
+                          {formatDateLocal(cat.last_visit_date)}
                         </span>
                       ) : (
                         <span className="text-muted">—</span>

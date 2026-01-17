@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error fetching trappers:", error);
     return NextResponse.json(
-      { error: "Failed to fetch trappers", details: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Failed to fetch trappers" },
       { status: 500 }
     );
   }
@@ -249,7 +249,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error("Error updating trapper:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update trapper" },
+      { error: "Failed to update trapper" },
       { status: 500 }
     );
   }
@@ -282,7 +282,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error adding trapper role:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to add trapper role" },
+      { error: "Failed to add trapper role" },
       { status: 500 }
     );
   }
