@@ -801,6 +801,45 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
       ON CONFLICT DO NOTHING
     `);
     results.appointment_vitals_created = appointmentVitals.rowCount || 0;
+
+    // AUTO-LINK CATS TO REQUESTS based on attribution windows
+    // This is the key integration that was missing - cats visiting clinic should be
+    // automatically linked to any active request at their place
+    const catRequestLinks = await query(`
+      INSERT INTO trapper.request_cat_links (request_id, cat_id, link_purpose, link_notes, linked_by)
+      SELECT DISTINCT
+        r.request_id,
+        a.cat_id,
+        CASE
+          WHEN cp.is_spay = TRUE OR cp.is_neuter = TRUE THEN 'tnr_target'::trapper.cat_link_purpose
+          ELSE 'wellness'::trapper.cat_link_purpose
+        END,
+        'Auto-linked: clinic visit ' || a.appointment_date::text || ' within request attribution window',
+        'ingest_auto'
+      FROM trapper.sot_appointments a
+      JOIN trapper.cat_place_relationships cpr ON cpr.cat_id = a.cat_id
+      JOIN trapper.sot_requests r ON r.place_id = cpr.place_id
+      LEFT JOIN trapper.cat_procedures cp ON cp.appointment_id = a.appointment_id
+      WHERE a.cat_id IS NOT NULL
+        -- Attribution window logic (from MIG_208):
+        -- Active requests: created up to 6 months ago, or closed up to 3 months ago
+        AND (
+          -- Active request: procedure within 6 months of request creation, or future
+          (r.resolved_at IS NULL AND a.appointment_date >= r.source_created_at - INTERVAL '1 month')
+          OR
+          -- Resolved request: procedure before resolved + 3 month buffer
+          (r.resolved_at IS NOT NULL AND a.appointment_date <= r.resolved_at + INTERVAL '3 months'
+           AND a.appointment_date >= r.source_created_at - INTERVAL '1 month')
+        )
+        -- Only link new appointments (not historical backfill)
+        AND a.appointment_date >= CURRENT_DATE - INTERVAL '30 days'
+        AND NOT EXISTS (
+          SELECT 1 FROM trapper.request_cat_links rcl
+          WHERE rcl.request_id = r.request_id AND rcl.cat_id = a.cat_id
+        )
+      ON CONFLICT (request_id, cat_id) DO NOTHING
+    `);
+    results.cats_linked_to_requests = catRequestLinks.rowCount || 0;
   }
 
   return results;
