@@ -16,6 +16,8 @@ interface FileUploadRow {
   rows_updated: number | null;
   rows_skipped: number | null;
   error_message: string | null;
+  data_date_min: string | null;
+  data_date_max: string | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -52,7 +54,9 @@ export async function GET(request: NextRequest) {
         rows_inserted,
         rows_updated,
         rows_skipped,
-        error_message
+        error_message,
+        data_date_min,
+        data_date_max
       FROM trapper.file_uploads
       ${whereClause}
       ORDER BY uploaded_at DESC

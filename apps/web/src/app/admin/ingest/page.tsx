@@ -23,6 +23,8 @@ interface FileUpload {
   rows_updated: number | null;
   rows_skipped: number | null;
   error_message: string | null;
+  data_date_min: string | null;
+  data_date_max: string | null;
 }
 
 interface ProcessingResult {
@@ -374,6 +376,7 @@ export default function IngestPage() {
                 <th>Size</th>
                 <th>Status</th>
                 <th>Uploaded</th>
+                <th>Data Dates</th>
                 <th>Results</th>
                 <th>Actions</th>
               </tr>
@@ -403,6 +406,17 @@ export default function IngestPage() {
                   </td>
                   <td className="text-sm">
                     {new Date(upload.uploaded_at).toLocaleDateString()}
+                  </td>
+                  <td className="text-sm">
+                    {upload.data_date_min && upload.data_date_max ? (
+                      upload.data_date_min === upload.data_date_max ? (
+                        new Date(upload.data_date_min).toLocaleDateString()
+                      ) : (
+                        `${new Date(upload.data_date_min).toLocaleDateString()} - ${new Date(upload.data_date_max).toLocaleDateString()}`
+                      )
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
                   </td>
                   <td className="text-sm">
                     {upload.status === "completed" && upload.rows_total !== null ? (

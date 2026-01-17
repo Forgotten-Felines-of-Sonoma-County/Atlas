@@ -123,6 +123,32 @@ export async function POST(
     const { rows } = parseFile(buffer, upload.stored_filename);
     const idFieldCandidates = getIdField(upload.source_system, upload.source_table);
 
+    // Extract date range from data
+    const dateFields = ['Date', 'Appointment Date', 'Created', 'date', 'appointment_date'];
+    let dataDateMin: Date | null = null;
+    let dataDateMax: Date | null = null;
+
+    for (const row of rows) {
+      for (const field of dateFields) {
+        const dateStr = row[field] as string;
+        if (dateStr && typeof dateStr === 'string') {
+          // Try to parse date (handles MM/DD/YYYY and YYYY-MM-DD formats)
+          let parsedDate: Date | null = null;
+          if (dateStr.includes('/')) {
+            const [m, d, y] = dateStr.split('/');
+            parsedDate = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+          } else if (dateStr.includes('-')) {
+            parsedDate = new Date(dateStr);
+          }
+
+          if (parsedDate && !isNaN(parsedDate.getTime())) {
+            if (!dataDateMin || parsedDate < dataDateMin) dataDateMin = parsedDate;
+            if (!dataDateMax || parsedDate > dataDateMax) dataDateMax = parsedDate;
+          }
+        }
+      }
+    }
+
     // Process rows into staged_records
     let inserted = 0;
     let skipped = 0;
@@ -198,9 +224,12 @@ export async function POST(
     await query(
       `UPDATE trapper.file_uploads
        SET status = 'completed', processed_at = NOW(),
-           rows_total = $2, rows_inserted = $3, rows_updated = $4, rows_skipped = $5
+           rows_total = $2, rows_inserted = $3, rows_updated = $4, rows_skipped = $5,
+           data_date_min = $6, data_date_max = $7
        WHERE upload_id = $1`,
-      [uploadId, rows.length, inserted, updated, skipped]
+      [uploadId, rows.length, inserted, updated, skipped,
+       dataDateMin?.toISOString().split('T')[0] || null,
+       dataDateMax?.toISOString().split('T')[0] || null]
     );
 
     return NextResponse.json({
