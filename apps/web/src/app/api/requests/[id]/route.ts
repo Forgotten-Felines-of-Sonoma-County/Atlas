@@ -206,12 +206,12 @@ export async function GET(
         -- Requester info (include contact details)
         r.requester_person_id,
         per.display_name AS requester_name,
-        (SELECT pi.id_value FROM trapper.person_identifiers pi
+        (SELECT COALESCE(pi.id_value_raw, pi.id_value_norm) FROM trapper.person_identifiers pi
          WHERE pi.person_id = r.requester_person_id AND pi.id_type = 'email'
-         ORDER BY pi.is_primary DESC NULLS LAST LIMIT 1) AS requester_email,
-        (SELECT pi.id_value FROM trapper.person_identifiers pi
+         ORDER BY pi.confidence DESC NULLS LAST LIMIT 1) AS requester_email,
+        (SELECT COALESCE(pi.id_value_raw, pi.id_value_norm) FROM trapper.person_identifiers pi
          WHERE pi.person_id = r.requester_person_id AND pi.id_type = 'phone'
-         ORDER BY pi.is_primary DESC NULLS LAST LIMIT 1) AS requester_phone,
+         ORDER BY pi.confidence DESC NULLS LAST LIMIT 1) AS requester_phone,
         -- Linked cats (from request_cat_links table)
         (SELECT jsonb_agg(jsonb_build_object(
             'cat_id', rcl.cat_id,
