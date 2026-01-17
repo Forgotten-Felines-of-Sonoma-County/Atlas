@@ -32,6 +32,8 @@ export async function POST(
 
   try {
     const body: UpgradeRequestBody = await request.json();
+    console.log("[upgrade] Starting upgrade for request:", id);
+    console.log("[upgrade] Request body:", JSON.stringify(body, null, 2));
 
     // First, verify the request exists and is a legacy request
     const existingRequest = await queryOne<{
@@ -46,6 +48,8 @@ export async function POST(
        FROM trapper.sot_requests WHERE request_id = $1`,
       [id]
     );
+
+    console.log("[upgrade] Existing request:", existingRequest);
 
     if (!existingRequest) {
       return NextResponse.json(
@@ -88,7 +92,7 @@ export async function POST(
       RETURNING request_id
     `;
 
-    const result = await queryOne<{ request_id: string }>(updateSql, [
+    const updateParams = [
       id,
       body.permission_status || "unknown",
       body.access_notes || null,
@@ -102,7 +106,11 @@ export async function POST(
       body.urgency_reasons || null,
       body.urgency_notes || null,
       body.kittens_already_taken || false,
-    ]);
+    ];
+    console.log("[upgrade] Running update with params:", updateParams);
+
+    const result = await queryOne<{ request_id: string }>(updateSql, updateParams);
+    console.log("[upgrade] Update result:", result);
 
     if (!result) {
       return NextResponse.json(
