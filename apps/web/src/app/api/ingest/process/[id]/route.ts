@@ -149,12 +149,54 @@ export async function POST(
       }
     }
 
+    // For appointment_info, aggregate service lines into main rows
+    // ClinicHQ exports have: main row (with Number) + service lines (without Number)
+    // Service lines contain important data like "Cat Spay" or "Cat Neuter" services
+    let processedRows = rows;
+    if (upload.source_table === 'appointment_info') {
+      const aggregated: Record<string, unknown>[] = [];
+      let currentAppointment: Record<string, unknown> | null = null;
+      let services: string[] = [];
+
+      for (const row of rows) {
+        const hasNumber = row['Number'] && String(row['Number']).trim();
+
+        if (hasNumber) {
+          // Save previous appointment with aggregated services
+          if (currentAppointment) {
+            currentAppointment['All Services'] = services.join('; ');
+            aggregated.push(currentAppointment);
+          }
+          // Start new appointment
+          currentAppointment = { ...row };
+          services = [];
+          const svc = row['Service / Subsidy'];
+          if (svc && String(svc).trim()) {
+            services.push(String(svc).trim());
+          }
+        } else if (currentAppointment) {
+          // Service line - aggregate into current appointment
+          const svc = row['Service / Subsidy'];
+          if (svc && String(svc).trim()) {
+            services.push(String(svc).trim());
+          }
+        }
+      }
+      // Don't forget the last appointment
+      if (currentAppointment) {
+        currentAppointment['All Services'] = services.join('; ');
+        aggregated.push(currentAppointment);
+      }
+
+      processedRows = aggregated;
+    }
+
     // Process rows into staged_records
     let inserted = 0;
     let skipped = 0;
     let updated = 0;
 
-    for (const row of rows) {
+    for (const row of processedRows) {
       // Skip empty rows (rows where all values are empty/null)
       const hasData = Object.values(row).some(v => v !== null && v !== undefined && String(v).trim() !== '');
       if (!hasData) {
@@ -171,15 +213,8 @@ export async function POST(
         }
       }
 
-      // For appointment_info, skip service line items (rows without appointment Number)
-      // ClinicHQ exports have multiple rows per appointment: main row + service lines
-      if (!sourceRowId && upload.source_table === 'appointment_info') {
-        skipped++;
-        continue;
-      }
-
       if (!sourceRowId) {
-        sourceRowId = `row_${rows.indexOf(row)}`;
+        sourceRowId = `row_${processedRows.indexOf(row)}`;
       }
 
       // Calculate row hash
@@ -456,7 +491,7 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
         trapper.get_canonical_cat_id(c.cat_id),
         TO_DATE(sr.payload->>'Date', 'MM/DD/YYYY'),
         sr.payload->>'Number',
-        sr.payload->>'Service / Subsidy',
+        COALESCE(sr.payload->>'All Services', sr.payload->>'Service / Subsidy'),
         sr.payload->>'Spay' = 'Yes',
         sr.payload->>'Neuter' = 'Yes',
         sr.payload->>'Vet Name',
