@@ -155,6 +155,13 @@ export async function POST(
     let updated = 0;
 
     for (const row of rows) {
+      // Skip empty rows (rows where all values are empty/null)
+      const hasData = Object.values(row).some(v => v !== null && v !== undefined && String(v).trim() !== '');
+      if (!hasData) {
+        skipped++;
+        continue;
+      }
+
       // Find ID field
       let sourceRowId = null;
       for (const field of idFieldCandidates) {
