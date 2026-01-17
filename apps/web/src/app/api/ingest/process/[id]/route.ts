@@ -213,6 +213,12 @@ export async function POST(
         }
       }
 
+      // For appointment_info, use composite key (Number_Date) since same appointment
+      // number can appear on multiple dates (e.g., surgery + follow-up)
+      if (sourceRowId && upload.source_table === 'appointment_info' && row['Date']) {
+        sourceRowId = `${sourceRowId}_${String(row['Date']).replace(/\//g, '-')}`;
+      }
+
       if (!sourceRowId) {
         sourceRowId = `row_${processedRows.indexOf(row)}`;
       }
@@ -568,6 +574,7 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
         AND NOT EXISTS (
           SELECT 1 FROM trapper.sot_appointments a
           WHERE a.appointment_number = sr.payload->>'Number'
+            AND a.appointment_date = TO_DATE(sr.payload->>'Date', 'MM/DD/YYYY')
         )
       ON CONFLICT DO NOTHING
     `);
