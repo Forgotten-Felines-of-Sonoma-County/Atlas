@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { queryOne } from "@/lib/db";
+import { queryOne, queryRows } from "@/lib/db";
 
 interface SetOverrideBody {
   count: number;
@@ -178,9 +178,7 @@ export async function GET(
       LIMIT 20
     `;
 
-    const { rows: history } = await import("@/lib/db").then((db) =>
-      db.query(historySql, [id])
-    );
+    const history = await queryRows(historySql, [id]);
 
     return NextResponse.json({
       current: current && current.colony_override_count !== null ? {
