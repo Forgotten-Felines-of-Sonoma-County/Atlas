@@ -172,6 +172,7 @@ export default function IngestPage() {
 
       if (!response.ok) {
         alert(result.error || "Processing failed");
+        fetchData(); // Refresh list even on failure to show updated status
         return;
       }
 
@@ -179,6 +180,7 @@ export default function IngestPage() {
       fetchData(); // Refresh list
     } catch (err) {
       alert("Network error during processing");
+      fetchData(); // Refresh list even on error
     } finally {
       setProcessingId(null);
     }
@@ -248,6 +250,7 @@ export default function IngestPage() {
       fetchData();
     } catch (err) {
       setUploadError("Network error");
+      fetchData(); // Refresh list even on error
     } finally {
       setUploading(false);
     }
