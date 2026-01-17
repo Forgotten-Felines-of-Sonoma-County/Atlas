@@ -1,6 +1,95 @@
 # Atlas TODO Tracker
 
-Last Updated: 2026-01-17
+Last Updated: 2026-01-17 (Post-Deduplication Audit)
+
+---
+
+## 🚨 STRATEGIC NEXT STEPS (Post-Audit Action Plan)
+
+Based on the comprehensive audit completed 2026-01-17 (5 parallel audits: API, UI, ingest, database, Airtable), here are the prioritized next steps:
+
+### ✅ COMPLETED (2026-01-17)
+
+1. **✅ Deploy MIG_288-301 to Production**
+   - Deployed: MIG_288-300 (Beacon infrastructure) + MIG_301 (Enhanced Deduplication)
+   - Includes: Birth events, mortality events, seasonal views, Vortex params, trapper onboarding
+   - Also deployed: MIG_295 fixes (auto-linking), MIG_301 (deduplication system)
+
+2. **✅ Update vercel.json with Crons**
+   - Added `process-uploads` (every 10 min) - auto-process staged records
+   - Added `parse-notes` (9 AM daily) - P1/P2/P3 data extraction
+   - Now 6 total cron jobs scheduled
+
+3. **✅ Enhanced Deduplication System (MIG_301)**
+   - Added Double Metaphone phonetic matching (better than Soundex)
+   - Added name frequency weighting (common names weighted lower)
+   - Enhanced address normalization with PostgreSQL word boundaries
+   - Created `v_potential_duplicate_people` view with blocking optimization
+   - Created `v_high_priority_duplicates` view for actionable results
+   - **FINDING: 14,536 exact name duplicates** in people data
+
+### 🔴 CRITICAL: Duplicate Data Cleanup
+
+**Discovery:** The deduplication audit revealed significant data quality issues:
+
+| Priority | Count | Description |
+|----------|-------|-------------|
+| exact_name | 14,536 | Same exact name appears multiple times |
+| shared_place | 14 | Different names, same address |
+| very_high_score | 6 | Near-identical names (typos) |
+| review | 40 | High-ish confidence, needs human review |
+
+**Recommended Actions:**
+1. Build admin UI to review `v_high_priority_duplicates`
+2. Auto-merge exact name duplicates where no conflicting identifiers
+3. Prioritize shared_place duplicates (likely same person)
+4. Run weekly dedup cron to catch new duplicates
+
+**Sample Exact Duplicates Found:**
+- Jean Bazdresh (appears twice)
+- Diana Bolden (appears twice)
+- Josh Stump (appears twice)
+- 14,533 more...
+
+### Immediate (This Week)
+
+### Short-Term (This Sprint)
+
+3. **🔗 Wire Birth/Mortality Events to Data Flows**
+   - Birth events: Create from kitten intake, parse pregnant/nursing notes
+   - Mortality events: Parse death mentions from notes, enable manual reporting
+   - Tables exist but have ZERO automatic data capture
+   - Impact: Enables Beacon population growth/survival modeling
+
+4. **📊 Create Airtable Sync Cron Endpoints**
+   - `/api/cron/airtable-trappers-sync` - Keep trapper data current
+   - `/api/cron/airtable-requests-sync` - Keep request data current
+   - Scripts exist as CLI tools, need cron wrappers
+   - Impact: Eliminates manual Airtable sync runs
+
+5. **✉️ Set Up Resend Email Integration**
+   - Configure RESEND_API_KEY in environment
+   - Email templates exist in `email_templates` table (MIG_300)
+   - Impact: Enables automated out-of-county and onboarding emails
+
+### Medium-Term (Next Sprint)
+
+6. **📈 Increase Observation Coverage (422 → 2,000+ places)**
+   - Train trappers on observation workflow
+   - Add observation prompt to more touchpoints
+   - Impact: 10x more accurate Chapman population estimates
+
+7. **🔄 Complete Intake Workflow Simplification**
+   - Phase 3 complete (inline communication log)
+   - Remaining: Edit all submitted answers, priority picker
+   - Impact: Staff efficiency, cleaner data
+
+8. **🎯 Build Trapper Assignment Workflow in Atlas**
+   - Currently lives entirely in Airtable
+   - Design native Atlas workflow with Airtable sync
+   - Impact: Better trapper stats, integrated experience
+
+---
 
 ## UI IMPROVEMENTS ROADMAP (Comprehensive Audit 2026-01-17)
 
@@ -208,7 +297,7 @@ Based on Beacon's requirements and the Vortex population model (Boone et al. 201
 
 ### Comprehensive Audit Summary (2026-01-17)
 
-**4 parallel audits completed covering: API endpoints, UI components, ingest scripts, database schema**
+**5 parallel audits completed covering: API endpoints, UI components, ingest scripts, database schema, Airtable workflows**
 
 #### What's Working Well
 | Area | Status | Notes |
@@ -216,20 +305,74 @@ Based on Beacon's requirements and the Vortex population model (Boone et al. 201
 | **Centralized Functions** | ✅ 100% | `find_or_create_*` used correctly everywhere |
 | **Entity Merge Infrastructure** | ✅ Fixed | `merge_people()`, `merge_cats()`, `merge_places()` all complete |
 | **Attribution Windows** | ✅ Correct | MIG_208 rolling windows implemented in `v_request_alteration_stats` |
-| **Intake Workflow** | ✅ 70% | New unified status working, journal integrated |
+| **Intake Workflow** | ✅ 85% | Unified status + inline communication log working |
 | **Auto-Processing** | ✅ Fixed | `/api/cron/process-uploads` handles staged records |
 | **Security** | ✅ Fixed | SQL injection, embedded tokens, plaintext passwords all resolved |
 | **Place Deduplication** | ✅ Working | `find_or_create_place_deduped()` + MIG_283 for exact duplicates |
+| **Beacon Infrastructure** | ✅ Built | MIG_288-300 define birth, mortality, seasonal views, Vortex params |
+
+#### 🔴 CRITICAL DEPLOYMENT GAP (Action Required)
+
+**MIG_288-300 exist as files but are NOT deployed to production database!**
+
+| Migration | Purpose | File Exists | Deployed |
+|-----------|---------|-------------|----------|
+| MIG_288 | Vortex Population Parameters | ✅ | ❌ **NOT DEPLOYED** |
+| MIG_289 | Cat Birth Events Table (P2) | ✅ | ❌ **NOT DEPLOYED** |
+| MIG_290 | Cat Mortality Events Table (P3) | ✅ | ❌ **NOT DEPLOYED** |
+| MIG_291 | Seasonal Analysis Views (P4) | ✅ | ❌ **NOT DEPLOYED** |
+| MIG_292 | Fix MIG_273 Direct INSERT | ✅ | ❌ **NOT DEPLOYED** |
+| MIG_293-300 | Education Materials, Automations | ✅ | ❌ **NOT DEPLOYED** |
+
+**Deploy Command:**
+```bash
+# Deploy script exists at:
+./scripts/deploy_migrations_288_299.sh
+
+# Or manually:
+export $(cat .env | grep -v '^#' | xargs)
+psql "$DATABASE_URL" -f sql/schema/sot/MIG_288__vortex_population_parameters.sql
+psql "$DATABASE_URL" -f sql/schema/sot/MIG_289__cat_birth_events.sql
+# ... continue through MIG_300
+```
 
 #### Remaining Gaps (Action Required)
 
 | Gap | Current State | Action Needed | Priority |
 |-----|---------------|---------------|----------|
-| **Parser Scripts** | ✅ Cron deployed | `/api/cron/parse-notes` handles P1-P3 parsing | DONE |
-| **ClinicHQ Real-Time Integration** | Batch upload only | Explore webhooks or scheduled sync | LOW |
-| **Trapper Assignment Workflow** | Still in Airtable | Build Atlas native workflow | MEDIUM |
-| **Birth/Mortality Events** | ✅ Tables created | MIG_289 (birth), MIG_290 (mortality) ready | DONE |
+| **Deploy Beacon Migrations** | Files exist, not deployed | Run MIG_288-300 on production | 🔴 CRITICAL |
+| **Birth Event Automation** | Table exists, zero records | Wire to intake/clinic flow | HIGH |
+| **Mortality Event Automation** | Table exists, zero records | Wire to parse-notes cron | HIGH |
+| **Unscheduled Crons** | Endpoints exist, not scheduled | Add to vercel.json | HIGH |
 | **Observation Coverage** | 422/7,456 places (5.6%) | Train trappers, add to workflow | HIGH |
+| **Trappers Airtable Sync** | Manual only | Add cron job | MEDIUM |
+| **Requests Airtable Sync** | Manual only | Add cron job | MEDIUM |
+| **Email Automation (Resend)** | Not configured | Set up Resend integration | MEDIUM |
+
+#### Cron Job Expansion Strategy (Vercel Pro = 40 jobs)
+
+**Current Scheduled Crons (4 jobs):**
+| Schedule | Endpoint | Purpose |
+|----------|----------|---------|
+| 6 AM daily | `/api/cron/airtable-sync` | Public intake from Airtable |
+| 7 AM daily | `/api/cron/geocode` | Process geocoding queue |
+| 7:30 AM daily | `/api/cron/entity-linking` | Link cats/people/places |
+| 8 AM daily | `/api/cron/send-emails` | Process email queue |
+
+**Unscheduled Crons to Add (4 jobs):**
+| Proposed Schedule | Endpoint | Purpose | Status |
+|-------------------|----------|---------|--------|
+| Every 10 min | `/api/cron/process-uploads` | Auto-process staged records | Endpoint exists |
+| 9 AM daily | `/api/cron/parse-notes` | P1/P2/P3 parsing | Endpoint exists |
+| 6:30 AM daily | `/api/cron/airtable-trappers-sync` | Sync trappers from AT | **Needs creation** |
+| 6:45 AM daily | `/api/cron/airtable-requests-sync` | Sync requests from AT | **Needs creation** |
+
+**Potential Future Crons:**
+| Proposed Schedule | Endpoint | Purpose |
+|-------------------|----------|---------|
+| Weekly (Monday 3 AM) | `/api/cron/duplicate-detection` | Flag pending duplicates |
+| Weekly (Sunday 2 AM) | `/api/cron/data-quality-report` | Generate quality metrics |
+| Monthly (1st, 4 AM) | `/api/cron/beacon-refresh` | Refresh AI assessments |
 
 #### Legacy Transition Status
 
@@ -240,6 +383,25 @@ Based on Beacon's requirements and the Vortex population model (Boone et al. 201
 | **Clinic Data** | ✅ ClinicHQ imports | N/A | 100% in Atlas |
 | **Colony Estimates** | ✅ Native + imported | Project 75 in AT | 70% transitioned |
 | **Appointments** | ✅ ClinicHQ imports | N/A | 100% in Atlas |
+| **Birth Events** | ❌ Table only | N/A | 0% - needs automation |
+| **Mortality Events** | ❌ Table only | N/A | 0% - needs automation |
+
+#### Airtable Integration Status (From Audit)
+
+| Airtable Table | Sync Status | Frequency | Notes |
+|----------------|-------------|-----------|-------|
+| Public Intake Submissions | ✅ Automated | 30 min | Via airtable-sync cron |
+| Trappers | ⚠️ Manual | As needed | Script exists, needs cron |
+| Trapping Requests | ⚠️ Manual | As needed | Script exists, needs cron |
+| Appointment Requests | ⚠️ Manual | As needed | Script exists, needs cron |
+| Project 75 Surveys | ⚠️ Manual | Weekly | Script exists |
+| Staff Directory | ⚠️ Manual | Monthly | Script exists |
+
+**Airtable-Only Workflows (Not Yet in Atlas):**
+- Email template sending via Airtable automations
+- Foster pipeline tracking
+- Trapper onboarding workflow (Potential Trappers table)
+- FFSC Calendar integrations
 
 ---
 

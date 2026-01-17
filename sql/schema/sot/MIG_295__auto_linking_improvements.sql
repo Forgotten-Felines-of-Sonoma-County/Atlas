@@ -48,10 +48,10 @@ BEGIN
     JOIN trapper.cat_identifiers ci ON ci.cat_id = c.cat_id AND ci.id_type = 'microchip'
     JOIN trapper.staged_records sr ON sr.source_system = 'clinichq'
       AND sr.source_table = 'owner_info'
-      AND sr.raw_data->>'microchip' = ci.id_value
+      AND sr.payload->>'microchip' = ci.id_value
     JOIN trapper.person_identifiers pi ON (
-      pi.id_value_norm = trapper.norm_email(sr.raw_data->>'email')
-      OR pi.id_value_norm = trapper.norm_phone_us(sr.raw_data->>'phone')
+      pi.id_value_norm = trapper.norm_email(sr.payload->>'email')
+      OR pi.id_value_norm = trapper.norm_phone_us(sr.payload->>'phone')
     )
     JOIN trapper.person_place_relationships ppr ON ppr.person_id = pi.person_id
     WHERE NOT EXISTS (
@@ -85,11 +85,12 @@ BEGIN
     SET trapper_person_id = pi.person_id
     FROM trapper.person_identifiers pi
     JOIN trapper.person_roles pr ON pr.person_id = pi.person_id
-      AND pr.role_type IN ('ffsc_trapper', 'head_trapper', 'coordinator', 'community_trapper')
+      AND pr.role = 'trapper'
+      AND pr.trapper_type IN ('ffsc_trapper', 'head_trapper', 'coordinator', 'community_trapper')
     WHERE a.trapper_person_id IS NULL
       AND (
-        pi.id_value_norm = trapper.norm_email(a.booking_email)
-        OR pi.id_value_norm = trapper.norm_phone_us(a.booking_phone)
+        pi.id_value_norm = trapper.norm_email(a.owner_email)
+        OR pi.id_value_norm = trapper.norm_phone_us(a.owner_phone)
       )
     RETURNING a.appointment_id
   )
@@ -132,10 +133,10 @@ BEGIN
     BEGIN
       SELECT trapper.find_or_create_place_deduped(
         p_formatted_address := v_rec.geo_formatted_address,
-        p_display_name := NULL,
-        p_latitude := v_rec.geo_latitude,
-        p_longitude := v_rec.geo_longitude,
-        p_source_system := 'web_intake'
+        p_display_name := NULL::TEXT,
+        p_lat := v_rec.geo_latitude,
+        p_lng := v_rec.geo_longitude,
+        p_source_system := 'web_intake'::TEXT
       ) INTO v_place_id;
 
       -- Link submission to place
@@ -181,10 +182,10 @@ BEGIN
     SELECT DISTINCT
       w.matched_person_id,
       w.place_id,
-      'requester'::TEXT,
+      'requester'::trapper.person_place_role,
       0.80,
-      'web_intake',
-      'intake_submission'
+      'web_intake'::TEXT,
+      'intake_submission'::TEXT
     FROM trapper.web_intake_submissions w
     WHERE w.matched_person_id IS NOT NULL
       AND w.place_id IS NOT NULL

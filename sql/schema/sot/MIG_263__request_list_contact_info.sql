@@ -55,14 +55,14 @@ SELECT
     -- Email: prefer primary_email, fall back to most recent identifier
     COALESCE(
         per.primary_email,
-        (SELECT pi.id_value FROM trapper.person_identifiers pi
+        (SELECT pi.id_value_raw FROM trapper.person_identifiers pi
          WHERE pi.person_id = per.person_id AND pi.id_type = 'email'
          ORDER BY pi.created_at DESC LIMIT 1)
     ) AS requester_email,
     -- Phone: prefer primary_phone, fall back to most recent identifier
     COALESCE(
         per.primary_phone,
-        (SELECT pi.id_value FROM trapper.person_identifiers pi
+        (SELECT pi.id_value_raw FROM trapper.person_identifiers pi
          WHERE pi.person_id = per.person_id AND pi.id_type = 'phone'
          ORDER BY pi.created_at DESC LIMIT 1)
     ) AS requester_phone,
