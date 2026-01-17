@@ -9,6 +9,7 @@ interface ActiveRequest {
   priority: string;
   summary: string | null;
   place_name: string | null;
+  place_address: string | null;
   place_city: string | null;
   requester_name: string | null;
   created_at: string;
@@ -137,8 +138,24 @@ function isStale(dateStr: string | null | undefined, daysThreshold: number): boo
   return diffDays > daysThreshold;
 }
 
+// Extract city from address string (e.g., "123 Main St, Santa Rosa, CA 95407" -> "Santa Rosa")
+function extractCity(address: string | null): string | null {
+  if (!address) return null;
+  const parts = address.split(",").map(p => p.trim());
+  // City is usually the second-to-last part before state/zip
+  if (parts.length >= 2) {
+    // Check if second part looks like a city (not a street type or state)
+    const candidate = parts[1];
+    if (candidate && !candidate.match(/^\d/) && !candidate.match(/^(CA|California)\s*\d/i)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 function RequestRow({ request }: { request: ActiveRequest }) {
   const isRequestStale = isStale(request.updated_at || request.created_at, 14) && request.status !== "on_hold";
+  const displayCity = request.place_city || extractCity(request.place_address) || extractCity(request.place_name);
 
   return (
     <a
@@ -175,7 +192,7 @@ function RequestRow({ request }: { request: ActiveRequest }) {
           gap: "8px",
           alignItems: "center",
         }}>
-          <span>{request.place_city || "Unknown location"}</span>
+          <span>{displayCity || "Unknown location"}</span>
           {request.estimated_cat_count && (
             <span style={{ color: "#6b7280" }}>
               {request.estimated_cat_count} cats
