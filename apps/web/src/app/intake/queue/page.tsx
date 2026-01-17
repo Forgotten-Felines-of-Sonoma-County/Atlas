@@ -359,6 +359,19 @@ function IntakeQueueContent() {
     cats_zip: "",
   });
 
+  // Edit history state
+  const [editHistory, setEditHistory] = useState<Array<{
+    edit_id: string;
+    field_name: string;
+    old_value: unknown;
+    new_value: unknown;
+    edited_at: string;
+    edited_by: string;
+    edit_reason: string | null;
+  }>>([]);
+  const [showEditHistory, setShowEditHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   const fetchSubmissions = useCallback(async () => {
     setLoading(true);
     try {
@@ -495,6 +508,21 @@ function IntakeQueueContent() {
     setCommunicationLogs([]);
   };
 
+  const fetchEditHistory = async (submissionId: string) => {
+    setLoadingHistory(true);
+    try {
+      const response = await fetch(`/api/intake/queue/${submissionId}/history`);
+      if (response.ok) {
+        const data = await response.json();
+        setEditHistory(data.history || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch edit history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const handleQuickStatus = async (submissionId: string, field: string, value: string) => {
     setSaving(true);
     try {
@@ -612,6 +640,9 @@ function IntakeQueueContent() {
       legacy_notes: sub.legacy_notes || "",
     });
     setEditingStatus(false);
+    // Reset edit history when opening a new submission
+    setShowEditHistory(false);
+    setEditHistory([]);
   };
 
   const handleSaveStatus = async () => {
@@ -1399,7 +1430,7 @@ function IntakeQueueContent() {
               </div>
             </div>
 
-            {selectedSubmission.is_emergency && (
+            {selectedSubmission.is_emergency ? (
               <div style={{ background: "rgba(220, 53, 69, 0.15)", padding: "0.75rem", borderRadius: "8px", marginBottom: "1rem", border: "1px solid rgba(220, 53, 69, 0.3)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
@@ -1425,6 +1456,41 @@ function IntakeQueueContent() {
                   </button>
                 </div>
               </div>
+            ) : (
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/intake/queue/${selectedSubmission.submission_id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ is_emergency: true }),
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setSelectedSubmission({ ...selectedSubmission, ...data.submission, is_emergency: true });
+                      setSubmissions(submissions.map(s =>
+                        s.submission_id === selectedSubmission.submission_id
+                          ? { ...s, is_emergency: true }
+                          : s
+                      ));
+                    }
+                  } catch (err) {
+                    console.error("Failed to mark as urgent:", err);
+                  }
+                }}
+                style={{
+                  padding: "0.375rem 0.75rem",
+                  fontSize: "0.8rem",
+                  background: "transparent",
+                  border: "1px dashed #dc3545",
+                  color: "#dc3545",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  marginBottom: "1rem",
+                }}
+              >
+                + Mark as Urgent
+              </button>
             )}
 
             {/* Urgent downgrade reason picker */}
@@ -1820,6 +1886,114 @@ function IntakeQueueContent() {
                     <span style={{ color: "var(--muted)", fontStyle: "italic" }}>
                       No notes yet. Click "Edit" in Status & Tracking to add notes.
                     </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Edit History - collapsible section to see and undo changes */}
+            <div style={{ background: "var(--card-bg, rgba(0,0,0,0.05))", borderRadius: "8px", padding: "1rem", marginBottom: "1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showEditHistory ? "0.75rem" : 0 }}>
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Edit History</h3>
+                <button
+                  onClick={() => {
+                    if (!showEditHistory) {
+                      fetchEditHistory(selectedSubmission.submission_id);
+                    }
+                    setShowEditHistory(!showEditHistory);
+                  }}
+                  style={{
+                    padding: "0.25rem 0.5rem",
+                    fontSize: "0.8rem",
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {showEditHistory ? "Hide" : "Show"} History
+                </button>
+              </div>
+              {showEditHistory && (
+                <div>
+                  {loadingHistory ? (
+                    <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--muted)" }}>Loading...</p>
+                  ) : editHistory.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--muted)", fontStyle: "italic" }}>
+                      No edit history recorded yet.
+                    </p>
+                  ) : (
+                    <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                      {editHistory.map((edit) => (
+                        <div
+                          key={edit.edit_id}
+                          style={{
+                            padding: "0.5rem",
+                            borderBottom: "1px solid var(--border)",
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                            <strong style={{ textTransform: "capitalize" }}>
+                              {edit.field_name.replace(/_/g, " ")}
+                            </strong>
+                            <span style={{ color: "var(--muted)" }}>
+                              {new Date(edit.edited_at).toLocaleDateString()} {new Date(edit.edited_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", gap: "0.5rem", color: "var(--muted)" }}>
+                            <span style={{ textDecoration: "line-through", color: "#dc3545" }}>
+                              {edit.old_value === null ? "(empty)" : String(edit.old_value)}
+                            </span>
+                            <span>→</span>
+                            <span style={{ color: "#198754" }}>
+                              {edit.new_value === null ? "(empty)" : String(edit.new_value)}
+                            </span>
+                          </div>
+                          <div style={{ marginTop: "0.25rem", fontSize: "0.75rem", color: "var(--muted)" }}>
+                            by {edit.edited_by}{edit.edit_reason && ` • ${edit.edit_reason}`}
+                          </div>
+                          {/* Undo button for recent changes */}
+                          {new Date(edit.edited_at).getTime() > Date.now() - 24 * 60 * 60 * 1000 && (
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Revert ${edit.field_name.replace(/_/g, " ")} back to "${edit.old_value}"?`)) return;
+                                try {
+                                  const res = await fetch(`/api/intake/queue/${selectedSubmission.submission_id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      [edit.field_name]: edit.old_value,
+                                      edit_reason: "undo_change",
+                                    }),
+                                  });
+                                  if (res.ok) {
+                                    const data = await res.json();
+                                    setSelectedSubmission({ ...selectedSubmission, ...data.submission });
+                                    fetchEditHistory(selectedSubmission.submission_id);
+                                    fetchSubmissions();
+                                  }
+                                } catch (err) {
+                                  console.error("Failed to undo:", err);
+                                }
+                              }}
+                              style={{
+                                marginTop: "0.25rem",
+                                padding: "0.15rem 0.4rem",
+                                fontSize: "0.7rem",
+                                background: "#fff",
+                                border: "1px solid #fd7e14",
+                                color: "#fd7e14",
+                                borderRadius: "3px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Undo
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}

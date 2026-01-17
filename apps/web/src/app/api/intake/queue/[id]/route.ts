@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryRows, queryOne } from "@/lib/db";
+import { logFieldEdits, type FieldChange } from "@/lib/audit";
 
 interface IntakeSubmission {
   submission_id: string;
@@ -115,8 +116,8 @@ export async function PATCH(
     const values: unknown[] = [];
     let paramIndex = 1;
 
-    // Allowed fields to update
-    const allowedFields = [
+    // Status and workflow fields (no audit needed)
+    const statusFields = [
       // Unified status (primary)
       'submission_status',
       'appointment_date',
@@ -135,21 +136,82 @@ export async function PATCH(
       'last_contacted_at',
       'last_contact_method',
       'contact_attempt_count',
-      // Address fields (for corrections)
-      'cats_address',
-      'cats_city',
-      'cats_zip',
       // Triage overrides
       'is_emergency',
     ];
 
+    // Form answer fields (audit changes for these)
+    const answerFields = [
+      // Contact info
+      'first_name',
+      'last_name',
+      'email',
+      'phone',
+      // Address fields
+      'cats_address',
+      'cats_city',
+      'cats_zip',
+      'county',
+      // Cat details
+      'ownership_status',
+      'cat_count_estimate',
+      'fixed_status',
+      'has_kittens',
+      'has_medical_concerns',
+      'how_long_feeding',
+      // Situation
+      'situation_description',
+      // Third-party report
+      'is_third_party_report',
+      'third_party_relationship',
+      'property_owner_name',
+      'property_owner_phone',
+      'property_owner_email',
+      // Custom fields (JSONB)
+      'custom_fields',
+    ];
+
+    const allAllowedFields = [...statusFields, ...answerFields];
+
     // Track if address fields are being updated
     const addressFieldsUpdated = ['cats_address', 'cats_city', 'cats_zip'].some(f => f in body);
 
-    for (const field of allowedFields) {
+    // Track changes for audit logging (only answer fields)
+    const auditChanges: FieldChange[] = [];
+
+    // Fetch current values for audit comparison if editing answer fields
+    const editingAnswerFields = answerFields.some(f => f in body);
+    let currentValues: Record<string, unknown> = {};
+    if (editingAnswerFields) {
+      const current = await queryOne<IntakeSubmission>(`
+        SELECT * FROM trapper.web_intake_submissions WHERE submission_id = $1
+      `, [id]);
+      if (current) {
+        currentValues = current as unknown as Record<string, unknown>;
+      }
+    }
+
+    for (const field of allAllowedFields) {
       if (field in body) {
+        const newValue = body[field];
+        const oldValue = currentValues[field];
+
+        // Track changes to answer fields for audit
+        if (answerFields.includes(field) && editingAnswerFields) {
+          // Only log if value actually changed
+          const oldStr = JSON.stringify(oldValue);
+          const newStr = JSON.stringify(newValue);
+          if (oldStr !== newStr) {
+            auditChanges.push({
+              field,
+              oldValue: oldValue ?? null,
+              newValue: newValue ?? null,
+            });
+          }
+        }
+
         updates.push(`${field} = $${paramIndex}`);
-        values.push(body[field]);
+        values.push(newValue);
         paramIndex++;
       }
     }
@@ -183,6 +245,15 @@ export async function PATCH(
     `;
 
     const updated = await queryOne<IntakeSubmission>(sql, values);
+
+    // Log audit trail for answer field changes
+    if (auditChanges.length > 0) {
+      await logFieldEdits("intake_submission", id, auditChanges, {
+        editedBy: body.edited_by || "web_user",
+        reason: body.edit_reason || "form_correction",
+        editSource: "web_ui",
+      });
+    }
 
     // If address was corrected, re-link to proper place with deduplication
     if (addressFieldsUpdated && updated) {
