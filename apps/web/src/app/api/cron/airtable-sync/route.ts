@@ -212,7 +212,8 @@ function parseJotformAddress(rawAddress: string): {
   if (!rawAddress) return { street: null, city: null, state: null, zip: null };
 
   // Try to extract components using regex
-  const streetName = rawAddress.match(/Street name:\s*([^H]+?)(?=\s*House number:|$)/i)?.[1]?.trim() || null;
+  // Note: Using .+? instead of [^H]+? to properly handle street names like "5th Street"
+  const streetName = rawAddress.match(/Street name:\s*(.+?)\s*House number:/i)?.[1]?.trim() || null;
   const houseNumber = rawAddress.match(/House number:\s*(\d+)/i)?.[1]?.trim() || null;
   const city = rawAddress.match(/City:\s*([^S]+?)(?=\s*State:|$)/i)?.[1]?.trim() || null;
   const state = rawAddress.match(/State:\s*([A-Z]{2})/i)?.[1]?.trim() || null;
@@ -282,31 +283,28 @@ async function syncRecordToAtlas(record: AirtableRecord): Promise<SyncResult> {
       .filter(Boolean)
       .join(" ");
 
-    // Build situation description from call type, cat name/description, and notes
+    // Map ownership status from call type (handles Jotform text values)
+    const ownershipStatus = mapOwnershipStatus(f["Call Type"]);
+
+    // Build situation description - avoid duplicating Notes and Cat Description
+    const isThirdParty = typeof f["Is Third Party Report"] === "string"
+      ? !f["Is Third Party Report"].toLowerCase().includes("no")
+      : f["Is Third Party Report"];
+
     const situationParts = [
       f["Call Type"] ? `Call type: ${f["Call Type"]}` : null,
       f["Cat Name"] ? `Cat name: ${f["Cat Name"]}` : null,
       f["Cat Description"] ? `Description: ${f["Cat Description"]}` : null,
       f["Feeding Situation"] ? `Feeding: ${f["Feeding Situation"]}` : null,
-      f.Notes,
-    ].filter(Boolean).join("\n");
-
-    // Map ownership status from call type (handles Jotform text values)
-    const ownershipStatus = mapOwnershipStatus(f["Call Type"]);
-
-    // Build notes combining all relevant info
-    const isThirdParty = typeof f["Is Third Party Report"] === "string"
-      ? !f["Is Third Party Report"].toLowerCase().includes("no")
-      : f["Is Third Party Report"];
-    const notesContent = [
-      situationParts,
-      f.Notes,  // Additional notes from Jotform
-      f["Cat Description"] ? `Cat: ${f["Cat Description"]}` : null,
       f.Handleability ? `Handleability: ${f.Handleability}` : null,
       f["Mom Present"] ? `Mom present: ${f["Mom Present"]}` : null,
       isThirdParty ? `Third party report: ${f["Third Party Relationship"] || "yes"}` : null,
       f["Same As Requester"] ? `Same address: ${f["Same As Requester"]}` : null,
+      f.Notes,  // Notes at the end, only once
     ].filter(Boolean).join("\n");
+
+    // Use situationParts as the final content (no duplication)
+    const notesContent = situationParts;
 
     const result = await queryOne<{ submission_id: string }>(
       `INSERT INTO trapper.web_intake_submissions (
@@ -387,10 +385,11 @@ async function syncRecordToAtlas(record: AirtableRecord): Promise<SyncResult> {
       atlasId: result.submission_id,
     };
   } catch (error) {
+    console.error(`Sync error for record ${record.id}:`, error);
     return {
       success: false,
       recordId: record.id,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: "Sync failed",
     };
   }
 }
@@ -481,7 +480,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: "Sync failed",
-        message: error instanceof Error ? error.message : "Unknown error",
         duration_ms: Date.now() - startTime,
       },
       { status: 500 }

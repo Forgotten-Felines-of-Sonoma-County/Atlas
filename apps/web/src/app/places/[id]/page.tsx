@@ -8,7 +8,11 @@ import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { EditHistory } from "@/components/EditHistory";
 import { PlaceAlterationHistory } from "@/components/PlaceAlterationHistory";
 import { ColonyEstimates } from "@/components/ColonyEstimates";
+import { HistoricalContextCard } from "@/components/HistoricalContextCard";
+import ObservationsSection from "@/components/ObservationsSection";
 import { SubmissionsSection } from "@/components/SubmissionsSection";
+import { EntityLink } from "@/components/EntityLink";
+import { formatDateLocal } from "@/lib/formatters";
 
 interface Cat {
   cat_id: string;
@@ -124,54 +128,6 @@ function Section({
   );
 }
 
-// Clickable link pill for related entities
-function EntityLink({
-  href,
-  label,
-  badge,
-  badgeColor,
-}: {
-  href: string;
-  label: string;
-  badge?: string;
-  badgeColor?: string;
-}) {
-  return (
-    <a
-      href={href}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.5rem",
-        padding: "0.5rem 1rem",
-        background: "#f8f9fa",
-        borderRadius: "8px",
-        textDecoration: "none",
-        color: "#212529",
-        border: "1px solid #dee2e6",
-        transition: "all 0.15s",
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.background = "#e9ecef";
-        e.currentTarget.style.borderColor = "#adb5bd";
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.background = "#f8f9fa";
-        e.currentTarget.style.borderColor = "#dee2e6";
-      }}
-    >
-      <span>{label}</span>
-      {badge && (
-        <span
-          className="badge"
-          style={{ background: badgeColor || "#6c757d", color: "#fff", fontSize: "0.7rem" }}
-        >
-          {badge}
-        </span>
-      )}
-    </a>
-  );
-}
 
 export default function PlaceDetailPage() {
   const params = useParams();
@@ -792,7 +748,7 @@ export default function PlaceDetailPage() {
                   {req.summary || "No summary"}
                 </span>
                 <span className="text-muted text-sm">
-                  {new Date(req.created_at).toLocaleDateString()}
+                  {formatDateLocal(req.created_at)}
                 </span>
               </a>
             ))}
@@ -833,6 +789,17 @@ export default function PlaceDetailPage() {
         <ColonyEstimates placeId={id} />
       </Section>
 
+      {/* Site Observations (for Chapman estimator) */}
+      <Section title="Site Observations">
+        <ObservationsSection
+          placeId={id}
+          placeName={place.display_name || place.formatted_address || 'This location'}
+        />
+      </Section>
+
+      {/* Historical Context (KML, parsed notes, etc.) */}
+      <HistoricalContextCard placeId={id} className="mt-4" />
+
       {/* FFR Activity / Alteration History */}
       <Section title="FFR Activity">
         <PlaceAlterationHistory placeId={id} />
@@ -860,13 +827,13 @@ export default function PlaceDetailPage() {
           <div className="detail-item">
             <span className="detail-label">Created</span>
             <span className="detail-value">
-              {new Date(place.created_at).toLocaleDateString()}
+              {formatDateLocal(place.created_at)}
             </span>
           </div>
           <div className="detail-item">
             <span className="detail-label">Updated</span>
             <span className="detail-value">
-              {new Date(place.updated_at).toLocaleDateString()}
+              {formatDateLocal(place.updated_at)}
             </span>
           </div>
         </div>

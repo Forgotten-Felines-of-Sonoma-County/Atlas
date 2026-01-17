@@ -139,6 +139,8 @@ export async function PATCH(
       'cats_address',
       'cats_city',
       'cats_zip',
+      // Triage overrides
+      'is_emergency',
     ];
 
     // Track if address fields are being updated

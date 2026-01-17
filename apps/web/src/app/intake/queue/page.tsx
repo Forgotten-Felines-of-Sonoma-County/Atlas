@@ -114,6 +114,46 @@ const SUBMISSION_STATUSES = [
   { value: "Complete", label: "Complete" },
 ];
 
+// Reasons for removing urgent/emergency flag
+// These cover 99% of situations where someone incorrectly marks as urgent
+const URGENT_DOWNGRADE_REASONS = [
+  {
+    value: "not_tnr_related",
+    label: "Not TNR-related",
+    description: "Request is for services outside our spay/neuter mission (parasite treatment, vaccines, general vet care)",
+  },
+  {
+    value: "needs_emergency_vet",
+    label: "Needs emergency vet",
+    description: "True emergency (injury, illness, poisoning) - referred to pet hospital",
+  },
+  {
+    value: "stable_situation",
+    label: "Situation is stable",
+    description: "Cats are being fed, no immediate danger - can be scheduled normally",
+  },
+  {
+    value: "routine_spay_neuter",
+    label: "Routine spay/neuter",
+    description: "Owned pet or single cat needing standard scheduling, not urgent",
+  },
+  {
+    value: "already_altered",
+    label: "Cat(s) already altered",
+    description: "Cat is already fixed - no TNR needed, may need other services",
+  },
+  {
+    value: "duplicate_request",
+    label: "Duplicate request",
+    description: "Same cats/location already being handled in another submission",
+  },
+  {
+    value: "misunderstood_form",
+    label: "Form misunderstanding",
+    description: "Requester misunderstood what 'urgent' means - normal priority is fine",
+  },
+];
+
 type TabType = "attention" | "scheduled" | "recent" | "complete" | "all" | "legacy" | "test";
 
 function TriageBadge({ category, score, isLegacy }: { category: string | null; score: number | null; isLegacy: boolean }) {
@@ -282,6 +322,11 @@ function IntakeQueueContent() {
   const [contactModalSubmission, setContactModalSubmission] = useState<IntakeSubmission | null>(null);
   const [communicationLogs, setCommunicationLogs] = useState<CommunicationLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // Urgent downgrade state
+  const [showUrgentDowngrade, setShowUrgentDowngrade] = useState(false);
+  const [urgentDowngradeReason, setUrgentDowngradeReason] = useState("");
+  const [savingUrgentDowngrade, setSavingUrgentDowngrade] = useState(false);
   const [contactForm, setContactForm] = useState({
     contact_method: "phone",
     contact_result: "answered",
@@ -597,6 +642,42 @@ function IntakeQueueContent() {
       console.error("Failed to save:", err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Handler for removing urgent flag with reason
+  const handleUrgentDowngrade = async () => {
+    if (!selectedSubmission || !urgentDowngradeReason) return;
+    setSavingUrgentDowngrade(true);
+
+    const reasonInfo = URGENT_DOWNGRADE_REASONS.find(r => r.value === urgentDowngradeReason);
+    const noteText = `Urgent flag removed: ${reasonInfo?.label} - ${reasonInfo?.description}`;
+
+    try {
+      const response = await fetch(`/api/intake/queue/${selectedSubmission.submission_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          is_emergency: false,
+          review_notes: selectedSubmission.review_notes
+            ? `${selectedSubmission.review_notes}\n\n[${new Date().toLocaleDateString()}] ${noteText}`
+            : `[${new Date().toLocaleDateString()}] ${noteText}`,
+        }),
+      });
+
+      if (response.ok) {
+        setShowUrgentDowngrade(false);
+        setUrgentDowngradeReason("");
+        setSelectedSubmission({
+          ...selectedSubmission,
+          is_emergency: false,
+        });
+        fetchSubmissions();
+      }
+    } catch (err) {
+      console.error("Failed to remove urgent flag:", err);
+    } finally {
+      setSavingUrgentDowngrade(false);
     }
   };
 
@@ -1137,7 +1218,7 @@ function IntakeQueueContent() {
                         </span>
                       )}
                       {sub.is_emergency && (
-                        <span style={{ color: "#dc3545", fontSize: "0.7rem", fontWeight: "bold" }}>EMERGENCY</span>
+                        <span style={{ color: "#dc3545", fontSize: "0.7rem", fontWeight: "bold" }}>URGENT</span>
                       )}
                       {sub.is_test && (
                         <span style={{
@@ -1319,8 +1400,103 @@ function IntakeQueueContent() {
             </div>
 
             {selectedSubmission.is_emergency && (
-              <div style={{ background: "rgba(220, 53, 69, 0.2)", padding: "0.75rem", borderRadius: "8px", marginBottom: "1rem", color: "#dc3545", fontWeight: "bold" }}>
-                EMERGENCY REQUEST
+              <div style={{ background: "rgba(220, 53, 69, 0.15)", padding: "0.75rem", borderRadius: "8px", marginBottom: "1rem", border: "1px solid rgba(220, 53, 69, 0.3)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <span style={{ color: "#dc3545", fontWeight: "bold" }}>MARKED AS URGENT</span>
+                    <p style={{ margin: "0.25rem 0 0", fontSize: "0.8rem", color: "#856404" }}>
+                      True emergencies (injury, illness) should be referred to a pet hospital. We are a spay/neuter clinic, not an emergency vet.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowUrgentDowngrade(true)}
+                    style={{
+                      padding: "0.375rem 0.75rem",
+                      fontSize: "0.8rem",
+                      background: "#fff",
+                      border: "1px solid #dc3545",
+                      color: "#dc3545",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Remove Urgent Flag
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Urgent downgrade reason picker */}
+            {showUrgentDowngrade && (
+              <div style={{
+                background: "#fff",
+                border: "1px solid #dee2e6",
+                borderRadius: "8px",
+                padding: "1rem",
+                marginBottom: "1rem",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              }}>
+                <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.9rem" }}>Why is this not urgent?</h4>
+                <p style={{ margin: "0 0 0.75rem", fontSize: "0.8rem", color: "var(--muted)" }}>
+                  Select a reason to help track common misunderstandings and improve our intake form.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
+                  {URGENT_DOWNGRADE_REASONS.map((reason) => (
+                    <label
+                      key={reason.value}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "0.5rem",
+                        padding: "0.5rem",
+                        background: urgentDowngradeReason === reason.value ? "rgba(25, 135, 84, 0.1)" : "var(--bg-muted, #f8f9fa)",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        border: urgentDowngradeReason === reason.value ? "1px solid #198754" : "1px solid transparent",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="urgentReason"
+                        value={reason.value}
+                        checked={urgentDowngradeReason === reason.value}
+                        onChange={(e) => setUrgentDowngradeReason(e.target.value)}
+                        style={{ marginTop: "0.2rem" }}
+                      />
+                      <div>
+                        <div style={{ fontWeight: 500, fontSize: "0.85rem" }}>{reason.label}</div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{reason.description}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={() => {
+                      setShowUrgentDowngrade(false);
+                      setUrgentDowngradeReason("");
+                    }}
+                    style={{ padding: "0.375rem 0.75rem", fontSize: "0.85rem" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUrgentDowngrade}
+                    disabled={!urgentDowngradeReason || savingUrgentDowngrade}
+                    style={{
+                      padding: "0.375rem 0.75rem",
+                      fontSize: "0.85rem",
+                      background: urgentDowngradeReason ? "#198754" : "#6c757d",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: urgentDowngradeReason ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    {savingUrgentDowngrade ? "Saving..." : "Remove Urgent Flag"}
+                  </button>
+                </div>
               </div>
             )}
 

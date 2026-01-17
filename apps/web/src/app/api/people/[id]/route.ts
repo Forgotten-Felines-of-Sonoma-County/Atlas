@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
+import { logFieldEdits, detectChanges, type FieldChange } from "@/lib/audit";
 
 interface PersonDetailRow {
   person_id: string;
@@ -85,6 +86,218 @@ export async function GET(
     console.error("Error fetching person detail:", error);
     return NextResponse.json(
       { error: "Failed to fetch person detail" },
+      { status: 500 }
+    );
+  }
+}
+
+// Valid entity types for a person
+const VALID_ENTITY_TYPES = [
+  "individual",
+  "household",
+  "organization",
+  "clinic",
+  "rescue",
+] as const;
+
+// Valid trapping skill levels
+const VALID_TRAPPING_SKILLS = [
+  "novice",
+  "intermediate",
+  "experienced",
+  "expert",
+] as const;
+
+interface UpdatePersonBody {
+  display_name?: string;
+  entity_type?: string;
+  trapping_skill?: string;
+  trapping_skill_notes?: string;
+  // Audit info
+  changed_by?: string;
+  change_reason?: string;
+}
+
+interface CurrentPersonData {
+  display_name: string | null;
+  entity_type: string | null;
+  trapping_skill: string | null;
+  trapping_skill_notes: string | null;
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  if (!id) {
+    return NextResponse.json(
+      { error: "Person ID is required" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const body: UpdatePersonBody = await request.json();
+    const changed_by = body.changed_by || "web_user";
+    const change_reason = body.change_reason || "manual_update";
+
+    // Validate entity_type if provided
+    if (body.entity_type !== undefined) {
+      if (body.entity_type !== null && !VALID_ENTITY_TYPES.includes(body.entity_type as typeof VALID_ENTITY_TYPES[number])) {
+        return NextResponse.json(
+          { error: `Invalid entity_type. Must be one of: ${VALID_ENTITY_TYPES.join(", ")}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate trapping_skill if provided
+    if (body.trapping_skill !== undefined) {
+      if (body.trapping_skill !== null && !VALID_TRAPPING_SKILLS.includes(body.trapping_skill as typeof VALID_TRAPPING_SKILLS[number])) {
+        return NextResponse.json(
+          { error: `Invalid trapping_skill. Must be one of: ${VALID_TRAPPING_SKILLS.join(", ")}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate display_name if provided
+    if (body.display_name !== undefined && body.display_name.trim() === "") {
+      return NextResponse.json(
+        { error: "display_name cannot be empty" },
+        { status: 400 }
+      );
+    }
+
+    // Get current values for audit comparison
+    const currentSql = `
+      SELECT display_name, entity_type, trapping_skill, trapping_skill_notes
+      FROM trapper.sot_people
+      WHERE person_id = $1
+    `;
+    const current = await queryOne<CurrentPersonData>(currentSql, [id]);
+
+    if (!current) {
+      return NextResponse.json({ error: "Person not found" }, { status: 404 });
+    }
+
+    // Build dynamic update query
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 1;
+
+    // Track changes for audit logging
+    const auditChanges: FieldChange[] = [];
+
+    if (body.display_name !== undefined) {
+      const newVal = body.display_name.trim();
+      if (newVal !== current.display_name) {
+        auditChanges.push({
+          field: "display_name",
+          oldValue: current.display_name,
+          newValue: newVal,
+        });
+        updates.push(`display_name = $${paramIndex}`);
+        values.push(newVal);
+        paramIndex++;
+      }
+    }
+
+    if (body.entity_type !== undefined) {
+      if (body.entity_type !== current.entity_type) {
+        auditChanges.push({
+          field: "entity_type",
+          oldValue: current.entity_type,
+          newValue: body.entity_type,
+        });
+        updates.push(`entity_type = $${paramIndex}`);
+        values.push(body.entity_type);
+        paramIndex++;
+      }
+    }
+
+    if (body.trapping_skill !== undefined) {
+      if (body.trapping_skill !== current.trapping_skill) {
+        auditChanges.push({
+          field: "trapping_skill",
+          oldValue: current.trapping_skill,
+          newValue: body.trapping_skill,
+        });
+        updates.push(`trapping_skill = $${paramIndex}`);
+        values.push(body.trapping_skill);
+        paramIndex++;
+        // Also update the timestamp
+        updates.push(`trapping_skill_updated_at = NOW()`);
+      }
+    }
+
+    if (body.trapping_skill_notes !== undefined) {
+      if (body.trapping_skill_notes !== current.trapping_skill_notes) {
+        auditChanges.push({
+          field: "trapping_skill_notes",
+          oldValue: current.trapping_skill_notes,
+          newValue: body.trapping_skill_notes,
+        });
+        updates.push(`trapping_skill_notes = $${paramIndex}`);
+        values.push(body.trapping_skill_notes);
+        paramIndex++;
+      }
+    }
+
+    if (updates.length === 0) {
+      return NextResponse.json(
+        { error: "No valid fields to update" },
+        { status: 400 }
+      );
+    }
+
+    // Log changes to centralized entity_edits table
+    if (auditChanges.length > 0) {
+      await logFieldEdits("person", id, auditChanges, {
+        editedBy: changed_by,
+        reason: change_reason,
+        editSource: "web_ui",
+      });
+    }
+
+    // Add updated_at
+    updates.push(`updated_at = NOW()`);
+
+    // Add person_id to values
+    values.push(id);
+
+    const sql = `
+      UPDATE trapper.sot_people
+      SET ${updates.join(", ")}
+      WHERE person_id = $${paramIndex}
+      RETURNING person_id, display_name, entity_type, trapping_skill, trapping_skill_notes
+    `;
+
+    const result = await queryOne<{
+      person_id: string;
+      display_name: string;
+      entity_type: string | null;
+      trapping_skill: string | null;
+      trapping_skill_notes: string | null;
+    }>(sql, values);
+
+    if (!result) {
+      return NextResponse.json(
+        { error: "Person not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      person: result,
+    });
+  } catch (error) {
+    console.error("Error updating person:", error);
+    return NextResponse.json(
+      { error: "Failed to update person" },
       { status: 500 }
     );
   }

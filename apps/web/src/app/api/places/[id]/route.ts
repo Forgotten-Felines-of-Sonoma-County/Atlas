@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryOne, query } from "@/lib/db";
+import { logFieldEdits } from "@/lib/audit";
 
 interface PlaceDetailRow {
   place_id: string;
@@ -257,18 +258,22 @@ export async function PATCH(
         }
       }
 
-      // Execute audit inserts with parameterized queries (secure)
-      const auditSql = `
-        INSERT INTO trapper.place_changes (place_id, field_name, old_value, new_value, change_reason, change_notes, changed_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `;
-      for (const change of auditChanges) {
-        try {
-          await query(auditSql, [id, change.field, change.oldVal, change.newVal, change_reason, change_notes, changed_by]);
-        } catch (err) {
-          console.error("Audit log error:", err);
-          // Continue even if audit fails
-        }
+      // Log changes to centralized entity_edits table
+      if (auditChanges.length > 0) {
+        await logFieldEdits(
+          "place",
+          id,
+          auditChanges.map((c) => ({
+            field: c.field,
+            oldValue: c.oldVal,
+            newValue: c.newVal,
+          })),
+          {
+            editedBy: changed_by,
+            reason: change_reason,
+            editSource: "web_ui",
+          }
+        );
       }
     }
 

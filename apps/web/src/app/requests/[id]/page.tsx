@@ -8,6 +8,8 @@ import { AlterationStatsCard } from "@/components/AlterationStatsCard";
 import { LegacyUpgradeWizard } from "@/components/LegacyUpgradeWizard";
 import { TrapperAssignments } from "@/components/TrapperAssignments";
 import JournalSection, { JournalEntry } from "@/components/JournalSection";
+import { LinkedCatsSection } from "@/components/LinkedCatsSection";
+import LogObservationModal from "@/components/LogObservationModal";
 
 interface MediaItem {
   media_id: string;
@@ -261,6 +263,9 @@ export default function RequestDetailPage() {
   const [uploadCaption, setUploadCaption] = useState("");
   const [uploadCatDescription, setUploadCatDescription] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Observation modal state
+  const [showObservationModal, setShowObservationModal] = useState(false);
 
   // Kitten assessment state
   const [editingKittens, setEditingKittens] = useState(false);
@@ -1347,26 +1352,66 @@ export default function RequestDetailPage() {
                         <div className="loading-spinner" />
                       </div>
                     )}
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${request.place_coordinates.lat},${request.place_coordinates.lng}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        marginTop: "0.75rem",
-                        padding: "0.5rem 1rem",
-                        background: "#4285F4",
-                        color: "#fff",
-                        borderRadius: "6px",
-                        textDecoration: "none",
-                        fontSize: "0.9rem",
-                      }}
-                    >
-                      View in Google Maps
-                    </a>
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${request.place_coordinates.lat},${request.place_coordinates.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          padding: "0.5rem 1rem",
+                          background: "#4285F4",
+                          color: "#fff",
+                          borderRadius: "6px",
+                          textDecoration: "none",
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        View in Google Maps
+                      </a>
+                      <button
+                        onClick={() => setShowObservationModal(true)}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          padding: "0.5rem 1rem",
+                          background: "#28a745",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "6px",
+                          fontSize: "0.9rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Log Site Visit
+                      </button>
+                    </div>
                   </div>
+                )}
+
+                {/* Log Site Visit button (when no map) */}
+                {!request.place_coordinates && (
+                  <button
+                    onClick={() => setShowObservationModal(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      marginTop: "1rem",
+                      padding: "0.5rem 1rem",
+                      background: "#28a745",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      fontSize: "0.9rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Log Site Visit
+                  </button>
                 )}
               </div>
             ) : (
@@ -1812,67 +1857,11 @@ export default function RequestDetailPage() {
           )}
 
           {/* Linked Cats Card */}
-          <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-              <h2 style={{ fontSize: "1.25rem", margin: 0 }}>
-                Linked Cats
-                {request.cats && request.cats.length > 0 && (
-                  <span className="badge" style={{ marginLeft: "0.5rem", background: "#198754", color: "#fff" }}>
-                    {request.cats.length}
-                  </span>
-                )}
-              </h2>
-            </div>
-            {request.cats && request.cats.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {request.cats.map((cat: { cat_id: string; cat_name: string | null; link_purpose: string; microchip: string | null; altered_status: string | null }) => (
-                  <a
-                    key={cat.cat_id}
-                    href={`/cats/${cat.cat_id}`}
-                    style={{
-                      padding: "0.75rem",
-                      borderRadius: "6px",
-                      background: "var(--bg-muted)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      textDecoration: "none",
-                      color: "inherit"
-                    }}
-                  >
-                    <div>
-                      <span style={{ fontWeight: 500 }}>{cat.cat_name || "Unnamed cat"}</span>
-                      {cat.microchip && (
-                        <span className="text-muted text-sm" style={{ marginLeft: "0.5rem" }}>
-                          ({cat.microchip})
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                      {cat.altered_status && (
-                        <span className="badge" style={{
-                          background: cat.altered_status === "spayed" || cat.altered_status === "neutered" ? "#198754" : "#6c757d",
-                          color: "#fff",
-                          fontSize: "0.7rem"
-                        }}>
-                          {cat.altered_status}
-                        </span>
-                      )}
-                      <span className="badge" style={{
-                        background: cat.link_purpose === "tnr_target" ? "#0d6efd" : "#6c757d",
-                        color: "#fff",
-                        fontSize: "0.7rem"
-                      }}>
-                        {cat.link_purpose === "tnr_target" ? "TNR" : cat.link_purpose}
-                      </span>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <p className="text-muted">No cats linked to this request yet</p>
-            )}
-          </div>
+          <LinkedCatsSection
+            cats={request.cats}
+            context="request"
+            emptyMessage="No cats linked to this request yet"
+          />
 
           {/* Journal / Notes Card */}
           <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
@@ -2363,6 +2352,16 @@ export default function RequestDetailPage() {
             router.push(`/requests/${newRequestId}`);
           }}
           onCancel={() => setShowUpgradeWizard(false)}
+        />
+      )}
+
+      {/* Site Observation Modal */}
+      {request?.place_id && (
+        <LogObservationModal
+          isOpen={showObservationModal}
+          onClose={() => setShowObservationModal(false)}
+          placeId={request.place_id}
+          placeName={request.place_name || request.place_address || 'This location'}
         />
       )}
     </div>
