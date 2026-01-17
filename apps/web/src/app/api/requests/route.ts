@@ -88,11 +88,13 @@ export async function GET(request: NextRequest) {
 
   const buildOrderBy = () => {
     const dir = sortOrder === "desc" ? "DESC" : "ASC";
+    // Use source_created_at for legacy requests (original Airtable date), created_at for native
+    const effectiveCreatedAt = `COALESCE(source_created_at, created_at)`;
 
     switch (sortBy) {
       case "created":
-        // Sort by creation date (newest first by default)
-        return `${nativeFirst}, created_at ${dir} NULLS LAST`;
+        // Sort by actual creation date (source date for legacy, created_at for native)
+        return `${nativeFirst}, ${effectiveCreatedAt} ${dir} NULLS LAST`;
       case "priority":
         return `
           ${nativeFirst},
@@ -102,11 +104,11 @@ export async function GET(request: NextRequest) {
             WHEN 'normal' THEN 3
             WHEN 'low' THEN 4
           END ${dir},
-          created_at DESC NULLS LAST
+          ${effectiveCreatedAt} DESC NULLS LAST
         `;
       case "type":
         // Sort by legacy vs native first
-        return `is_legacy_request ${dir}, created_at DESC NULLS LAST`;
+        return `is_legacy_request ${dir}, ${effectiveCreatedAt} DESC NULLS LAST`;
       case "status":
       default:
         // Default: native first, then status order, then by creation date (newest first)
@@ -121,7 +123,7 @@ export async function GET(request: NextRequest) {
             WHEN 'completed' THEN 6
             WHEN 'cancelled' THEN 7
           END ${dir},
-          created_at DESC NULLS LAST
+          ${effectiveCreatedAt} DESC NULLS LAST
         `;
     }
   };
