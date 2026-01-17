@@ -55,11 +55,11 @@ This document tracks implementation priorities, fixes, and enhancements for the 
 
 ### Security
 
-- [ ] **Remove Plaintext Password Fallback** 🔴 FOUND 2026-01-16
+- [x] **Remove Plaintext Password Fallback** ✅ FIXED 2026-01-17
   - File: `/apps/web/src/app/api/auth/verify/route.ts:10`
   - Issue: Hardcoded default password "18201814" if env var not set
   - Risk: Anyone with default password can access system
-  - Fix: Remove fallback, require env var, implement proper session-based auth
+  - Fix: Removed fallback, now requires ATLAS_ACCESS_CODE env var (returns 500 if missing)
 
 - [x] **SQL Injection in Cat Audit Logging** ✅ FIXED 2026-01-16
   - File: `/apps/web/src/app/api/cats/[id]/route.ts:353-390`
@@ -73,38 +73,15 @@ This document tracks implementation priorities, fixes, and enhancements for the 
 
 ### Data Integrity
 
-- [ ] **Fix Duplicate Migration Numbers** 🔴 FOUND 2026-01-16
-  - **Impact**: Prevents deterministic migration ordering, ambiguous deployment
-  - **13 migrations have duplicate numbers**:
-    | MIG # | Files |
-    |-------|-------|
-    | 198 | kitten_intake_details.sql, legacy_intake_fields.sql |
-    | 200 | legacy_clinic_stats.sql, third_party_reports.sql |
-    | 236 | cat_movement_tracking.sql, intake_feeding_behavior.sql |
-    | 237 | intake_handleability.sql, intake_questions_config.sql |
-    | 238 | custom_intake_fields.sql, fix_trapper_appointment_linking.sql |
-    | 239 | communication_logs.sql, intake_person_creation.sql |
-    | 240 | add_contact_stats_to_queue_view.sql, unified_person_enrichment.sql |
-    | 241 | address_enrichment.sql, staff_management.sql |
-    | 242 | smart_place_deduplication.sql, unified_activity_log.sql |
-    | 243 | staff_person_integration.sql, unit_tracking_on_relationships.sql |
-    | 244 | cat_enrichment.sql, journal_staff_linking.sql |
-    | 245 | fix_place_dedup_address_backing.sql, movement_integration.sql |
-    | 252 | fix_enrich_place_role.sql, fix_source_system_column.sql, trapper_skill_tracking.sql (3!) |
-  - **Fix**: Renumber duplicates to MIG_268-280 range
+- [x] **Fix Duplicate Migration Numbers** ✅ FIXED 2026-01-17
+  - **Impact**: Prevented deterministic migration ordering
+  - **Fix**: Renumbered 14 duplicates to MIG_268-281
 
-- [ ] **Extract Missing Microchips from Staged Data** 🔴 FOUND 2026-01-16
+- [ ] **Extract Missing Microchips from Staged Data** 🔴 MIGRATION CREATED 2026-01-17
   - **Impact**: ~32,311 cats invisible in search, not linked to places
-  - **Sources with unextracted microchips**:
-    | Source | Total | Extracted | Missing |
-    |--------|-------|-----------|---------|
-    | clinichq.appointment_info | 31,952 | 7,906 | 24,046 |
-    | petlink.pets | 8,280 | 15 | 8,265 |
-  - **Root Cause**: Pipeline only processes `clinichq.cat_info`, ignores appointments and petlink
-  - **Priority**:
-    1. PetLink pets (8,265) - highest value, verified microchip registry
-    2. ClinicHQ appointments (24,046) - cats seen at appointments but not in cat_info
-  - **Implementation**: Create extraction functions for each source
+  - **Migration**: `MIG_282__extract_missing_microchips.sql`
+  - **Sources**: PetLink pets (8,265), ClinicHQ appointments (24,046)
+  - **To run**: `psql $DATABASE_URL -f sql/schema/sot/MIG_282__extract_missing_microchips.sql`
 
 ### Database Functions
 
