@@ -394,6 +394,19 @@ function IntakeQueueContent() {
   const [showEditHistory, setShowEditHistory] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // Editable sections state
+  const [editingCats, setEditingCats] = useState(false);
+  const [catsEdits, setCatsEdits] = useState({
+    cat_count_estimate: "",
+    ownership_status: "",
+    fixed_status: "",
+    has_kittens: false,
+    has_medical_concerns: false,
+  });
+  const [editingSituation, setEditingSituation] = useState(false);
+  const [situationEdit, setSituationEdit] = useState("");
+  const [savingSection, setSavingSection] = useState(false);
+
   const fetchSubmissions = useCallback(async () => {
     setLoading(true);
     try {
@@ -670,6 +683,9 @@ function IntakeQueueContent() {
     // Reset edit history when opening a new submission
     setShowEditHistory(false);
     setEditHistory([]);
+    // Reset section edit states
+    setEditingCats(false);
+    setEditingSituation(false);
   };
 
   const handleSaveStatus = async () => {
@@ -1871,23 +1887,203 @@ function IntakeQueueContent() {
 
             {/* Cats */}
             <div style={{ background: "var(--card-bg, rgba(0,0,0,0.05))", borderRadius: "8px", padding: "1rem", marginBottom: "1rem" }}>
-              <h3 style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "1rem" }}>Cats</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-                <div><strong>Count:</strong> {selectedSubmission.cat_count_estimate ?? "Unknown"}</div>
-                {selectedSubmission.ownership_status && <div><strong>Type:</strong> {selectedSubmission.ownership_status.replace(/_/g, " ")}</div>}
-                {selectedSubmission.fixed_status && <div><strong>Fixed:</strong> {selectedSubmission.fixed_status.replace(/_/g, " ")}</div>}
-                {selectedSubmission.has_kittens && <div style={{ color: "#fd7e14" }}><strong>Kittens present</strong></div>}
-                {selectedSubmission.has_medical_concerns && <div style={{ color: "#dc3545" }}><strong>Medical concerns</strong></div>}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Cats</h3>
+                {!editingCats ? (
+                  <button
+                    onClick={() => {
+                      setCatsEdits({
+                        cat_count_estimate: selectedSubmission.cat_count_estimate?.toString() || "",
+                        ownership_status: selectedSubmission.ownership_status || "",
+                        fixed_status: selectedSubmission.fixed_status || "",
+                        has_kittens: selectedSubmission.has_kittens || false,
+                        has_medical_concerns: selectedSubmission.has_medical_concerns || false,
+                      });
+                      setEditingCats(true);
+                    }}
+                    style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer" }}
+                  >
+                    Edit
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", gap: "0.25rem" }}>
+                    <button
+                      onClick={async () => {
+                        setSavingSection(true);
+                        try {
+                          const res = await fetch(`/api/intake/queue/${selectedSubmission.submission_id}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              cat_count_estimate: catsEdits.cat_count_estimate ? parseInt(catsEdits.cat_count_estimate) : null,
+                              ownership_status: catsEdits.ownership_status || null,
+                              fixed_status: catsEdits.fixed_status || null,
+                              has_kittens: catsEdits.has_kittens,
+                              has_medical_concerns: catsEdits.has_medical_concerns,
+                            }),
+                          });
+                          if (res.ok) {
+                            const data = await res.json();
+                            setSelectedSubmission({ ...selectedSubmission, ...data.submission });
+                            setEditingCats(false);
+                            fetchSubmissions();
+                          }
+                        } catch (err) {
+                          console.error("Failed to save:", err);
+                        } finally {
+                          setSavingSection(false);
+                        }
+                      }}
+                      disabled={savingSection}
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", background: "#198754", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                    >
+                      {savingSection ? "..." : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setEditingCats(false)}
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer" }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
+              {editingCats ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.25rem" }}>Count</label>
+                    <input
+                      type="number"
+                      value={catsEdits.cat_count_estimate}
+                      onChange={(e) => setCatsEdits({ ...catsEdits, cat_count_estimate: e.target.value })}
+                      style={{ width: "100%", padding: "0.375rem", fontSize: "0.85rem" }}
+                      min="1"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.25rem" }}>Type</label>
+                    <select
+                      value={catsEdits.ownership_status}
+                      onChange={(e) => setCatsEdits({ ...catsEdits, ownership_status: e.target.value })}
+                      style={{ width: "100%", padding: "0.375rem", fontSize: "0.85rem" }}
+                    >
+                      <option value="">Select...</option>
+                      <option value="unknown_stray">Stray cat</option>
+                      <option value="community_colony">Community/Colony</option>
+                      <option value="newcomer">Newcomer</option>
+                      <option value="neighbors_cat">Neighbor's cat</option>
+                      <option value="my_cat">My own pet</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.25rem" }}>Fixed Status</label>
+                    <select
+                      value={catsEdits.fixed_status}
+                      onChange={(e) => setCatsEdits({ ...catsEdits, fixed_status: e.target.value })}
+                      style={{ width: "100%", padding: "0.375rem", fontSize: "0.85rem" }}
+                    >
+                      <option value="">Select...</option>
+                      <option value="none_fixed">None fixed</option>
+                      <option value="some_fixed">Some fixed</option>
+                      <option value="all_fixed">All fixed</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
+                      <input
+                        type="checkbox"
+                        checked={catsEdits.has_kittens}
+                        onChange={(e) => setCatsEdits({ ...catsEdits, has_kittens: e.target.checked })}
+                      />
+                      Kittens present
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
+                      <input
+                        type="checkbox"
+                        checked={catsEdits.has_medical_concerns}
+                        onChange={(e) => setCatsEdits({ ...catsEdits, has_medical_concerns: e.target.checked })}
+                      />
+                      Medical concerns
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                  <div><strong>Count:</strong> {selectedSubmission.cat_count_estimate ?? "Unknown"}</div>
+                  {selectedSubmission.ownership_status && <div><strong>Type:</strong> {selectedSubmission.ownership_status.replace(/_/g, " ")}</div>}
+                  {selectedSubmission.fixed_status && <div><strong>Fixed:</strong> {selectedSubmission.fixed_status.replace(/_/g, " ")}</div>}
+                  {selectedSubmission.has_kittens && <div style={{ color: "#fd7e14" }}><strong>Kittens present</strong></div>}
+                  {selectedSubmission.has_medical_concerns && <div style={{ color: "#dc3545" }}><strong>Medical concerns</strong></div>}
+                </div>
+              )}
             </div>
 
             {/* Situation */}
-            {selectedSubmission.situation_description && (
-              <div style={{ background: "var(--card-bg, rgba(0,0,0,0.05))", borderRadius: "8px", padding: "1rem", marginBottom: "1rem" }}>
-                <h3 style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "1rem" }}>Situation</h3>
-                <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{selectedSubmission.situation_description}</p>
+            <div style={{ background: "var(--card-bg, rgba(0,0,0,0.05))", borderRadius: "8px", padding: "1rem", marginBottom: "1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Situation</h3>
+                {!editingSituation ? (
+                  <button
+                    onClick={() => {
+                      setSituationEdit(selectedSubmission.situation_description || "");
+                      setEditingSituation(true);
+                    }}
+                    style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer" }}
+                  >
+                    Edit
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", gap: "0.25rem" }}>
+                    <button
+                      onClick={async () => {
+                        setSavingSection(true);
+                        try {
+                          const res = await fetch(`/api/intake/queue/${selectedSubmission.submission_id}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ situation_description: situationEdit }),
+                          });
+                          if (res.ok) {
+                            const data = await res.json();
+                            setSelectedSubmission({ ...selectedSubmission, ...data.submission });
+                            setEditingSituation(false);
+                            fetchSubmissions();
+                          }
+                        } catch (err) {
+                          console.error("Failed to save:", err);
+                        } finally {
+                          setSavingSection(false);
+                        }
+                      }}
+                      disabled={savingSection}
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", background: "#198754", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                    >
+                      {savingSection ? "..." : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setEditingSituation(false)}
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer" }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+              {editingSituation ? (
+                <textarea
+                  value={situationEdit}
+                  onChange={(e) => setSituationEdit(e.target.value)}
+                  rows={8}
+                  style={{ width: "100%", padding: "0.5rem", resize: "vertical", fontSize: "0.9rem", fontFamily: "inherit" }}
+                  placeholder="Describe the situation..."
+                />
+              ) : selectedSubmission.situation_description ? (
+                <p style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.9rem" }}>{selectedSubmission.situation_description}</p>
+              ) : (
+                <p style={{ margin: 0, color: "var(--muted)", fontStyle: "italic" }}>No situation description provided.</p>
+              )}
+            </div>
 
             {/* Third Party */}
             {selectedSubmission.is_third_party_report && (
