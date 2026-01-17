@@ -412,7 +412,9 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
         sr.payload->>'Neuter' = 'Yes',
         sr.payload->>'Vet Name',
         sr.payload->>'Technician',
-        NULLIF(sr.payload->>'Temperature', '')::NUMERIC(4,1),
+        CASE WHEN sr.payload->>'Temperature' ~ '^[0-9]+\.?[0-9]*$'
+             THEN (sr.payload->>'Temperature')::NUMERIC(4,1)
+             ELSE NULL END,
         sr.payload->>'Internal Medical Notes',
         sr.payload->>'Lactating' = 'Yes' OR sr.payload->>'Lactating_2' = 'Yes',
         sr.payload->>'Pregnant' = 'Yes',
