@@ -87,7 +87,10 @@ export function LegacyUpgradeWizard({ request, onComplete, onCancel }: LegacyUpg
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Failed to upgrade request");
+        const errorMsg = result.details
+          ? `${result.error}: ${result.details}`
+          : result.error || "Failed to upgrade request";
+        throw new Error(errorMsg);
       }
 
       onComplete(result.new_request_id);

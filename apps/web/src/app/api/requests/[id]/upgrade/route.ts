@@ -55,7 +55,7 @@ export async function POST(
     }
 
     // Check if already upgraded
-    if (existingRequest.data_source === "atlas" || existingRequest.source_system === "atlas_ui") {
+    if (existingRequest.data_source === "atlas_ui") {
       return NextResponse.json(
         { error: "This request has already been upgraded to Atlas schema" },
         { status: 400 }
@@ -136,8 +136,14 @@ export async function POST(
     });
   } catch (error) {
     console.error("Error upgrading request:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to upgrade request" },
+      {
+        error: "Failed to upgrade request",
+        details: errorMessage,
+        // Include stack in dev only
+        ...(process.env.NODE_ENV === "development" && { stack: error instanceof Error ? error.stack : undefined })
+      },
       { status: 500 }
     );
   }
