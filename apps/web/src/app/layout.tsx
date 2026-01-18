@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import PasswordGate from "@/components/PasswordGate";
+import { TippyChat } from "@/components/TippyChat";
 
 export const metadata: Metadata = {
   title: "Atlas",
@@ -23,6 +24,7 @@ export default function RootLayout({
       <body>
         <PasswordGate>
           <AppShell>{children}</AppShell>
+          <TippyChat />
         </PasswordGate>
       </body>
     </html>

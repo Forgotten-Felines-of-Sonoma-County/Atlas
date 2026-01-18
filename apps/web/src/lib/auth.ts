@@ -1,21 +1,32 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import bcrypt from "bcryptjs";
+import { queryOne, queryRows } from "./db";
 
 /**
- * User context for API endpoints
+ * Staff Authentication Library
  *
- * Currently Atlas doesn't have authentication - this is an internal tool.
- * This module provides a consistent interface for getting user context,
- * making it easy to add real authentication later.
+ * Provides session-based authentication for Atlas staff members.
+ * Uses bcrypt for password hashing and database-backed sessions.
  *
- * Current behavior:
- * - Checks X-Staff-ID header (passed from frontend when staff member is known)
- * - Falls back to "app_user" for anonymous requests
- *
- * TODO: When adding authentication:
- * 1. Install auth library (e.g., next-auth, clerk, or supabase-auth)
- * 2. Update getCurrentUser() to extract user from session/token
- * 3. Add middleware to protect routes
+ * Session flow:
+ * 1. Staff logs in with email/password
+ * 2. Server creates session record and returns token in HTTP-only cookie
+ * 3. Subsequent requests include cookie, validated via middleware
+ * 4. Staff info attached to request for use in API handlers
  */
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface Staff {
+  staff_id: string;
+  display_name: string;
+  email: string;
+  auth_role: "admin" | "staff" | "volunteer";
+  session_id?: string;
+}
 
 export interface UserContext {
   /** Display identifier for audit trails (staff name or "app_user") */
@@ -24,22 +35,428 @@ export interface UserContext {
   staffId: string | null;
   /** Whether this is an authenticated staff member */
   isAuthenticated: boolean;
+  /** Auth role for permission checks */
+  authRole?: "admin" | "staff" | "volunteer";
+}
+
+export interface SessionResult {
+  token: string;
+  expiresAt: Date;
+  sessionId: string;
+}
+
+export interface LoginResult {
+  success: boolean;
+  staff?: Staff;
+  session?: SessionResult;
+  error?: string;
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const SESSION_COOKIE_NAME = "atlas_session";
+const SESSION_EXPIRY_HOURS = parseInt(process.env.SESSION_EXPIRY_HOURS || "24");
+const BCRYPT_ROUNDS = 12;
+
+// ============================================================================
+// Password Hashing
+// ============================================================================
+
+/**
+ * Hash a password using bcrypt
+ */
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
 /**
- * Get the current user context from request headers
- *
- * The frontend can pass staff context via headers:
- * - X-Staff-ID: UUID of the staff member
- * - X-Staff-Name: Display name of the staff member
- *
- * @example
- * // In an API route:
- * const user = getCurrentUser(request);
- * console.log(user.displayName); // "Jami S." or "app_user"
- * console.log(user.staffId);     // "uuid-here" or null
+ * Verify a password against a bcrypt hash
+ */
+export async function verifyPassword(
+  password: string,
+  hash: string
+): Promise<boolean> {
+  return bcrypt.compare(password, hash);
+}
+
+// ============================================================================
+// Token Generation
+// ============================================================================
+
+/**
+ * Generate a cryptographically secure random token
+ */
+function generateToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Hash a token for storage (we never store raw tokens)
+ */
+async function hashToken(token: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(token);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// ============================================================================
+// Session Management
+// ============================================================================
+
+/**
+ * Create a new session for a staff member
+ */
+export async function createSession(
+  staffId: string,
+  ipAddress?: string,
+  userAgent?: string
+): Promise<SessionResult> {
+  const token = generateToken();
+  const tokenHash = await hashToken(token);
+
+  const result = await queryOne<{ session_id: string }>(
+    `SELECT trapper.create_staff_session($1, $2, $3, $4, $5) as session_id`,
+    [staffId, tokenHash, SESSION_EXPIRY_HOURS, ipAddress || null, userAgent || null]
+  );
+
+  if (!result) {
+    throw new Error("Failed to create session");
+  }
+
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + SESSION_EXPIRY_HOURS);
+
+  return {
+    token,
+    expiresAt,
+    sessionId: result.session_id,
+  };
+}
+
+/**
+ * Validate a session token and return staff info
+ */
+export async function validateSession(token: string): Promise<Staff | null> {
+  const tokenHash = await hashToken(token);
+
+  const result = await queryOne<{
+    staff_id: string;
+    display_name: string;
+    email: string;
+    auth_role: "admin" | "staff" | "volunteer";
+    session_id: string;
+  }>(
+    `SELECT * FROM trapper.validate_staff_session($1)`,
+    [tokenHash]
+  );
+
+  if (!result) {
+    return null;
+  }
+
+  return {
+    staff_id: result.staff_id,
+    display_name: result.display_name,
+    email: result.email,
+    auth_role: result.auth_role,
+    session_id: result.session_id,
+  };
+}
+
+/**
+ * Invalidate a session (logout)
+ */
+export async function invalidateSession(
+  token: string,
+  reason: string = "logout"
+): Promise<boolean> {
+  const tokenHash = await hashToken(token);
+
+  const result = await queryOne<{ invalidate_staff_session: boolean }>(
+    `SELECT trapper.invalidate_staff_session($1, $2) as invalidate_staff_session`,
+    [tokenHash, reason]
+  );
+
+  return result?.invalidate_staff_session || false;
+}
+
+// ============================================================================
+// Login
+// ============================================================================
+
+/**
+ * Attempt to log in a staff member
+ */
+export async function login(
+  email: string,
+  password: string,
+  ipAddress?: string,
+  userAgent?: string
+): Promise<LoginResult> {
+  // Find staff by email
+  const staff = await queryOne<{
+    staff_id: string;
+    display_name: string;
+    email: string;
+    password_hash: string | null;
+    auth_role: "admin" | "staff" | "volunteer";
+    is_active: boolean;
+    locked_until: Date | null;
+  }>(
+    `SELECT staff_id, display_name, email, password_hash, auth_role, is_active, locked_until
+     FROM trapper.staff
+     WHERE LOWER(email) = LOWER($1)`,
+    [email]
+  );
+
+  if (!staff) {
+    return { success: false, error: "Invalid email or password" };
+  }
+
+  // Check if account is active
+  if (!staff.is_active) {
+    return { success: false, error: "Account is disabled" };
+  }
+
+  // Check if account is locked
+  if (staff.locked_until && new Date(staff.locked_until) > new Date()) {
+    const minutesLeft = Math.ceil(
+      (new Date(staff.locked_until).getTime() - Date.now()) / 60000
+    );
+    return {
+      success: false,
+      error: `Account is locked. Try again in ${minutesLeft} minutes.`,
+    };
+  }
+
+  // Check if password is set
+  if (!staff.password_hash) {
+    return {
+      success: false,
+      error: "Password not set. Contact an administrator.",
+    };
+  }
+
+  // Verify password
+  const passwordValid = await verifyPassword(password, staff.password_hash);
+
+  if (!passwordValid) {
+    // Record failed login attempt
+    await queryOne(`SELECT trapper.record_failed_login($1)`, [email]);
+    return { success: false, error: "Invalid email or password" };
+  }
+
+  // Create session
+  const session = await createSession(staff.staff_id, ipAddress, userAgent);
+
+  return {
+    success: true,
+    staff: {
+      staff_id: staff.staff_id,
+      display_name: staff.display_name,
+      email: staff.email,
+      auth_role: staff.auth_role,
+    },
+    session,
+  };
+}
+
+// ============================================================================
+// Request Helpers
+// ============================================================================
+
+/**
+ * Get session token from request cookies
+ */
+export function getSessionToken(request: NextRequest): string | null {
+  return request.cookies.get(SESSION_COOKIE_NAME)?.value || null;
+}
+
+/**
+ * Get current staff from request (if authenticated)
+ */
+export async function getCurrentStaff(
+  request: NextRequest
+): Promise<Staff | null> {
+  const token = getSessionToken(request);
+  if (!token) {
+    return null;
+  }
+
+  return validateSession(token);
+}
+
+/**
+ * Require authentication - throws if not authenticated
+ */
+export async function requireAuth(request: NextRequest): Promise<Staff> {
+  const staff = await getCurrentStaff(request);
+
+  if (!staff) {
+    throw new AuthError("Authentication required", 401);
+  }
+
+  return staff;
+}
+
+/**
+ * Require specific role(s) - throws if not authorized
+ */
+export async function requireRole(
+  request: NextRequest,
+  allowedRoles: ("admin" | "staff" | "volunteer")[]
+): Promise<Staff> {
+  const staff = await requireAuth(request);
+
+  if (!allowedRoles.includes(staff.auth_role)) {
+    throw new AuthError(
+      `Access denied. Required role: ${allowedRoles.join(" or ")}`,
+      403
+    );
+  }
+
+  return staff;
+}
+
+/**
+ * Check if staff has permission for a resource action
+ */
+export async function hasPermission(
+  staffId: string,
+  resource: string,
+  action: string
+): Promise<boolean> {
+  const result = await queryOne<{ staff_can_access: boolean }>(
+    `SELECT trapper.staff_can_access($1, $2, $3) as staff_can_access`,
+    [staffId, resource, action]
+  );
+
+  return result?.staff_can_access || false;
+}
+
+// ============================================================================
+// Cookie Helpers
+// ============================================================================
+
+/**
+ * Set the session cookie in a response
+ */
+export function setSessionCookie(
+  response: NextResponse,
+  token: string,
+  expiresAt: Date
+): void {
+  response.cookies.set(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    expires: expiresAt,
+    path: "/",
+  });
+}
+
+/**
+ * Clear the session cookie
+ */
+export function clearSessionCookie(response: NextResponse): void {
+  response.cookies.set(SESSION_COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    expires: new Date(0),
+    path: "/",
+  });
+}
+
+// ============================================================================
+// Error Class
+// ============================================================================
+
+export class AuthError extends Error {
+  constructor(message: string, public statusCode: number = 401) {
+    super(message);
+    this.name = "AuthError";
+  }
+}
+
+// ============================================================================
+// Password Management
+// ============================================================================
+
+/**
+ * Set password for a staff member (admin operation)
+ */
+export async function setStaffPassword(
+  staffId: string,
+  newPassword: string
+): Promise<boolean> {
+  const hash = await hashPassword(newPassword);
+
+  const result = await queryOne<{ updated: boolean }>(
+    `UPDATE trapper.staff
+     SET password_hash = $2, login_attempts = 0, locked_until = NULL
+     WHERE staff_id = $1
+     RETURNING true as updated`,
+    [staffId, hash]
+  );
+
+  return result?.updated || false;
+}
+
+/**
+ * Change password (requires current password)
+ */
+export async function changePassword(
+  staffId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  // Get current hash
+  const staff = await queryOne<{ password_hash: string | null }>(
+    `SELECT password_hash FROM trapper.staff WHERE staff_id = $1`,
+    [staffId]
+  );
+
+  if (!staff || !staff.password_hash) {
+    return { success: false, error: "Staff not found or password not set" };
+  }
+
+  // Verify current password
+  const valid = await verifyPassword(currentPassword, staff.password_hash);
+  if (!valid) {
+    return { success: false, error: "Current password is incorrect" };
+  }
+
+  // Set new password
+  const updated = await setStaffPassword(staffId, newPassword);
+  if (!updated) {
+    return { success: false, error: "Failed to update password" };
+  }
+
+  return { success: true };
+}
+
+// ============================================================================
+// Legacy Compatibility (from original auth.ts)
+// ============================================================================
+
+/**
+ * Get the current user context from request
+ * This maintains backward compatibility with existing code
  */
 export function getCurrentUser(request: NextRequest): UserContext {
+  // First check for session cookie (new auth system)
+  const token = getSessionToken(request);
+
+  // For synchronous compatibility, check headers as fallback
   const staffId = request.headers.get("X-Staff-ID");
   const staffName = request.headers.get("X-Staff-Name");
 
@@ -72,12 +489,11 @@ export function getSystemUser(): UserContext {
 
 /**
  * Get admin user context for admin-only operations
- * Used when an operation requires admin privileges but auth isn't implemented yet
  */
 export function getAdminUser(): UserContext {
   return {
     displayName: "admin",
     staffId: null,
-    isAuthenticated: true, // Treat admin endpoints as authenticated
+    isAuthenticated: true,
   };
 }

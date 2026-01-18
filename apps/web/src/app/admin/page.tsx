@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { GeocodingControls } from "@/components/GeocodingControls";
+import { DataEngineControls } from "@/components/DataEngineControls";
 
 interface ParserResults {
   success: boolean;
@@ -280,6 +281,19 @@ export default function AdminPage() {
                 </div>
               </div>
               <GeocodingControls />
+            </section>
+
+            {/* Data Engine Processing */}
+            <section className="card" style={{ padding: "1.25rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: "1.125rem" }}>Data Engine Processing</h2>
+                  <p className="text-muted text-sm" style={{ margin: "0.25rem 0 0 0" }}>
+                    Process staged records through identity resolution
+                  </p>
+                </div>
+              </div>
+              <DataEngineControls />
             </section>
 
             {/* Documentation (Collapsed by Default) */}
