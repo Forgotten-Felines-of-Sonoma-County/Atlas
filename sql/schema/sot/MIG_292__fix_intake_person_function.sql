@@ -57,7 +57,7 @@ BEGIN
     p_first_name := v_sub.first_name,
     p_last_name := v_sub.last_name,
     p_address := NULL,  -- No address in intake submissions at person level
-    p_source_system := COALESCE(v_sub.source_system, 'web_intake')
+    p_source_system := 'web_intake'  -- web_intake_submissions don't have source_system column
   );
 
   -- Update submission with the person (whether matched or created)
