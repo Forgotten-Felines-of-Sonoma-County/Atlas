@@ -60,12 +60,31 @@ export async function GET() {
       ORDER BY count DESC
     `);
 
+    // Get by source system
+    const bySource = await queryRows<{ source_system: string; count: number }>(`
+      SELECT
+        COALESCE(source_system, 'unknown') AS source_system,
+        COUNT(*)::INT AS count
+      FROM trapper.cat_mortality_events
+      GROUP BY source_system
+      ORDER BY count DESC
+    `);
+
+    // Get this year's deaths
+    const thisYear = await queryOne<{ count: number }>(`
+      SELECT COUNT(*)::INT AS count
+      FROM trapper.cat_mortality_events
+      WHERE death_year = EXTRACT(YEAR FROM CURRENT_DATE)
+    `);
+
     return NextResponse.json({
       total_events: totals?.total_events || 0,
       with_cat_id: totals?.with_cat_id || 0,
       unique_places: totals?.unique_places || 0,
+      deaths_this_year: thisYear?.count || 0,
       by_cause: Object.fromEntries(byCause.map((r) => [r.death_cause, r.count])),
       by_age_category: Object.fromEntries(byAge.map((r) => [r.death_age_category, r.count])),
+      by_source: Object.fromEntries(bySource.map((r) => [r.source_system, r.count])),
     });
   } catch (error) {
     console.error("Mortality stats error:", error);

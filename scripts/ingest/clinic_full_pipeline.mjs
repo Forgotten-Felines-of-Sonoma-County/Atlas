@@ -261,6 +261,50 @@ async function main() {
     console.log('  [DRY RUN - skipped]');
   }
 
+  // Step 7: Queue processing jobs for the unified pipeline
+  console.log('\n' + '-'.repeat(40));
+  console.log('STEP 7: Queue unified processing jobs');
+  console.log('-'.repeat(40));
+
+  if (!options.dryRun) {
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+    try {
+      // Enqueue processing jobs for each file type
+      // These will be processed by the unified /api/ingest/process endpoint
+      for (const [name, filePath] of Object.entries(files)) {
+        if (fs.existsSync(filePath)) {
+          const sourceTable = name === 'catInfo' ? 'cat_info'
+            : name === 'ownerInfo' ? 'owner_info'
+            : 'appointment_info';
+
+          const result = await pool.query(`
+            SELECT trapper.enqueue_processing(
+              'clinichq',
+              $1,
+              'cli_ingest',
+              NULL,
+              0
+            ) as job_id
+          `, [sourceTable]);
+
+          console.log(`  ✓ Queued processing job for ${sourceTable}: ${result.rows[0].job_id}`);
+        }
+      }
+
+      console.log('\n  Jobs queued. They will be processed by /api/ingest/process cron.');
+      console.log('  Or run manually: SELECT * FROM trapper.process_next_job();');
+
+    } catch (e) {
+      console.error('  Error queueing processing jobs:', e.message);
+      console.log('  Note: This is non-fatal - data was staged successfully.');
+    } finally {
+      await pool.end();
+    }
+  } else {
+    console.log('  [DRY RUN - skipped]');
+  }
+
   // Final stats
   console.log('\n' + '='.repeat(60));
   console.log('  PIPELINE COMPLETE');

@@ -1,0 +1,88 @@
+import { NextRequest, NextResponse } from "next/server";
+import { queryRows, queryOne } from "@/lib/db";
+
+/**
+ * Data Engine Review Queue API
+ *
+ * GET: List pending identity reviews
+ */
+
+interface ReviewItem {
+  decision_id: string;
+  source_system: string;
+  incoming_email: string | null;
+  incoming_phone: string | null;
+  incoming_name: string | null;
+  incoming_address: string | null;
+  candidates_evaluated: number;
+  top_candidate_person_id: string | null;
+  top_candidate_name: string | null;
+  top_candidate_score: number;
+  decision_type: string;
+  decision_reason: string | null;
+  resulting_person_id: string | null;
+  resulting_name: string | null;
+  score_breakdown: Record<string, number> | null;
+  processed_at: string;
+  review_status: string;
+}
+
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const status = searchParams.get("status") || "pending";
+  const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
+  const offset = parseInt(searchParams.get("offset") || "0");
+
+  try {
+    // Get review items
+    const reviews = await queryRows<ReviewItem>(`
+      SELECT
+        d.decision_id::text,
+        d.source_system,
+        d.incoming_email,
+        d.incoming_phone,
+        d.incoming_name,
+        d.incoming_address,
+        d.candidates_evaluated,
+        d.top_candidate_person_id::text,
+        top_p.display_name as top_candidate_name,
+        COALESCE(d.top_candidate_score, 0)::numeric as top_candidate_score,
+        d.decision_type,
+        d.decision_reason,
+        d.resulting_person_id::text,
+        res_p.display_name as resulting_name,
+        d.score_breakdown,
+        d.processed_at::text,
+        d.review_status
+      FROM trapper.data_engine_match_decisions d
+      LEFT JOIN trapper.sot_people top_p ON top_p.person_id = d.top_candidate_person_id
+      LEFT JOIN trapper.sot_people res_p ON res_p.person_id = d.resulting_person_id
+      WHERE d.review_status = $1
+      ORDER BY d.processed_at DESC
+      LIMIT $2 OFFSET $3
+    `, [status, limit, offset]);
+
+    // Get total count
+    const countResult = await queryOne<{ count: number }>(`
+      SELECT COUNT(*)::int as count
+      FROM trapper.data_engine_match_decisions
+      WHERE review_status = $1
+    `, [status]);
+
+    return NextResponse.json({
+      reviews,
+      pagination: {
+        total: countResult?.count || 0,
+        limit,
+        offset,
+        status,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching reviews:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}

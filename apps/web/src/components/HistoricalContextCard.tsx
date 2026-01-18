@@ -212,10 +212,17 @@ export function HistoricalContextCard({ placeId, className = '' }: Props) {
               <div className="space-y-3">
                 {data.notes_summary.map((note, idx) => (
                   <div key={idx} className="text-sm border-l-2 border-amber-300 pl-3">
-                    <div className="flex items-center gap-2 text-xs text-amber-600 mb-1">
+                    <div className="flex items-center gap-2 text-xs text-amber-600 mb-1 flex-wrap">
                       {note.date && <span>{note.date}</span>}
                       <span className="text-amber-400">•</span>
-                      <span className="capitalize">{note.source}</span>
+                      <span className="capitalize">
+                        {note.source.replace(' (AI paraphrased)', '')}
+                      </span>
+                      {note.source.includes('AI') && (
+                        <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">
+                          AI paraphrased
+                        </span>
+                      )}
                       {note.attribution.length > 0 && (
                         <>
                           <span className="text-amber-400">•</span>
@@ -243,16 +250,11 @@ export function HistoricalContextCard({ placeId, className = '' }: Props) {
           {/* Data source disclaimer */}
           <div className="mt-4 p-3 bg-amber-100/50 rounded border border-amber-200">
             <p className="text-xs text-amber-600">
-              <strong>Note:</strong> Historical data is from legacy sources (MyMaps, request notes).
-              Location matching is based on coordinates and may include nearby activity within ~50m.
-              Verify details before making operational decisions.
-            </p>
-          </div>
-
-          {/* Future AI summary placeholder */}
-          <div className="mt-2 p-3 bg-amber-100/30 rounded border border-dashed border-amber-300">
-            <p className="text-xs text-amber-500 italic">
-              🤖 AI-generated summary coming soon...
+              <strong>Note:</strong> Historical data is from legacy sources (Google Maps, request notes).
+              {data.notes_summary.some(n => n.source.includes('AI')) && (
+                <span> Some notes have been paraphrased by AI for clarity while preserving attribution.</span>
+              )}
+              {' '}Location matching is based on coordinates and may include nearby activity within ~50m.
             </p>
           </div>
         </div>

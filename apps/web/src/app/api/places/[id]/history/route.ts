@@ -132,6 +132,31 @@ export async function GET(
       [placeId]
     );
 
+    // Get Google Map entries (with AI summaries)
+    const googleMapEntries = await queryRows<{
+      entry_id: string;
+      original_content: string | null;
+      ai_summary: string | null;
+      parsed_cat_count: number | null;
+      parsed_altered_count: number | null;
+      parsed_date: string | null;
+      parsed_signals: Record<string, unknown> | null;
+    }>(
+      `SELECT
+        entry_id,
+        original_content,
+        ai_summary,
+        parsed_cat_count,
+        parsed_altered_count,
+        parsed_date::TEXT,
+        parsed_signals
+      FROM trapper.google_map_entries
+      WHERE place_id = $1
+      ORDER BY parsed_date DESC NULLS LAST, imported_at DESC
+      LIMIT 20`,
+      [placeId]
+    );
+
     // Get request notes for this place (for additional context)
     const requestNotes = await queryRows<{
       notes: string | null;
@@ -203,6 +228,38 @@ export async function GET(
       }
     }
 
+    // Process Google Map entries (prioritize AI summaries)
+    let hasAiSummaries = false;
+    for (const entry of googleMapEntries) {
+      // Use AI summary if available, otherwise original content
+      const displayText = entry.ai_summary || entry.original_content;
+      if (!displayText) continue;
+
+      if (entry.ai_summary) hasAiSummaries = true;
+
+      // Track colony sizes and counts from Google Map entries
+      if (entry.parsed_cat_count) colonySizes.push(entry.parsed_cat_count);
+      if (entry.parsed_altered_count) tnrTotal += entry.parsed_altered_count;
+
+      // Extract signals from parsed_signals
+      if (entry.parsed_signals) {
+        const ps = entry.parsed_signals as { signals?: string[]; has_kittens?: boolean; is_complete?: boolean };
+        if (ps.signals) ps.signals.forEach(s => signals.add(s.toLowerCase()));
+        if (ps.has_kittens) signals.add('kittens');
+        if (ps.is_complete) signals.add('complete');
+      }
+
+      const cleanedText = cleanNotes(displayText);
+      if (cleanedText && cleanedText.length > 10) {
+        notesSummary.push({
+          date: entry.parsed_date,
+          source: entry.ai_summary ? 'google maps (AI paraphrased)' : 'google maps',
+          text: cleanedText.substring(0, 300) + (cleanedText.length > 300 ? '...' : ''),
+          attribution: extractAttribution(displayText),
+        });
+      }
+    }
+
     // Process request notes
     for (const req of requestNotes) {
       const allNotes = [req.notes, req.internal_notes, req.legacy_notes]
@@ -232,7 +289,7 @@ export async function GET(
     // Limit notes to most recent 10
     const limitedNotes = notesSummary.slice(0, 10);
 
-    const response: HistoricalContext = {
+    const response: HistoricalContext & { has_ai_summaries: boolean; google_map_entry_count: number } = {
       place_id: placeId,
       place_name: placeResult[0].display_name,
       historical_tnr_total: tnrTotal || null,
@@ -247,6 +304,8 @@ export async function GET(
         ...e,
         notes: cleanNotes(e.notes),
       })),
+      has_ai_summaries: hasAiSummaries,
+      google_map_entry_count: googleMapEntries.length,
     };
 
     return NextResponse.json(response);

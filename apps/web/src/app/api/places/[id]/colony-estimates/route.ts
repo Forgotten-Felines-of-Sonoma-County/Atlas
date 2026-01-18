@@ -42,9 +42,6 @@ interface EcologyStats {
   total_eartips_seen: number;
   total_cats_seen: number;
   n_hat_chapman: number | null;
-  p_hat_chapman_pct: number | null;
-  best_colony_estimate: number | null;
-  estimated_work_remaining: number | null;
 }
 
 export async function GET(
@@ -135,10 +132,7 @@ export async function GET(
         has_eartip_data,
         total_eartips_seen,
         total_cats_seen,
-        n_hat_chapman,
-        p_hat_chapman_pct,
-        best_colony_estimate,
-        estimated_work_remaining
+        n_hat_chapman
       FROM trapper.v_place_ecology_stats
       WHERE place_id = $1
     `;
@@ -154,6 +148,8 @@ export async function GET(
       intake_form: "Web Intake Form",
       appointment_request: "Appointment Request",
       verified_cats: "Verified Cats",
+      ai_parsed: "AI Parsed",
+      legacy_mymaps: "Google Maps (Legacy)",
     };
 
     // Format estimates with display labels
@@ -187,9 +183,6 @@ export async function GET(
         total_eartips_seen: 0,
         total_cats_seen: 0,
         n_hat_chapman: null,
-        p_hat_chapman_pct: null,
-        best_colony_estimate: null,
-        estimated_work_remaining: null,
       },
       has_data: estimates.length > 0 || (status && status.colony_size_estimate > 0) || (ecology && ecology.a_known > 0),
     });

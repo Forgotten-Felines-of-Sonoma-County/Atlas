@@ -56,8 +56,8 @@ export async function GET(
           ELSE pa.formatted_address
         END AS related_place_address,
         CASE
-          WHEN e.place_id_a = $1 THEN pb.name
-          ELSE pa.name
+          WHEN e.place_id_a = $1 THEN pb.display_name
+          ELSE pa.display_name
         END AS related_place_name
       FROM trapper.place_place_edges e
       JOIN trapper.relationship_types rt ON rt.id = e.relationship_type_id

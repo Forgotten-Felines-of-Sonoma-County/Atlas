@@ -104,6 +104,124 @@ Atlas follows a **Raw → Normalize → SoT** pipeline to ensure data integrity:
                         └─────────────────┘
 ```
 
+### Centralized Processing Pipeline (MIG_312, MIG_313)
+
+All data ingestion flows through a unified job queue for consistent processing:
+
+```
+   CLI Scripts        UI Upload        Airtable Sync       Web Intake
+        │                 │                  │                  │
+        └────────────────┬┴──────────────────┴──────────────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │   staged_records    │  ◀── Immutable audit trail
+              │   + file_uploads    │
+              └──────────┬──────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │   processing_jobs   │  ◀── Job queue (MIG_312)
+              │                     │
+              │   status: queued    │
+              │   → processing      │
+              │   → linking         │
+              │   → completed       │
+              └──────────┬──────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  SQL ORCHESTRATOR   │  ◀── process_next_job()
+              │                     │
+              │  - Claims job       │
+              │  - Routes to        │
+              │    SQL processor    │
+              │  - Runs entity      │
+              │    linking          │
+              └──────────┬──────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+    ┌─────────┐    ┌─────────┐    ┌─────────┐
+    │ClinicHQ │    │Airtable │    │ Intake  │
+    │Processor│    │Processor│    │Processor│
+    └────┬────┘    └────┬────┘    └────┬────┘
+         │              │              │
+         └──────────────┼──────────────┘
+                        │
+                        ▼
+              ┌─────────────────────┐
+              │  ENTITY LINKING     │  ◀── run_all_entity_linking()
+              │  (cats↔places,      │
+              │   cats↔requests)    │
+              └─────────────────────┘
+```
+
+**Key Components:**
+- **`processing_jobs` table** — Centralized job queue with retry logic
+- **`enqueue_processing()`** — Queue jobs for processing
+- **`process_next_job()`** — Main orchestrator (called by cron every 10 min)
+- **`process_clinichq_owner_info()`** — Backfills owner_email, links person_id
+- **`run_all_entity_linking()`** — Links cats to places and requests
+
+**Endpoints:**
+- `POST /api/ingest/process` — Unified processor (cron every 10 min)
+- `GET /api/health/processing` — Monitoring dashboard with data integrity checks
+
+**Benefits:**
+- All data flows through same pipeline regardless of entry point
+- Automatic post-processing (no manual steps after ingestion)
+- Order-independent processing (can ingest files in any order)
+- Idempotent (safe to re-run any step)
+- Observable via health endpoint and `v_processing_dashboard` view
+
+### Data Engine (MIG_314-317)
+
+The **Data Engine** is Atlas's unified identity resolution system. It provides robust person matching with:
+
+- **Multi-signal weighted scoring**: Combines email (40%), phone (25%), name similarity (25%), and address (10%)
+- **Household modeling**: Recognizes multiple people at the same address sharing identifiers
+- **Configurable matching rules**: 9 default rules with adjustable thresholds stored in database
+- **Review queue**: Uncertain matches (score 0.50-0.94) flagged for human review
+- **Full audit trail**: Every matching decision logged with reasoning and score breakdown
+
+```
+                    Incoming Identity Data
+                            │
+                            ▼
+                ┌───────────────────────┐
+                │   DATA ENGINE         │
+                │   IDENTITY RESOLVER   │
+                │                       │
+                │  ┌─────────────────┐  │
+                │  │ Score Candidates│  │
+                │  │ • Email match   │  │
+                │  │ • Phone match   │  │
+                │  │ • Name similarity│  │
+                │  │ • Address match │  │
+                │  └────────┬────────┘  │
+                │           │           │
+                │     ┌─────┴─────┐     │
+                │     ▼           ▼     │
+                │  ≥0.95       0.50-0.94│
+                │  Auto        Review   │
+                │  Match       Queue    │
+                └───────────────────────┘
+```
+
+**Decision Types:**
+| Score | Decision | Action |
+|-------|----------|--------|
+| ≥ 0.95 | `auto_match` | Link to existing person |
+| 0.50 - 0.94 | `review_pending` | Create new, flag for review |
+| < 0.50 | `new_entity` | Create new person |
+
+**Endpoints:**
+- `GET /api/health/data-engine` — Health check
+- `GET /api/admin/data-engine/stats` — Statistics
+- `GET /api/admin/data-engine/review` — Pending reviews
+- `GET /api/admin/data-engine/households` — Household data
+
 ### Key Invariants
 1. **No UI route writes directly to SoT tables** — All data goes through raw intake first
 2. **Append-only raw tables** — Updates create new rows with `supersedes_raw_id`
@@ -170,6 +288,8 @@ All cleanup migrations create backup tables (`backup_*_mig15X`) for data rescue 
 - [ATLAS_REPO_MAP.md](docs/ATLAS_REPO_MAP.md) — Where things live
 - [DECISIONS.md](docs/DECISIONS.md) — Architecture decision records
 - [TECHNICAL_METHODOLOGY.md](docs/TECHNICAL_METHODOLOGY.md) — Population estimation, data quality, and known limitations
+- [COMPREHENSIVE_DATA_AUDIT_2026_01_17.md](docs/COMPREHENSIVE_DATA_AUDIT_2026_01_17.md) — Data pipeline audit and fixes
+- [INGEST_GUIDELINES.md](docs/INGEST_GUIDELINES.md) — Ingestion rules and centralized functions
 
 ## Architecture: Atlas + Beacon
 
@@ -202,6 +322,25 @@ All cleanup migrations create backup tables (`backup_*_mig15X`) for data rescue 
 - **FFSC clinic data = verified alterations (ground truth)**
 - External alteration rate ≈ 2% (negligible)
 - Alteration Rate = `FFSC_altered / Population_estimate`
+
+### Service Zones (Beacon Readiness)
+
+All places are assigned to service zones for geographic analysis:
+
+| Zone | Description |
+|------|-------------|
+| Santa Rosa | City of Santa Rosa |
+| Petaluma | City of Petaluma |
+| Rohnert Park/Cotati | Rohnert Park and Cotati areas |
+| Sebastopol | City of Sebastopol |
+| Healdsburg/Windsor | Healdsburg and Windsor areas |
+| Sonoma Valley | Sonoma, Glen Ellen, Kenwood |
+| North County | Cloverdale, Geyserville, rural north |
+| Coastal | Bodega Bay, Jenner, Sea Ranch, coastal areas |
+| Rural/Unincorporated | Other unincorporated Sonoma County |
+| Out of Area | Marin, Napa, Lake, Mendocino counties |
+
+Zones enable Beacon to calculate per-zone TNR progress, identify under-served areas, and prioritize resources.
 
 ### Key Equations (Beacon Population Model)
 

@@ -1,8 +1,115 @@
 # Atlas Mission Contract
 
-**Version:** 1.1
+**Version:** 1.2
 **Last Updated:** 2026-01-17
 **Status:** Active
+
+---
+
+## CORE PRINCIPLE: Every Entity is Real and Distinct
+
+**Atlas is the single source of truth for every real entity FFSC has ever interacted with:**
+
+| Entity | What It Represents | Rule |
+|--------|-------------------|------|
+| **Person** | Every human who has requested help, brought cats to clinic, volunteered, or been contacted | Each person is a distinct record. Identity matching via email/phone, never by name alone. |
+| **Place** | Every address where cats have been reported, trapped, or where an owner lives | Each physical location is distinct. Units in a complex are separate places linked via `parent_place_id`. |
+| **Cat** | Every cat seen at clinic with a microchip, or documented in the field | Each cat is a distinct record identified by microchip (gold standard) or clinic Pet ID. |
+
+### The Fundamental Promise
+
+> **When you search an address in Atlas, you see ONLY data at that address.**
+>
+> - Cats linked to 101 Fisher Lane are cats that were actually AT 101 Fisher Lane
+> - If it's a multi-unit complex, you see the building's units as children, each with their own data
+> - Cats from other addresses that happened to merge administratively do NOT pollute this view
+
+### Two Complementary Layers
+
+**Layer 1: Clean Data Organization (Foundation)**
+- Centralized `find_or_create_*` functions handle deduplication
+- Identity resolution via email/phone (never name alone)
+- Audit trail for all changes
+- Places remain individualized - merging is cosmetic, not data-destructive
+
+**Layer 2: Ecological Predictions (Computed)**
+- Uses Layer 1 data PLUS qualitative sources (Google Maps, Project 75, surveys)
+- Calculations happen in views, not stored on places
+- Colony estimates in separate `place_colony_estimates` table
+- Beacon will visualize these predictions on a map
+
+### Why This Matters
+
+The workflows (intake queue, trapping requests, clinic visits) are built on having historical context at the ready:
+- "This address had 5 cats fixed in 2023, 3 more reported last month"
+- "This person has called twice before about this location"
+- "We've never serviced this area - it's new territory"
+
+**If data is incorrectly consolidated, this context becomes meaningless.**
+
+---
+
+## Recent Updates (v1.3) - AI Enrichment Pipeline
+
+### AI-Powered Data Enrichment - IMPLEMENTED (2026-01-17)
+
+Automated data extraction using Claude AI to populate Beacon ecological data:
+
+| Data Type | Source | Records Created | Script |
+|-----------|--------|-----------------|--------|
+| Birth Events | Lactating/pregnant appointments | 1,731 | `populate_birth_events_from_appointments.mjs` |
+| Mortality Events | Clinic euthanasia notes | 37 | `populate_mortality_from_clinic.mjs` |
+| Colony Estimates | Google Maps + Request notes | 1,238+ | `parse_quantitative_data.mjs` |
+| Paraphrased Notes | Google Maps entries | 2,479 | `paraphrase_google_map_entries.mjs` |
+
+**New API Endpoints:**
+- `POST /api/cron/beacon-enrich` - Daily automated birth/mortality extraction
+- `GET /api/admin/beacon/enrichment` - Pipeline status with by-source breakdowns
+
+**Updated Stats APIs:**
+- `/api/admin/beacon/reproduction/stats` - Now includes births by source/season
+- `/api/admin/beacon/mortality/stats` - Now includes by_source breakdown
+
+**AI Prompt Design:**
+- Birth events: Estimates birth ~6 weeks before lactating appointment
+- Mortality: Categorizes death cause (euthanasia, vehicle, predator, disease, unknown)
+- Quantitative parser: Full TNR context for interpreting informal notes
+- Paraphrasing: Light-touch cleanup, adds "[the client]" for clarity
+
+---
+
+## Recent Updates (v1.2)
+
+### MIG_305: Preserve Original Cat Locations - APPLIED
+
+Fixed issue where place merging caused cat counts to consolidate:
+- Added `original_place_id` to `cat_place_relationships`
+- Ecology views now use original location for cat counts
+- Prevents "101 Fisher Lane has 100 cats" when those cats were actually at other addresses
+
+### MIG_306: Immigration Tracking - APPLIED
+
+Completes Beacon Gap #4 (Immigration vs Local Births):
+- Added `arrival_type` enum: born_locally, likely_local_birth, immigrated, relocated, adopted_in, unknown
+- Added `arrival_date` and `age_at_arrival_months` columns
+- Created `infer_cat_arrival_type()` function
+- Created `v_place_immigration_stats` view
+- 7,715 cats classified as likely_local_birth, 12 as immigrated
+
+### Observation Capture in Request Completion - IMPLEMENTED
+
+When completing/partially completing a request, trappers can now log observations:
+- `observation_cats_seen` - Total cats observed at site
+- `observation_eartips_seen` - How many had ear tips
+- Automatically creates `place_colony_estimates` record
+- Enables Chapman estimator for the place
+
+### Chapman Estimator Coverage - IMPROVED
+
+Extended eartip observation window from 90 days to 365 days:
+- **Before**: 17 places with mark_resight estimation
+- **After**: 105 places with mark_resight estimation
+- Project 75 survey data now contributes to Chapman coverage
 
 ---
 
@@ -185,7 +292,7 @@ All parameters are configurable via `/admin/ecology-config` with scientific defa
 | Seasonal breeding patterns | ✅ READY | `v_seasonal_breeding_patterns` (MIG_291) |
 | Mother-kitten relationships | ✅ READY | `cat_birth_events.mother_cat_id`, `litter_id` |
 | Vortex model parameters | ✅ READY | `vortex_parameters` (MIG_288) |
-| Immigration tracking | ⚠️ PARTIAL | Need `arrival_type` on relationships |
+| Immigration tracking | ✅ READY | `arrival_type` on cat_place_relationships (MIG_306) |
 
 ---
 
@@ -427,16 +534,16 @@ Analyzes from appointment data:
 
 **Beacon Value:** Enables proactive resource planning for kitten surges.
 
-### ⚠️ Gap 4: Colony Immigration vs Local Births - PARTIAL
+### ✅ Gap 4: Colony Immigration vs Local Births - COMPLETE (MIG_306)
 
-**Current State:**
-- `cat_movement_events` tracks relocation
-- `cat_birth_events` now identifies locally-born cats
-- No explicit `arrival_type` field yet
+**Implemented:**
+- `arrival_type` enum on `cat_place_relationships`: born_locally, likely_local_birth, immigrated, relocated, adopted_in, unknown
+- `arrival_date` and `age_at_arrival_months` columns
+- `infer_cat_arrival_type()` function for automatic classification
+- `v_place_immigration_stats` view for per-place analysis
+- 7,715 cats classified as likely_local_birth, 12 as immigrated
 
-**Remaining Work:**
-- Add `arrival_type` to `cat_place_relationships`
-- Inference rules: first seen as adult = immigrated, seen as kitten = born locally
+**Beacon Value:** Enables immigration rate modeling per Vortex specifications
 
 ---
 
@@ -456,48 +563,59 @@ Based on what's been completed and what remains, here is the current priority:
 
 `v_seasonal_breeding_patterns` view deployed analyzing appointment patterns by month.
 
-### Priority 1: Observation Data Capture (HIGH IMPACT)
+### ✅ COMPLETED: Observation Data Capture
 
-**Goal:** Increase Chapman estimator coverage from 422 to 2,000+ places
+**Goal:** Increase Chapman estimator coverage
 
-**Actions:**
-1. Deploy observation UI to all trappers
-2. Integrate observation prompt into trapping workflow
-3. Backfill eartip data from Project 75 surveys
-4. Add observation to request completion workflow
+**Implemented:**
+- Observation fields in request completion API (`observation_cats_seen`, `observation_eartips_seen`)
+- Automatically creates `place_colony_estimates` for Chapman estimator
+- Extended eartip observation window from 90→365 days
+- Coverage increased from 17→105 places with mark-resight estimation
 
-**Beacon Value:** Chapman estimates are 10x more accurate than lower-bound estimates
+### ✅ COMPLETED: Immigration Tracking (MIG_306)
 
-### Priority 2: Immigration Tracking
+**Implemented:**
+- `arrival_type` enum on cat_place_relationships
+- `infer_cat_arrival_type()` function
+- `v_place_immigration_stats` view
 
-**Goal:** Distinguish new arrivals from local births
+### ✅ COMPLETED: Email Automation
 
-**Actions:**
-1. Add `arrival_type` to cat-place relationships
-2. Infer from first observation characteristics
-3. Track neighboring colony relationships
+**Implemented:**
+- Resend integration in `/lib/email.ts`
+- Email templates table with `out_of_county`, `onboarding_welcome`, etc.
+- Cron endpoint at `/api/cron/send-emails`
+- Daily cron configured in vercel.json
 
-**Beacon Value:** Enables immigration rate modeling per Vortex
+**Note:** Requires `RESEND_API_KEY` environment variable in production
 
-### Priority 3: Email Automation
+### ✅ COMPLETED: Trapper Onboarding UI
 
-**Goal:** Enable automated responses (out-of-county, confirmations)
+**Implemented:**
+- Full Kanban pipeline at `/trappers/onboarding`
+- 12-stage workflow (interested → approved)
+- Add/advance/decline actions
+- Staff list integration
 
-**Actions:**
-1. Set up Resend email provider integration
-2. Create `/api/emails/send` endpoint
-3. Add cron for pending out-of-county emails
-4. Create additional email templates
+### ✅ COMPLETED: Intake Workflow Simplification (MIG_254)
 
-### Priority 4: UI for New Workflows
+**Implemented:**
+- Unified `submission_status` field (new, in_progress, scheduled, complete, archived)
+- Priority dropdown with auto triage score
+- Communication Log (journal-based notes + calls)
+- Edit all submitted answers with audit logging
+- Dashboard updated to use unified status
 
-**Goal:** Staff interfaces for new capabilities
+### Remaining UI Work
 
-**Actions:**
-1. Trapper onboarding dashboard
-2. Birth/mortality data entry forms
-3. Observation capture during trapping workflow
-4. Education materials distribution
+**Birth/Mortality Data Entry:**
+- Tables exist (`cat_birth_events`, `cat_mortality_events`)
+- UI forms not yet built
+
+**Observation UI for Trappers:**
+- API endpoint exists
+- Trapper-facing capture UI not yet built
 
 ---
 

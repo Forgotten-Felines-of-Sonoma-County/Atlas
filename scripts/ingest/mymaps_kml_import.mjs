@@ -10,13 +10,20 @@
  *
  * Process:
  * 1. Load pre-extracted JSON data
- * 2. Match to existing places by coordinates (haversine distance < 100m)
- * 3. Create new places for unmatched (using find_or_create_place_deduped)
- * 4. Insert colony estimates with source_type = 'legacy_mymaps'
- * 5. Store qualitative notes for historical context
+ * 2. Match to existing places by coordinates (haversine distance < 50m)
+ * 3. For confident matches: Insert colony estimates with source_type = 'legacy_mymaps'
+ * 4. For uncertain/unmatched: Stage in kml_pending_records for manual review
+ * 5. Preserve qualitative notes for AI summarization and Beacon maps
+ *
+ * Mission Contract Alignment:
+ * - Never create places from coordinates alone (would pollute data)
+ * - Preserve all qualitative content (notes, descriptions) for future use
+ * - Stage orphaned records for manual linking when places are verified
+ * - Support AI summarization of historical context
  *
  * PREREQUISITES:
  * - Run MIG_267 first (adds 'legacy_mymaps' to colony_source_confidence)
+ * - Run MIG_308 (creates kml_pending_records staging table)
  * - Run: python3 /tmp/kml_full_extract.py to generate JSON
  *
  * Usage:
@@ -49,15 +56,16 @@ const MATCH_DISTANCE_METERS = 50; // Conservative: only match places within 50m
  * Strategy:
  * 1. ONLY enrich existing places that are within 50m (conservative)
  * 2. DO NOT create new places from KML coords (would pollute places table)
- * 3. Unmatched KML records go to a separate staging table for manual review
- * 4. Historical context shows as "nearby activity" not "this place"
+ * 3. Unmatched/uncertain records go to kml_pending_records staging table
+ * 4. Qualitative notes preserved for AI summarization and Beacon maps
  *
  * The coordinates may not be exact - someone may have dropped a pin
  * near a location, not at the exact address. We err on the side of
  * caution by:
- * - Using a tight 50m radius (not 100m)
- * - Only enriching, never creating places
- * - Flagging uncertain matches for review
+ * - Using a tight 50m radius for confident matches
+ * - Staging 50-150m matches as "uncertain" for manual review
+ * - Staging >150m records as "unmatched" for future linking
+ * - Preserving all qualitative content regardless of match status
  */
 
 // Haversine distance calculation
@@ -98,7 +106,13 @@ Options:
 
 Prerequisites:
   1. Run MIG_267 (adds 'legacy_mymaps' source_type)
-  2. Run: python3 /tmp/kml_full_extract.py
+  2. Run MIG_308 (creates kml_pending_records staging table)
+  3. Run: python3 /tmp/kml_full_extract.py
+
+Output:
+  - Confident matches (<50m): Colony estimates in place_colony_estimates
+  - Uncertain matches (50-150m): Staged in kml_pending_records for review
+  - Unmatched (>150m): Staged in kml_pending_records for future linking
 `);
     process.exit(0);
   }
@@ -174,10 +188,12 @@ Prerequisites:
     const stats = {
       total: records.length,
       matched: 0,         // Confident match (<50m)
-      uncertain: 0,       // Uncertain match (50-150m) - skipped for review
-      unmatched: 0,       // No match (>150m) - skipped, no place to attach
+      uncertain: 0,       // Uncertain match (50-150m) - staged for review
+      unmatched: 0,       // No match (>150m) - staged for future matching
       estimates_inserted: 0,
+      pending_inserted: 0, // Records inserted into kml_pending_records
       skipped_duplicate: 0,
+      skipped_pending_duplicate: 0,
       errors: 0,
     };
 
@@ -205,25 +221,73 @@ Prerequisites:
         }
 
         let placeId;
+        let matchStatus;
+
         if (minDistance <= MATCH_DISTANCE_METERS) {
           // Use existing place - confident match
           placeId = matchedPlace.place_id;
+          matchStatus = 'matched';
           stats.matched++;
         } else if (minDistance <= 150) {
-          // Uncertain match (50-150m) - log for review but don't import
+          // Uncertain match (50-150m) - stage for manual review
+          matchStatus = 'uncertain';
           stats.uncertain++;
-          if (options.verbose && stats.uncertain <= 10) {
-            console.log(`${yellow}Uncertain match:${reset} ${record.name} is ${minDistance.toFixed(0)}m from ${matchedPlace.display_name}`);
-          }
-          continue; // Skip - needs manual review
         } else {
-          // No match - DO NOT create new place from coordinates alone
-          // KML coords may not be accurate, would pollute places table
+          // No match - stage for future matching
+          matchStatus = 'unmatched';
           stats.unmatched++;
-          if (options.verbose && stats.unmatched <= 10) {
-            console.log(`${dim}No match:${reset} ${record.name} at (${record.lat.toFixed(4)}, ${record.lng.toFixed(4)})`);
+        }
+
+        // For unmatched/uncertain records, insert into staging table
+        if (matchStatus !== 'matched') {
+          if (!options.dryRun) {
+            // Check for existing pending record (by coordinates + name)
+            const existingPending = await pool.query(`
+              SELECT 1 FROM trapper.kml_pending_records
+              WHERE lat = $1 AND lng = $2 AND kml_name = $3
+            `, [record.lat, record.lng, record.name || null]);
+
+            if (existingPending.rowCount > 0) {
+              stats.skipped_pending_duplicate++;
+            } else {
+              // Parse status signals into JSONB
+              const parsedSignals = record.status_signals?.length
+                ? JSON.stringify({
+                    signals: record.status_signals,
+                    has_kittens: record.status_signals.some(s => s.toLowerCase().includes('kitten')),
+                    has_feeders: record.status_signals.some(s => s.toLowerCase().includes('feed')),
+                    is_complete: record.status_signals.some(s => s.toLowerCase().includes('complete') || s.toLowerCase().includes('done')),
+                  })
+                : null;
+
+              await pool.query(`
+                INSERT INTO trapper.kml_pending_records (
+                  kml_name, kml_description, lat, lng, kml_folder,
+                  parsed_cat_count, parsed_date, parsed_signals,
+                  match_status, nearest_place_id, nearest_place_distance_m,
+                  source_file, source_folder
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                ON CONFLICT (lat, lng, kml_name) DO NOTHING
+              `, [
+                record.name || null,
+                record.notes || record.description || null,
+                record.lat,
+                record.lng,
+                record.folder || null,
+                record.colony_size || record.tnr_count || null,
+                record.date ? `${record.date}-01` : null,
+                parsedSignals,
+                matchStatus,
+                matchedPlace?.place_id || null,
+                minDistance < Infinity ? minDistance : null,
+                'FFSC Colonies and trapping assignments.kml',
+                record.folder || null,
+              ]);
+
+              stats.pending_inserted++;
+            }
           }
-          continue; // Skip - no reliable place to attach to
+          continue; // Don't create colony estimate for unmatched records
         }
 
         if (options.dryRun) continue;
@@ -296,9 +360,13 @@ Prerequisites:
     console.log(`${cyan}Total records:${reset}        ${stats.total}`);
     console.log(`${green}Confident matches:${reset}    ${stats.matched} (within 50m of existing place)`);
     console.log(`${green}Estimates inserted:${reset}   ${stats.estimates_inserted}`);
-    console.log(`${yellow}Uncertain matches:${reset}    ${stats.uncertain} (50-150m - needs review)`);
-    console.log(`${yellow}Unmatched:${reset}            ${stats.unmatched} (>150m - no place to attach)`);
+    console.log(`${yellow}Uncertain matches:${reset}    ${stats.uncertain} (50-150m - staged for review)`);
+    console.log(`${yellow}Unmatched:${reset}            ${stats.unmatched} (>150m - staged for future)`);
+    console.log(`${cyan}Pending staged:${reset}       ${stats.pending_inserted} (in kml_pending_records)`);
     console.log(`${yellow}Skipped duplicates:${reset}   ${stats.skipped_duplicate}`);
+    if (stats.skipped_pending_duplicate > 0) {
+      console.log(`${yellow}Skipped pending dups:${reset} ${stats.skipped_pending_duplicate}`);
+    }
     if (stats.errors > 0) {
       console.log(`${red}Errors:${reset}               ${stats.errors}`);
     }
@@ -307,10 +375,10 @@ Prerequisites:
     const matchRate = (stats.matched / stats.total * 100).toFixed(1);
     console.log(`\n${cyan}Match rate:${reset} ${matchRate}% of KML records matched to existing places`);
 
-    if (stats.uncertain > 0) {
-      console.log(`\n${yellow}NOTE:${reset} ${stats.uncertain} records were within 50-150m of a place.`);
-      console.log(`These may be valid matches but coordinates weren't precise enough.`);
-      console.log(`Run with --verbose to see details for manual review.`);
+    if (stats.pending_inserted > 0) {
+      console.log(`\n${green}NOTE:${reset} ${stats.pending_inserted} records staged in kml_pending_records.`);
+      console.log(`Use /admin/kml-review to manually link these to places.`);
+      console.log(`Qualitative data preserved for AI summarization and Beacon maps.`);
     }
 
     if (options.dryRun) {

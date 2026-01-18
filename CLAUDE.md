@@ -4,13 +4,92 @@ This file contains rules and context for AI-assisted development on the Atlas pr
 
 ## Project Overview
 
-Atlas is a TNR (Trap-Neuter-Return) management system for Forgotten Felines of Sonoma County (FFSC). It tracks:
-- **People** (requesters, trappers, volunteers)
-- **Cats** (with microchips, clinic visits)
-- **Requests** (trapping requests, TNR operations)
-- **Places** (addresses where cats are)
+Atlas is a TNR (Trap-Neuter-Return) management system for Forgotten Felines of Sonoma County (FFSC).
 
-**Mission:** Atlas is the data collection layer for **Beacon** - FFSC's predictive analytics system for strategic cat population management. See `docs/ATLAS_MISSION_CONTRACT.md` for full alignment with Beacon's requirements.
+## CORE MISSION: Every Entity is Real and Distinct
+
+**Atlas is the single source of truth for every real entity FFSC has ever interacted with:**
+
+| Entity | Description | Rule |
+|--------|-------------|------|
+| **Person** | Every human who has requested help, brought cats to clinic, volunteered | Distinct records. Identity via email/phone only, NEVER name alone. |
+| **Place** | Every address where cats have been reported, trapped, or owners live | Each physical location is distinct. Units are separate places. |
+| **Cat** | Every cat seen at clinic (microchip) or documented in field | Distinct records. Microchip is gold standard. |
+
+### The Fundamental Promise
+
+> **When you search an address, you see ONLY data at that address.**
+
+- Cats linked to "101 Fisher Lane" are cats actually AT 101 Fisher Lane
+- Multi-unit complexes: units are children with their own data
+- Data from other addresses does NOT pollute the view
+
+### Two Complementary Layers
+
+**Layer 1: Clean Data Organization**
+- Centralized `find_or_create_*` functions for deduplication
+- Identity resolution via email/phone
+- Audit trail for all changes
+- Places remain individualized
+
+**Layer 2: Ecological Predictions (Computed)**
+- Uses Layer 1 data + qualitative sources (Google Maps, Project 75, surveys)
+- Calculations in VIEWS, not stored on places
+- Colony estimates in separate `place_colony_estimates` table
+- Beacon visualizes predictions on a map
+
+See `docs/ATLAS_MISSION_CONTRACT.md` for full alignment with Beacon's requirements.
+
+## TWO TRACKS: Workflow Data vs Beacon/Ecological Data
+
+Atlas manages two distinct data tracks with different enrichment rules:
+
+### Track 1: Workflow Data (Be Careful)
+
+**What:** Source-of-truth tables that drive operational workflows
+- `sot_people` - Identity data (names, contact info)
+- `sot_requests` - Request lifecycle and status
+- `sot_cats` - Cat records linked to clinic visits
+- `web_intake_submissions` - Raw form submissions
+- `request_trapper_assignments` - Staff assignments
+
+**Enrichment Rules:**
+- ⚠️ Do NOT infer or cluster data into SOT tables
+- AI can ASSIST display (summarize for UI) but not MODIFY records
+- Changes require audit trail in `entity_edits`
+- Identity resolution ONLY via email/phone, never names
+- Keep source attribution intact (`source_system`, `source_record_id`)
+
+**Why:** These tables drive real business processes. Wrong merges = confused staff.
+
+### Track 2: Beacon/Ecological Data (More Freedom)
+
+**What:** Population modeling and ecological estimates
+- `place_colony_estimates` - Colony size estimates (multi-source)
+- `cat_birth_events` - Litter records for reproduction modeling
+- `cat_mortality_events` - Death records for survival rates
+- `google_map_entries` - Historical context (qualitative)
+- `site_observations` - Mark-resight data for Chapman estimator
+
+**Enrichment Rules:**
+- ✅ AI can freely infer colony sizes from informal notes
+- ✅ Can cluster nearby places for site-level estimates
+- ✅ Can estimate birth dates from lactating appointments
+- All AI-parsed data clearly labeled (`source_type = 'ai_parsed'`)
+- Stored in separate enrichment tables, not core SOT tables
+- Beacon visualizations clearly show confidence levels
+
+**Why:** This is statistical inference for population modeling. Being approximately right helps more than being precisely incomplete.
+
+### Summary: The Two Mindsets
+
+| Aspect | Workflow (Track 1) | Beacon (Track 2) |
+|--------|-------------------|------------------|
+| Goal | Accurate records | Population estimates |
+| AI Role | Display assist only | Active inference |
+| Merging | Forbidden without proof | Encouraged for sites |
+| Uncertainty | Preserve it | Model it |
+| Source | Must be explicit | Can be "ai_parsed" |
 
 ## Beacon / Ground Truth Principle
 
@@ -47,6 +126,85 @@ Where:
 - `person_identifiers` - Email/phone for identity matching
 - `person_roles` - Role assignments (trapper, volunteer, etc.)
 - `request_trapper_assignments` - Many-to-many request-trapper links
+- `processing_jobs` - Centralized job queue for data processing
+
+### Centralized Processing Pipeline (MIG_312, MIG_313)
+
+All ingested data flows through a unified job queue:
+
+1. **Staging**: CLI/UI/API stages data in `staged_records`
+2. **Enqueueing**: `trapper.enqueue_processing()` creates job in queue
+3. **Processing**: `trapper.process_next_job()` orchestrates (cron every 10 min)
+4. **Entity Linking**: `trapper.run_all_entity_linking()` runs after each batch
+
+**Key Functions:**
+- `enqueue_processing(source, table, trigger, batch_id, priority)` - Queue a job
+- `process_next_job(batch_size)` - Process next job (claims via `FOR UPDATE SKIP LOCKED`)
+- `process_clinichq_owner_info(job_id, batch_size)` - Backfills owner_email, links person_id
+- `link_appointments_via_safe_phone()` - Links via phone when uniquely identifying
+
+**Endpoints:**
+- `POST /api/ingest/process` - Unified processor (cron)
+- `GET /api/health/processing` - Monitoring dashboard
+
+**Manual Backfill:**
+```sql
+-- Queue backfill jobs
+SELECT trapper.enqueue_processing('clinichq', 'owner_info', 'backfill', NULL, 10);
+
+-- Process (run repeatedly until no_jobs)
+SELECT * FROM trapper.process_next_job(500);
+
+-- Check status
+SELECT * FROM trapper.v_processing_dashboard;
+```
+
+### Data Engine (MIG_314-317)
+
+The **Data Engine** is Atlas's unified system for identity resolution and entity matching. It provides:
+
+1. **Multi-signal weighted scoring** - Combines email, phone, name, and address signals
+2. **Household modeling** - Recognizes multiple people at the same address sharing identifiers
+3. **Configurable matching rules** - Thresholds stored in database, not code
+4. **Review queue** - Uncertain matches go to humans for resolution
+5. **Full audit trail** - Every matching decision logged with reasoning
+
+**Key Tables:**
+- `data_engine_matching_rules` - Configurable matching rules with weights/thresholds
+- `data_engine_match_decisions` - Full audit trail of all identity decisions
+- `households` - Household groupings at addresses
+- `household_members` - People belonging to households
+- `data_engine_soft_blacklist` - Shared identifiers requiring extra verification
+
+**Key Functions:**
+- `data_engine_resolve_identity(email, phone, first, last, addr, source)` - Main entry point
+- `data_engine_score_candidates(email, phone, name, addr)` - Multi-signal scoring
+- `data_engine_create_household(place_id, person_ids)` - Household management
+- `find_or_create_person()` - Now delegates to Data Engine internally
+
+**Decision Types:**
+| Type | Score Range | Action |
+|------|-------------|--------|
+| `auto_match` | ≥ 0.95 | Automatically link to existing person |
+| `review_pending` | 0.50 - 0.94 | Create new, flag for human review |
+| `household_member` | 0.50+ with low name match | Create new, add to household |
+| `new_entity` | < 0.50 | Create new person |
+| `rejected` | N/A | Internal account or no identifiers |
+
+**API Endpoints:**
+- `GET /api/health/data-engine` - Health check and statistics
+- `GET /api/admin/data-engine/rules` - View matching rules
+- `PATCH /api/admin/data-engine/rules` - Update rule thresholds
+- `GET /api/admin/data-engine/review` - View pending reviews
+- `POST /api/admin/data-engine/review/[id]` - Resolve a review
+- `GET /api/admin/data-engine/households` - View households
+- `GET /api/admin/data-engine/stats` - Comprehensive statistics
+
+**Views:**
+- `v_data_engine_health` - Quick health metrics
+- `v_data_engine_stats` - Decision statistics
+- `v_data_engine_review_queue` - Pending reviews
+- `v_households_summary` - Household overview
 
 ## Critical Rules
 
@@ -157,9 +315,31 @@ When setting `status = 'completed'` or `'cancelled'`, also set `resolved_at = NO
 ```
 /apps/web/          - Next.js web application
 /scripts/ingest/    - Data sync scripts
+/scripts/jobs/      - Enrichment and parsing jobs (AI-powered)
 /sql/schema/sot/    - Database migrations
 /docs/              - Documentation
 ```
+
+## AI Enrichment Scripts (`scripts/jobs/`)
+
+These scripts use Claude AI to extract quantitative data from informal notes:
+
+| Script | Purpose | Output Table |
+|--------|---------|--------------|
+| `populate_birth_events_from_appointments.mjs` | Create birth events from lactating/pregnant appointments | `cat_birth_events` |
+| `populate_mortality_from_clinic.mjs` | Create mortality events from clinic euthanasia notes | `cat_mortality_events` |
+| `parse_quantitative_data.mjs` | AI extracts cat counts, colony sizes from notes | `place_colony_estimates` |
+| `paraphrase_google_map_entries.mjs` | Light cleanup of Google Maps notes with TNR context | `google_map_entries.ai_summary` |
+
+**Usage:**
+```bash
+# Run with environment variables
+export $(grep -v '^#' .env | xargs)
+node scripts/jobs/parse_quantitative_data.mjs --source google_maps --limit 100
+node scripts/jobs/populate_birth_events_from_appointments.mjs --dry-run
+```
+
+**Cron Endpoint:** `/api/cron/beacon-enrich` runs daily at 10 AM PT
 
 ## Environment Variables
 
@@ -177,6 +357,10 @@ Required in `.env`:
 | `v_trapper_appointment_stats` | Trapper stats from direct appointment links |
 | `v_place_alteration_history` | Per-place TNR progress over time |
 | `v_request_current_trappers` | Current trapper assignments |
+| `v_processing_dashboard` | Job queue status by source system/table |
+| `v_data_engine_health` | Data Engine health metrics |
+| `v_data_engine_review_queue` | Pending identity reviews |
+| `v_households_summary` | Household statistics by place |
 
 ## Key Tables
 

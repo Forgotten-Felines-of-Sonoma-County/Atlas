@@ -139,6 +139,13 @@ export default function AdminPage() {
                   icon="👤"
                   accent="#fdf4ff"
                 />
+                <AdminCard
+                  href="/admin/organizations"
+                  title="Organizations"
+                  description="Departments and programs"
+                  icon="🏢"
+                  accent="#f0f9ff"
+                />
               </div>
             </section>
 

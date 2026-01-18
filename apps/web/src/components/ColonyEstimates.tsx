@@ -70,6 +70,8 @@ const sourceColors: Record<string, string> = {
   intake_form: "#20c997", // Teal
   appointment_request: "#6c757d", // Gray
   verified_cats: "#dc3545", // Red
+  ai_parsed: "#17a2b8", // Cyan for AI-parsed data
+  legacy_mymaps: "#e6a700", // Amber for Google Maps legacy
 };
 
 export function ColonyEstimates({ placeId }: ColonyEstimatesProps) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { queryOne, queryRows } from "@/lib/db";
+import { query, queryOne, queryRows } from "@/lib/db";
 import { logFieldEdits } from "@/lib/audit";
 
 interface CurrentTrapper {
@@ -372,6 +372,10 @@ interface UpdateRequestBody {
   kitten_foster_readiness?: string | null;
   kitten_urgency_factors?: string[] | null;
   kitten_assessment_notes?: string | null;
+  // Observation data (for completing requests)
+  observation_cats_seen?: number | null;
+  observation_eartips_seen?: number | null;
+  observation_notes?: string | null;
 }
 
 export async function PATCH(
@@ -745,6 +749,55 @@ export async function PATCH(
       );
     }
 
+    // If request was completed/partial with observation data, create colony estimate
+    let observationCreated = false;
+    if (
+      (body.status === "completed" || body.status === "partial") &&
+      body.observation_cats_seen !== undefined &&
+      body.observation_cats_seen !== null &&
+      body.observation_cats_seen > 0
+    ) {
+      // Get the place_id for this request
+      const placeResult = await queryOne<{ place_id: string | null }>(
+        `SELECT place_id FROM trapper.sot_requests WHERE request_id = $1`,
+        [id]
+      );
+
+      if (placeResult?.place_id) {
+        // Create the observation in place_colony_estimates
+        await query(
+          `INSERT INTO trapper.place_colony_estimates (
+            place_id,
+            total_cats_observed,
+            eartip_count_observed,
+            observation_date,
+            notes,
+            source_type,
+            source_system,
+            source_record_id,
+            is_firsthand,
+            created_by
+          ) VALUES (
+            $1, $2, $3, CURRENT_DATE, $4,
+            'trapper_site_visit',
+            'atlas_ui',
+            $5,
+            TRUE,
+            'request_completion'
+          )
+          ON CONFLICT DO NOTHING`,
+          [
+            placeResult.place_id,
+            body.observation_cats_seen,
+            body.observation_eartips_seen || 0,
+            body.observation_notes || `Observation logged during request completion`,
+            id,
+          ]
+        );
+        observationCreated = true;
+      }
+    }
+
     // Revalidate cached pages that show request data
     revalidatePath("/"); // Dashboard
     revalidatePath("/requests"); // Requests list
@@ -753,6 +806,7 @@ export async function PATCH(
     return NextResponse.json({
       success: true,
       request: result,
+      observation_created: observationCreated,
     });
   } catch (error) {
     console.error("Error updating request:", error);

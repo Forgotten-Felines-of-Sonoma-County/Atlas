@@ -11,6 +11,7 @@ import { EntityLink } from "@/components/EntityLink";
 import { VerificationBadge, LastVerified } from "@/components/VerificationBadge";
 import { formatDateLocal } from "@/lib/formatters";
 import ReportDeceasedModal from "@/components/ReportDeceasedModal";
+import RecordBirthModal from "@/components/RecordBirthModal";
 
 interface Owner {
   person_id: string;
@@ -418,6 +419,7 @@ export default function CatDetailPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [showTransferWizard, setShowTransferWizard] = useState(false);
   const [showDeceasedModal, setShowDeceasedModal] = useState(false);
+  const [showBirthModal, setShowBirthModal] = useState(false);
 
   const fetchCat = useCallback(async () => {
     try {
@@ -647,6 +649,18 @@ export default function CatDetailPage() {
                     style={{ padding: "0.25rem 0.75rem", fontSize: "0.875rem" }}
                   >
                     Edit
+                  </button>
+                  <button
+                    onClick={() => setShowBirthModal(true)}
+                    style={{
+                      padding: "0.25rem 0.75rem",
+                      fontSize: "0.875rem",
+                      background: "transparent",
+                      color: "#198754",
+                      border: "1px solid #198754",
+                    }}
+                  >
+                    {cat.birth_event ? "Edit Birth Info" : "Record Birth Info"}
                   </button>
                   {!cat.is_deceased && (
                     <button
@@ -1789,6 +1803,19 @@ export default function CatDetailPage() {
         linkedPlaces={cat.places?.map(p => ({ place_id: p.place_id, label: p.label })) || []}
         onSuccess={() => {
           fetchCat(); // Refresh to show deceased status
+        }}
+      />
+
+      {/* Record Birth Modal */}
+      <RecordBirthModal
+        isOpen={showBirthModal}
+        onClose={() => setShowBirthModal(false)}
+        catId={id}
+        catName={cat.display_name}
+        linkedPlaces={cat.places?.map(p => ({ place_id: p.place_id, label: p.label })) || []}
+        existingBirthEvent={cat.birth_event}
+        onSuccess={() => {
+          fetchCat(); // Refresh to show birth info
         }}
       />
     </div>

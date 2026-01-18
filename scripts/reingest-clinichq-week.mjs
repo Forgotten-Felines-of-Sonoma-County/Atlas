@@ -382,6 +382,48 @@ async function runPostProcessing(sourceTable) {
       WHERE c.altered_status IS DISTINCT FROM 'neutered'
         AND EXISTS (SELECT 1 FROM trapper.cat_procedures cp WHERE cp.cat_id = c.cat_id AND cp.is_neuter = TRUE)`);
 
+    // Link cats from internal accounts to organizations (MIG_304 fix)
+    const internalAccountCatLinks = await query(`
+      WITH internal_account_cats AS (
+        SELECT DISTINCT
+          ci.cat_id,
+          TRIM(CONCAT_WS(' ',
+            NULLIF(TRIM(sr.payload->>'Owner First Name'), ''),
+            NULLIF(TRIM(sr.payload->>'Owner Last Name'), '')
+          )) as account_name
+        FROM trapper.staged_records sr
+        JOIN trapper.cat_identifiers ci ON ci.id_value = sr.payload->>'Microchip Number'
+          AND ci.id_type = 'microchip'
+        WHERE sr.source_system = 'clinichq'
+          AND sr.source_table = 'owner_info'
+          AND sr.payload->>'Microchip Number' IS NOT NULL
+          AND sr.payload->>'Microchip Number' != ''
+      ),
+      cats_with_org AS (
+        SELECT
+          iac.cat_id,
+          iac.account_name,
+          trapper.get_internal_account_department(iac.account_name) as org_code
+        FROM internal_account_cats iac
+        WHERE trapper.is_internal_account(iac.account_name)
+      )
+      INSERT INTO trapper.cat_organization_relationships (
+        cat_id, org_id, relationship_type, original_account_name,
+        source_system, source_table
+      )
+      SELECT
+        cwo.cat_id,
+        o.org_id,
+        'program_cat',
+        cwo.account_name,
+        'clinichq',
+        'reingest_script'
+      FROM cats_with_org cwo
+      JOIN trapper.organizations o ON o.org_code = cwo.org_code
+      ON CONFLICT (cat_id, org_id, relationship_type) DO NOTHING
+    `);
+    results.internal_account_cat_org_links = internalAccountCatLinks.rowCount || 0;
+
     // Link cats to places
     const linkedViaAppts = await query(`
       INSERT INTO trapper.cat_place_relationships (cat_id, place_id, relationship_type, confidence, source_system, source_table)

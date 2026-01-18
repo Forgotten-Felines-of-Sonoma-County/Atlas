@@ -9,16 +9,12 @@
       "schedule": "0 7 * * *"
     },
     {
-      "path": "/api/cron/entity-linking",
-      "schedule": "30 7 * * *"
+      "path": "/api/ingest/process",
+      "schedule": "*/10 * * * *"
     },
     {
       "path": "/api/cron/send-emails",
       "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/process-uploads",
-      "schedule": "*/10 * * * *"
     },
     {
       "path": "/api/cron/parse-notes",

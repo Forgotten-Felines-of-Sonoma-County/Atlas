@@ -51,15 +51,29 @@ Based on the comprehensive audit completed 2026-01-17 (5 parallel audits: API, U
 - Josh Stump (appears twice)
 - 14,533 more...
 
-### Immediate (This Week)
+### ✅ COMPLETED (2026-01-17 - AI Enrichment Session)
+
+3. **✅ Wire Birth/Mortality Events to Data Flows**
+   - Birth events: 1,731 created from lactating/pregnant appointments
+   - Mortality events: 37 created from clinic euthanasia notes
+   - AI quantitative parser: 1,238+ colony estimates from Google Maps + requests
+   - Created cron endpoint: `/api/cron/beacon-enrich`
+   - Created stats API: `/api/admin/beacon/enrichment`
+   - Scripts created:
+     - `scripts/jobs/populate_birth_events_from_appointments.mjs`
+     - `scripts/jobs/populate_mortality_from_clinic.mjs`
+     - `scripts/jobs/parse_quantitative_data.mjs`
+     - `scripts/jobs/paraphrase_google_map_entries.mjs` (updated with TNR context)
+   - Impact: Beacon now has birth/mortality data for population modeling
+
+4. **✅ AI-Powered Text Enrichment**
+   - Paraphrased 2,479 Google Maps entries with light-touch cleanup
+   - AI parser extracts cat counts, colony sizes from informal notes
+   - Updated `/api/admin/beacon/reproduction/stats` with by_source breakdown
+   - Updated `/api/admin/beacon/mortality/stats` with by_source breakdown
+   - Blocked identifiers configured (10 FFSC/invalid identifiers)
 
 ### Short-Term (This Sprint)
-
-3. **🔗 Wire Birth/Mortality Events to Data Flows**
-   - Birth events: Create from kitten intake, parse pregnant/nursing notes
-   - Mortality events: Parse death mentions from notes, enable manual reporting
-   - Tables exist but have ZERO automatic data capture
-   - Impact: Enables Beacon population growth/survival modeling
 
 4. **📊 Create Airtable Sync Cron Endpoints**
    - `/api/cron/airtable-trappers-sync` - Keep trapper data current

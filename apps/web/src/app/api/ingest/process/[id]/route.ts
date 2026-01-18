@@ -712,41 +712,15 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
     `);
     results.marked_altered_by_clinic = alteredByClinic.rowCount || 0;
 
-    // Auto-link cats to places via appointments
-    const linkedViaAppts = await query(`
-      INSERT INTO trapper.cat_place_relationships (
-        cat_id, place_id, relationship_type, confidence, source_system, source_table
-      )
-      SELECT DISTINCT
-        a.cat_id, ppr.place_id, 'appointment_site', 'high', 'auto_link', 'ingest_ui'
-      FROM trapper.sot_appointments a
-      JOIN trapper.person_place_relationships ppr ON ppr.person_id = a.person_id
-      WHERE a.cat_id IS NOT NULL AND ppr.place_id IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM trapper.cat_place_relationships cpr
-          WHERE cpr.cat_id = a.cat_id AND cpr.place_id = ppr.place_id
-        )
-      ON CONFLICT DO NOTHING
-    `);
-    results.linked_cats_via_appointments = linkedViaAppts.rowCount || 0;
-
-    // Auto-link cats to places via person relationships (catches cats without appointments)
-    const linkedViaPerson = await query(`
-      INSERT INTO trapper.cat_place_relationships (
-        cat_id, place_id, relationship_type, confidence, source_system, source_table
-      )
-      SELECT DISTINCT
-        pcr.cat_id, ppr.place_id, 'owner_relationship', 'medium', 'auto_link', 'ingest_ui'
-      FROM trapper.person_cat_relationships pcr
-      JOIN trapper.person_place_relationships ppr ON ppr.person_id = pcr.person_id
-      WHERE pcr.cat_id IS NOT NULL AND ppr.place_id IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM trapper.cat_place_relationships cpr
-          WHERE cpr.cat_id = pcr.cat_id AND cpr.place_id = ppr.place_id
-        )
-      ON CONFLICT DO NOTHING
-    `);
-    results.linked_cats_via_person = linkedViaPerson.rowCount || 0;
+    // NOTE: Cat-place auto-linking removed from ingest process (MIG_305 fix).
+    // The previous queries linked ALL cats to ALL of a person's places, which
+    // caused data corruption when a person had multiple place relationships.
+    //
+    // Use the cron endpoint /api/cron/entity-linking instead, which calls
+    // run_cat_place_linking() - a safer function that links cats based on
+    // specific appointment ownership evidence, not just person relationships.
+    //
+    // See: docs/AUDIT_PLACE_CONSOLIDATION_ISSUE.md
 
     // Update altered_status
     await query(`

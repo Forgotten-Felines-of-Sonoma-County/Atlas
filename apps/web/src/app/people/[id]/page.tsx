@@ -11,6 +11,7 @@ import { TrapperStatsCard } from "@/components/TrapperStatsCard";
 import { SubmissionsSection } from "@/components/SubmissionsSection";
 import { EntityLink } from "@/components/EntityLink";
 import { VerificationBadge, LastVerified } from "@/components/VerificationBadge";
+import { PersonPlaceGoogleContext } from "@/components/GoogleMapContextCard";
 import { formatDateLocal } from "@/lib/formatters";
 
 interface Cat {
@@ -777,6 +778,9 @@ export default function PersonDetailPage() {
           <p className="text-muted">No places linked to this person.</p>
         )}
       </Section>
+
+      {/* Location Context from Google Maps */}
+      <PersonPlaceGoogleContext personId={id} className="mt-4" />
 
       {/* Related People */}
       {person.person_relationships && person.person_relationships.length > 0 && (
