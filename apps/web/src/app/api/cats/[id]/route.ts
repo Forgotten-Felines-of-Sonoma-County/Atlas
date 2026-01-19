@@ -383,7 +383,7 @@ export async function GET(
     `;
 
     // Helper function for graceful query execution (returns empty array on error)
-    async function safeQueryRows<T>(sql: string, params: unknown[]): Promise<T[]> {
+    async function safeQueryRows<T extends Record<string, unknown>>(sql: string, params: unknown[]): Promise<T[]> {
       try {
         return await queryRows<T>(sql, params);
       } catch (err) {
