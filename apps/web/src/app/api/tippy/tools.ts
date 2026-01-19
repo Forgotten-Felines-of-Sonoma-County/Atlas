@@ -90,6 +90,21 @@ export const TIPPY_TOOLS = [
     },
   },
   {
+    name: "query_cats_altered_in_area",
+    description:
+      "Get count of cats that have been spayed/neutered in a specific city or area. Use when user asks 'how many cats have we altered/fixed/spayed/neutered in [city]?' or similar area-based alteration questions.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        area: {
+          type: "string",
+          description: "City or area name to search for (e.g., 'Novato', 'Santa Rosa', 'Petaluma')",
+        },
+      },
+      required: ["area"],
+    },
+  },
+  {
     name: "query_person_history",
     description:
       "Get summary of a person's history with FFSC - their requests, cats helped, role.",
@@ -185,6 +200,9 @@ export async function executeToolCall(
           toolInput.time_period as string | undefined
         );
 
+      case "query_cats_altered_in_area":
+        return await queryCatsAlteredInArea(toolInput.area as string);
+
       case "query_person_history":
         return await queryPersonHistory(toolInput.name_search as string);
 
@@ -225,17 +243,15 @@ async function queryCatsAtPlace(addressSearch: string): Promise<ToolResult> {
       p.place_id,
       p.display_name as place_name,
       p.formatted_address as address,
-      p.city,
       COUNT(DISTINCT c.cat_id) as total_cats,
-      COUNT(DISTINCT c.cat_id) FILTER (WHERE c.altered_status IN ('spayed', 'neutered')) as altered_cats,
-      COUNT(DISTINCT c.cat_id) FILTER (WHERE c.altered_status = 'intact' OR c.altered_status IS NULL) as unaltered_cats,
-      COUNT(DISTINCT c.cat_id) FILTER (WHERE c.has_eartip = true) as eartipped_cats
+      COUNT(DISTINCT c.cat_id) FILTER (WHERE c.altered_status IN ('spayed', 'neutered', 'Yes')) as altered_cats,
+      COUNT(DISTINCT c.cat_id) FILTER (WHERE c.altered_status = 'intact' OR c.altered_status = 'No') as unaltered_cats
     FROM trapper.places p
     LEFT JOIN trapper.cat_place_relationships cpr ON cpr.place_id = p.place_id
     LEFT JOIN trapper.sot_cats c ON c.cat_id = cpr.cat_id
     WHERE (p.display_name ILIKE $1 OR p.formatted_address ILIKE $1)
       AND p.merged_into_place_id IS NULL
-    GROUP BY p.place_id, p.display_name, p.formatted_address, p.city
+    GROUP BY p.place_id, p.display_name, p.formatted_address
     ORDER BY COUNT(DISTINCT c.cat_id) DESC
     LIMIT 5
     `,
@@ -268,23 +284,34 @@ async function queryCatsAtPlace(addressSearch: string): Promise<ToolResult> {
  * Query colony status for a place
  */
 async function queryPlaceColonyStatus(addressSearch: string): Promise<ToolResult> {
-  const result = await queryOne(
+  const result = await queryOne<{
+    place_id: string;
+    display_name: string | null;
+    formatted_address: string | null;
+    colony_estimate: number;
+    verified_altered: number;
+    verified_cats: number;
+    completed_requests: number;
+    active_requests: number;
+    alteration_rate_pct: number | null;
+    estimated_work_remaining: number;
+  }>(
     `
     WITH place_match AS (
-      SELECT place_id, label, address, city
+      SELECT place_id, display_name, formatted_address
       FROM trapper.places
-      WHERE (label ILIKE $1 OR address ILIKE $1)
+      WHERE (display_name ILIKE $1 OR formatted_address ILIKE $1)
         AND merged_into_place_id IS NULL
       ORDER BY
-        CASE WHEN label ILIKE $1 THEN 0 ELSE 1 END,
-        label
+        CASE WHEN display_name ILIKE $1 THEN 0 ELSE 1 END,
+        display_name
       LIMIT 1
     ),
     ecology AS (
       SELECT
         pm.place_id,
-        pm.label,
-        pm.address,
+        pm.display_name,
+        pm.formatted_address,
         COALESCE(
           (SELECT total_cats FROM trapper.place_colony_estimates pce
            WHERE pce.place_id = pm.place_id
@@ -294,7 +321,7 @@ async function queryPlaceColonyStatus(addressSearch: string): Promise<ToolResult
         (SELECT COUNT(*) FROM trapper.cat_place_relationships cpr
          JOIN trapper.sot_cats c ON c.cat_id = cpr.cat_id
          WHERE cpr.place_id = pm.place_id
-         AND c.altered_status IN ('spayed', 'neutered')) as verified_altered,
+         AND c.altered_status IN ('spayed', 'neutered', 'Yes')) as verified_altered,
         (SELECT COUNT(*) FROM trapper.cat_place_relationships cpr WHERE cpr.place_id = pm.place_id) as verified_cats,
         (SELECT COUNT(*) FROM trapper.sot_requests r WHERE r.place_id = pm.place_id AND r.status = 'completed') as completed_requests,
         (SELECT COUNT(*) FROM trapper.sot_requests r WHERE r.place_id = pm.place_id AND r.status NOT IN ('completed', 'cancelled')) as active_requests
@@ -302,8 +329,8 @@ async function queryPlaceColonyStatus(addressSearch: string): Promise<ToolResult
     )
     SELECT
       place_id,
-      label,
-      address,
+      display_name,
+      formatted_address,
       colony_estimate,
       verified_altered,
       verified_cats,
@@ -334,7 +361,7 @@ async function queryPlaceColonyStatus(addressSearch: string): Promise<ToolResult
     data: {
       found: true,
       place: result,
-      summary: `${result.label || result.address}: ~${result.colony_estimate} cats, ${result.verified_altered} altered (${result.alteration_rate_pct || 0}%), ${result.estimated_work_remaining} remaining`,
+      summary: `${result.display_name || result.formatted_address}: ~${result.colony_estimate} cats, ${result.verified_altered} altered (${result.alteration_rate_pct || 0}%), ${result.estimated_work_remaining} remaining`,
     },
   };
 }
@@ -352,11 +379,12 @@ async function queryRequestStats(
     case "recent":
       result = await queryRows(
         `
-        SELECT status, COUNT(*) as count
-        FROM trapper.sot_requests
-        WHERE created_at > NOW() - INTERVAL '30 days'
-        ${area ? "AND city ILIKE $1" : ""}
-        GROUP BY status
+        SELECT r.status, COUNT(*) as count
+        FROM trapper.sot_requests r
+        ${area ? "LEFT JOIN trapper.places p ON r.place_id = p.place_id" : ""}
+        WHERE r.created_at > NOW() - INTERVAL '30 days'
+        ${area ? "AND p.formatted_address ILIKE $1" : ""}
+        GROUP BY r.status
         ORDER BY count DESC
         `,
         area ? [`%${area}%`] : []
@@ -373,10 +401,10 @@ async function queryRequestStats(
     case "by_status":
       result = await queryRows(
         `
-        SELECT status, COUNT(*) as count
-        FROM trapper.sot_requests
-        ${area ? "WHERE city ILIKE $1" : ""}
-        GROUP BY status
+        SELECT r.status, COUNT(*) as count
+        FROM trapper.sot_requests r
+        ${area ? "LEFT JOIN trapper.places p ON r.place_id = p.place_id WHERE p.formatted_address ILIKE $1" : ""}
+        GROUP BY r.status
         ORDER BY count DESC
         `,
         area ? [`%${area}%`] : []
@@ -392,10 +420,28 @@ async function queryRequestStats(
     case "by_area":
       result = await queryRows(
         `
-        SELECT COALESCE(city, 'Unknown') as area, COUNT(*) as count
-        FROM trapper.sot_requests
-        WHERE status NOT IN ('cancelled')
-        GROUP BY city
+        SELECT
+          COALESCE(
+            CASE
+              WHEN p.formatted_address ILIKE '%santa rosa%' THEN 'Santa Rosa'
+              WHEN p.formatted_address ILIKE '%petaluma%' THEN 'Petaluma'
+              WHEN p.formatted_address ILIKE '%rohnert park%' THEN 'Rohnert Park'
+              WHEN p.formatted_address ILIKE '%sebastopol%' THEN 'Sebastopol'
+              WHEN p.formatted_address ILIKE '%healdsburg%' THEN 'Healdsburg'
+              WHEN p.formatted_address ILIKE '%windsor%' THEN 'Windsor'
+              WHEN p.formatted_address ILIKE '%sonoma%' THEN 'Sonoma'
+              WHEN p.formatted_address ILIKE '%cotati%' THEN 'Cotati'
+              WHEN p.formatted_address ILIKE '%cloverdale%' THEN 'Cloverdale'
+              WHEN p.formatted_address ILIKE '%novato%' THEN 'Novato'
+              ELSE 'Other'
+            END,
+            'Unknown'
+          ) as area,
+          COUNT(*) as count
+        FROM trapper.sot_requests r
+        LEFT JOIN trapper.places p ON r.place_id = p.place_id
+        WHERE r.status NOT IN ('cancelled')
+        GROUP BY area
         ORDER BY count DESC
         LIMIT 10
         `
@@ -409,14 +455,15 @@ async function queryRequestStats(
       result = await queryOne(
         `
         SELECT
-          COUNT(*) FILTER (WHERE status = 'new') as new_requests,
-          COUNT(*) FILTER (WHERE status = 'triaged') as triaged,
-          COUNT(*) FILTER (WHERE status = 'scheduled') as scheduled,
-          COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
+          COUNT(*) FILTER (WHERE r.status = 'new') as new_requests,
+          COUNT(*) FILTER (WHERE r.status = 'triaged') as triaged,
+          COUNT(*) FILTER (WHERE r.status = 'scheduled') as scheduled,
+          COUNT(*) FILTER (WHERE r.status = 'in_progress') as in_progress,
           COUNT(*) as total_pending
-        FROM trapper.sot_requests
-        WHERE status NOT IN ('completed', 'cancelled')
-        ${area ? "AND city ILIKE $1" : ""}
+        FROM trapper.sot_requests r
+        ${area ? "LEFT JOIN trapper.places p ON r.place_id = p.place_id" : ""}
+        WHERE r.status NOT IN ('completed', 'cancelled')
+        ${area ? "AND p.formatted_address ILIKE $1" : ""}
         `,
         area ? [`%${area}%`] : []
       );
@@ -447,7 +494,7 @@ async function queryFfrImpact(
     dateFilter = "AND a.appointment_date > NOW() - INTERVAL '30 days'";
   }
 
-  const areaFilter = area ? "AND p.city ILIKE $1" : "";
+  const areaFilter = area ? "AND p.formatted_address ILIKE $1" : "";
   const params = area ? [`%${area}%`] : [];
 
   const result = await queryOne(
@@ -455,15 +502,14 @@ async function queryFfrImpact(
     WITH impact AS (
       SELECT
         COUNT(DISTINCT c.cat_id) as total_cats_helped,
-        COUNT(DISTINCT c.cat_id) FILTER (WHERE c.altered_status IN ('spayed', 'neutered')) as cats_altered,
+        COUNT(DISTINCT c.cat_id) FILTER (WHERE c.altered_status IN ('spayed', 'neutered', 'Yes')) as cats_altered,
         COUNT(DISTINCT r.request_id) as total_requests,
         COUNT(DISTINCT r.request_id) FILTER (WHERE r.status = 'completed') as completed_requests,
         COUNT(DISTINCT p.place_id) as places_served
       FROM trapper.sot_appointments a
-      LEFT JOIN trapper.appointment_cat_links acl ON acl.appointment_id = a.appointment_id
-      LEFT JOIN trapper.sot_cats c ON c.cat_id = acl.cat_id
-      LEFT JOIN trapper.sot_requests r ON r.request_id = a.request_id
-      LEFT JOIN trapper.places p ON p.place_id = r.place_id
+      LEFT JOIN trapper.sot_cats c ON c.cat_id = a.cat_id
+      LEFT JOIN trapper.places p ON p.place_id = a.place_id
+      LEFT JOIN trapper.sot_requests r ON r.place_id = p.place_id
       WHERE 1=1 ${dateFilter} ${areaFilter}
     )
     SELECT
@@ -488,6 +534,85 @@ async function queryFfrImpact(
       period: timePeriod || "all_time",
       impact: result,
       summary: `${result?.cats_altered || 0} cats fixed through our FFR program${area ? ` in ${area}` : ""}`,
+    },
+  };
+}
+
+/**
+ * Query cats altered (spayed/neutered) in a specific area/city
+ */
+async function queryCatsAlteredInArea(area: string): Promise<ToolResult> {
+  // Query cats altered linked to places in this area
+  const result = await queryOne<{
+    total_cats_altered: number;
+    via_cat_records: number;
+    via_appointments: number;
+    by_year: Array<{ year: number; count: number }>;
+  }>(
+    `
+    WITH cat_place_altered AS (
+      -- Cats marked as altered linked to places in the area
+      SELECT DISTINCT c.cat_id
+      FROM trapper.sot_cats c
+      JOIN trapper.cat_place_relationships cpr ON c.cat_id = cpr.cat_id
+      JOIN trapper.places p ON cpr.place_id = p.place_id
+      WHERE p.formatted_address ILIKE $1
+        AND c.altered_status IN ('spayed', 'neutered', 'Yes')
+    ),
+    appointment_altered AS (
+      -- Cats altered via appointments linked to places in the area
+      SELECT DISTINCT a.cat_id
+      FROM trapper.sot_appointments a
+      JOIN trapper.places p ON a.place_id = p.place_id
+      WHERE p.formatted_address ILIKE $1
+        AND (a.is_spay = true OR a.is_neuter = true OR a.service_is_spay = true OR a.service_is_neuter = true)
+        AND a.cat_id IS NOT NULL
+    ),
+    combined AS (
+      SELECT cat_id FROM cat_place_altered
+      UNION
+      SELECT cat_id FROM appointment_altered
+    ),
+    yearly AS (
+      SELECT
+        EXTRACT(YEAR FROM a.appointment_date)::int as year,
+        COUNT(DISTINCT a.cat_id) as count
+      FROM trapper.sot_appointments a
+      JOIN trapper.places p ON a.place_id = p.place_id
+      WHERE p.formatted_address ILIKE $1
+        AND (a.is_spay = true OR a.is_neuter = true OR a.service_is_spay = true OR a.service_is_neuter = true)
+        AND a.cat_id IS NOT NULL
+      GROUP BY EXTRACT(YEAR FROM a.appointment_date)
+      ORDER BY year
+    )
+    SELECT
+      (SELECT COUNT(*) FROM combined) as total_cats_altered,
+      (SELECT COUNT(*) FROM cat_place_altered) as via_cat_records,
+      (SELECT COUNT(*) FROM appointment_altered) as via_appointments,
+      (SELECT json_agg(json_build_object('year', year, 'count', count)) FROM yearly) as by_year
+    `,
+    [`%${area}%`]
+  );
+
+  if (!result || result.total_cats_altered === 0) {
+    return {
+      success: true,
+      data: {
+        found: false,
+        area: area,
+        message: `No cats found altered in ${area}. This may be outside FFSC's primary service area or the data hasn't been linked yet.`,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      found: true,
+      area: area,
+      total_cats_altered: result.total_cats_altered,
+      by_year: result.by_year || [],
+      summary: `${result.total_cats_altered} cats have been altered in ${area}`,
     },
   };
 }
@@ -616,14 +741,14 @@ async function logFieldEvent(
   const sourceType = sourceTypeMap[eventType] || "trapper_site_visit";
 
   // Try to find a matching place
-  const place = await queryOne<{ place_id: string; display_name: string; address: string }>(
+  const place = await queryOne<{ place_id: string; display_name: string | null; formatted_address: string | null }>(
     `
-    SELECT place_id, COALESCE(display_name, label) as display_name, address
+    SELECT place_id, display_name, formatted_address
     FROM trapper.places
-    WHERE (display_name ILIKE $1 OR label ILIKE $1 OR address ILIKE $1)
+    WHERE (display_name ILIKE $1 OR formatted_address ILIKE $1)
       AND merged_into_place_id IS NULL
     ORDER BY
-      CASE WHEN display_name ILIKE $1 OR label ILIKE $1 THEN 0 ELSE 1 END,
+      CASE WHEN display_name ILIKE $1 THEN 0 ELSE 1 END,
       display_name
     LIMIT 1
     `,
@@ -749,11 +874,11 @@ async function logFieldEvent(
     data: {
       logged: true,
       place_id: place.place_id,
-      place_name: place.display_name || place.address,
+      place_name: place.display_name || place.formatted_address,
       event_type: eventType,
       cat_count: catCount,
       eartipped_count: eartippedCount,
-      message: `Logged ${eventType} event at "${place.display_name || place.address}"${catCount ? ` - ${catCount} cats reported${eartippedCount ? ` (${eartippedCount} eartipped)` : ""}` : ""}`,
+      message: `Logged ${eventType} event at "${place.display_name || place.formatted_address}"${catCount ? ` - ${catCount} cats reported${eartippedCount ? ` (${eartippedCount} eartipped)` : ""}` : ""}`,
     },
   };
 }
