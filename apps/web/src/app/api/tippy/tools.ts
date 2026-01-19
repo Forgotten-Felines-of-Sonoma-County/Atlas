@@ -171,6 +171,33 @@ export const TIPPY_TOOLS = [
       required: ["event_type", "location"],
     },
   },
+  {
+    name: "lookup_cat_appointment",
+    description:
+      "Look up a specific cat's clinic appointment history by microchip number, cat name, or owner name. Searches both verified Atlas records AND raw ClinicHQ data. Use when staff ask about a specific cat's visit, microchip lookup, or appointment history. Reports discrepancies between raw and processed data.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        microchip: {
+          type: "string",
+          description: "Microchip number to search for (e.g., '985112012345678')",
+        },
+        cat_name: {
+          type: "string",
+          description: "Cat's name to search for",
+        },
+        owner_name: {
+          type: "string",
+          description: "Owner's name to search for",
+        },
+        owner_phone: {
+          type: "string",
+          description: "Owner's phone number to search for",
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -219,6 +246,14 @@ export async function executeToolCall(
           toolInput.cat_count as number | undefined,
           toolInput.eartipped_count as number | undefined,
           toolInput.notes as string | undefined
+        );
+
+      case "lookup_cat_appointment":
+        return await lookupCatAppointment(
+          toolInput.microchip as string | undefined,
+          toolInput.cat_name as string | undefined,
+          toolInput.owner_name as string | undefined,
+          toolInput.owner_phone as string | undefined
         );
 
       default:
@@ -638,6 +673,69 @@ const REGIONAL_MAPPINGS: Record<string, string[]> = {
   // ============ CENTRAL COUNTY / HIGHWAY 101 CORRIDOR ============
   "central county": ["Santa Rosa", "Rohnert Park", "Cotati", "Windsor"],
   "101 corridor": ["Santa Rosa", "Rohnert Park", "Cotati", "Petaluma", "Windsor", "Healdsburg", "Cloverdale"],
+
+  // ============ SURROUNDING COUNTIES ============
+  // FFSC serves as the regional high-volume spay/neuter clinic for North Bay
+
+  // Marin County (south of Sonoma)
+  "marin": ["Novato", "San Rafael", "Petaluma", "Mill Valley", "Sausalito", "Corte Madera", "Larkspur", "San Anselmo", "Fairfax", "Ross", "Tiburon", "Belvedere", "Kentfield", "Greenbrae", "Terra Linda", "Lucas Valley", "Marinwood", "Ignacio", "Hamilton", "Strawberry", "Tamalpais Valley", "Marin City", "Stinson Beach", "Bolinas", "Point Reyes", "Inverness", "Olema", "Tomales"],
+  "marin county": ["Novato", "San Rafael", "Mill Valley", "Sausalito", "Corte Madera", "Larkspur", "San Anselmo", "Fairfax", "Tiburon", "Kentfield", "Terra Linda", "Marinwood", "Ignacio"],
+  "novato": ["Novato"],
+  "san rafael": ["San Rafael", "Terra Linda", "Lucas Valley"],
+
+  // Napa County (east of Sonoma)
+  "napa": ["Napa", "American Canyon", "Calistoga", "St. Helena", "Yountville", "Angwin", "Deer Park", "Rutherford", "Oakville", "Pope Valley", "Lake Berryessa"],
+  "napa county": ["Napa", "American Canyon", "Calistoga", "St. Helena", "Yountville", "Angwin"],
+  "napa valley": ["Napa", "Yountville", "St. Helena", "Calistoga", "Rutherford", "Oakville"],
+  "calistoga": ["Calistoga"],
+  "st helena": ["St. Helena"],
+  "american canyon": ["American Canyon"],
+
+  // Lake County (north of Sonoma/Napa)
+  "lake": ["Clearlake", "Lakeport", "Kelseyville", "Lower Lake", "Middletown", "Cobb", "Hidden Valley Lake", "Clearlake Oaks", "Nice", "Lucerne", "Upper Lake"],
+  "lake county": ["Clearlake", "Lakeport", "Kelseyville", "Lower Lake", "Middletown", "Cobb", "Hidden Valley Lake"],
+  "clearlake": ["Clearlake", "Clearlake Oaks"],
+  "lakeport": ["Lakeport"],
+  "middletown": ["Middletown", "Hidden Valley Lake"],
+
+  // Mendocino County (north of Sonoma)
+  "mendocino": ["Ukiah", "Fort Bragg", "Willits", "Mendocino", "Point Arena", "Hopland", "Boonville", "Philo", "Navarro", "Albion", "Elk", "Gualala", "Laytonville", "Covelo", "Redwood Valley", "Talmage"],
+  "mendocino county": ["Ukiah", "Fort Bragg", "Willits", "Mendocino", "Point Arena", "Hopland", "Boonville"],
+  "ukiah": ["Ukiah", "Redwood Valley", "Talmage"],
+  "fort bragg": ["Fort Bragg"],
+  "willits": ["Willits"],
+  "anderson valley": ["Boonville", "Philo", "Navarro"],
+
+  // Solano County (southeast)
+  "solano": ["Vallejo", "Fairfield", "Vacaville", "Benicia", "Suisun City", "Dixon", "Rio Vista", "Green Valley"],
+  "solano county": ["Vallejo", "Fairfield", "Vacaville", "Benicia", "Suisun City"],
+  "vallejo": ["Vallejo"],
+  "fairfield": ["Fairfield"],
+  "benicia": ["Benicia"],
+
+  // East Bay / Contra Costa / Alameda (occasionally serve)
+  "east bay": ["Oakland", "Berkeley", "Richmond", "Concord", "Walnut Creek", "Fremont", "Hayward", "San Leandro", "Alameda", "El Cerrito", "Albany", "Emeryville", "Piedmont", "Orinda", "Lafayette", "Moraga", "Pleasant Hill", "Martinez", "Antioch", "Pittsburg", "Brentwood"],
+  "contra costa": ["Richmond", "Concord", "Walnut Creek", "Martinez", "Antioch", "Pittsburg", "Brentwood", "Pleasant Hill", "Lafayette", "Orinda", "Moraga", "El Cerrito", "San Pablo", "Pinole", "Hercules"],
+  "alameda county": ["Oakland", "Berkeley", "Fremont", "Hayward", "San Leandro", "Alameda", "Albany", "Emeryville", "Piedmont", "Newark", "Union City", "Castro Valley", "Livermore", "Pleasanton", "Dublin"],
+  "oakland": ["Oakland"],
+  "berkeley": ["Berkeley"],
+  "richmond": ["Richmond", "El Cerrito", "San Pablo"],
+
+  // San Francisco
+  "san francisco": ["San Francisco"],
+  "sf": ["San Francisco"],
+  "the city": ["San Francisco"],
+
+  // San Mateo / Peninsula (rare)
+  "peninsula": ["San Mateo", "Daly City", "South San Francisco", "Redwood City", "Palo Alto", "Mountain View", "San Bruno", "Burlingame", "San Carlos", "Belmont", "Foster City", "Millbrae", "Pacifica", "Half Moon Bay"],
+  "san mateo": ["San Mateo", "Daly City", "South San Francisco", "Redwood City", "San Bruno", "Burlingame"],
+
+  // Regional groupings
+  "north bay": ["Santa Rosa", "Petaluma", "Novato", "San Rafael", "Napa", "Vallejo", "Fairfield", "Sonoma", "Healdsburg"],
+  "bay area": ["San Francisco", "Oakland", "San Jose", "Berkeley", "Fremont", "Santa Rosa", "Hayward", "Sunnyvale", "Concord", "Vallejo"],
+  "greater sonoma": ["Santa Rosa", "Petaluma", "Sonoma", "Healdsburg", "Sebastopol", "Rohnert Park", "Windsor", "Cloverdale", "Novato", "Napa"],
+  "out of county": ["Novato", "San Rafael", "Napa", "Vallejo", "Ukiah", "Clearlake", "Oakland", "San Francisco"],
+  "out of area": ["Novato", "San Rafael", "Napa", "Vallejo", "Ukiah", "Clearlake", "Oakland", "San Francisco", "Sacramento", "Stockton"],
 };
 
 /**
@@ -1053,4 +1151,299 @@ function buildEventNotes(
   parts.push(`Logged via Tippy at ${new Date().toISOString()}`);
 
   return parts.join(" ");
+}
+
+/**
+ * Look up cat appointment history by microchip, name, or owner info
+ * Searches both verified Atlas records AND raw ClinicHQ data
+ * Reports discrepancies and logs unmatched queries for review
+ */
+async function lookupCatAppointment(
+  microchip?: string,
+  catName?: string,
+  ownerName?: string,
+  ownerPhone?: string
+): Promise<ToolResult> {
+  if (!microchip && !catName && !ownerName && !ownerPhone) {
+    return {
+      success: false,
+      error: "Please provide at least one search parameter: microchip, cat name, owner name, or owner phone",
+    };
+  }
+
+  interface AtlasRecord {
+    cat_id: string;
+    cat_name: string;
+    microchip: string | null;
+    altered_status: string;
+    appointment_count: number;
+    last_appointment: string | null;
+    last_service: string | null;
+    owner_names: string[];
+  }
+
+  interface RawRecord {
+    source_row_id: string;
+    cat_name: string;
+    microchip: string | null;
+    owner_name: string | null;
+    owner_phone: string | null;
+    owner_address: string | null;
+    appointment_date: string | null;
+    service_type: string | null;
+    is_processed: boolean;
+  }
+
+  // Search Atlas verified records (sot_cats + sot_appointments)
+  let atlasResults: AtlasRecord[] = [];
+  let rawResults: RawRecord[] = [];
+
+  // Build Atlas query
+  const atlasConditions: string[] = [];
+  const atlasParams: (string | null)[] = [];
+  let paramIndex = 1;
+
+  if (microchip) {
+    atlasConditions.push(`ci.id_value = $${paramIndex}`);
+    atlasParams.push(microchip.replace(/\s/g, ""));
+    paramIndex++;
+  }
+  if (catName) {
+    atlasConditions.push(`c.display_name ILIKE $${paramIndex}`);
+    atlasParams.push(`%${catName}%`);
+    paramIndex++;
+  }
+
+  if (atlasConditions.length > 0) {
+    atlasResults = await queryRows<AtlasRecord>(
+      `
+      SELECT DISTINCT ON (c.cat_id)
+        c.cat_id,
+        c.display_name as cat_name,
+        ci.id_value as microchip,
+        c.altered_status,
+        (SELECT COUNT(*) FROM trapper.sot_appointments a WHERE a.cat_id = c.cat_id) as appointment_count,
+        (SELECT MAX(appointment_date)::text FROM trapper.sot_appointments a WHERE a.cat_id = c.cat_id) as last_appointment,
+        (SELECT service_type FROM trapper.sot_appointments a WHERE a.cat_id = c.cat_id ORDER BY appointment_date DESC LIMIT 1) as last_service,
+        ARRAY(
+          SELECT DISTINCT p.display_name
+          FROM trapper.sot_appointments a
+          JOIN trapper.sot_people p ON a.person_id = p.person_id
+          WHERE a.cat_id = c.cat_id AND p.display_name IS NOT NULL
+          LIMIT 5
+        ) as owner_names
+      FROM trapper.sot_cats c
+      LEFT JOIN trapper.cat_identifiers ci ON c.cat_id = ci.cat_id AND ci.id_type = 'microchip'
+      WHERE (${atlasConditions.join(" OR ")})
+        AND c.merged_into_cat_id IS NULL
+      ORDER BY c.cat_id, c.updated_at DESC
+      LIMIT 10
+      `,
+      atlasParams
+    );
+  }
+
+  // Build raw ClinicHQ query to search staged_records
+  const rawConditions: string[] = [];
+  const rawParams: (string | null)[] = [];
+  paramIndex = 1;
+
+  if (microchip) {
+    rawConditions.push(`payload->>'Microchip Number' = $${paramIndex}`);
+    rawParams.push(microchip.replace(/\s/g, ""));
+    paramIndex++;
+  }
+  if (catName) {
+    rawConditions.push(`payload->>'Patient Name' ILIKE $${paramIndex}`);
+    rawParams.push(`%${catName}%`);
+    paramIndex++;
+  }
+  if (ownerName) {
+    rawConditions.push(`(payload->>'Client First Name' || ' ' || payload->>'Client Last Name') ILIKE $${paramIndex}`);
+    rawParams.push(`%${ownerName}%`);
+    paramIndex++;
+  }
+  if (ownerPhone) {
+    const normalizedPhone = ownerPhone.replace(/\D/g, "");
+    rawConditions.push(`REGEXP_REPLACE(payload->>'Phone', '[^0-9]', '', 'g') LIKE $${paramIndex}`);
+    rawParams.push(`%${normalizedPhone}%`);
+    paramIndex++;
+  }
+
+  if (rawConditions.length > 0) {
+    rawResults = await queryRows<RawRecord>(
+      `
+      SELECT
+        source_row_id,
+        payload->>'Patient Name' as cat_name,
+        payload->>'Microchip Number' as microchip,
+        TRIM(COALESCE(payload->>'Client First Name', '') || ' ' || COALESCE(payload->>'Client Last Name', '')) as owner_name,
+        payload->>'Phone' as owner_phone,
+        TRIM(COALESCE(payload->>'Address', '') || ' ' || COALESCE(payload->>'City', '') || ' ' || COALESCE(payload->>'State', '')) as owner_address,
+        payload->>'Appointment Date' as appointment_date,
+        payload->>'Service' as service_type,
+        is_processed
+      FROM trapper.staged_records
+      WHERE source_system = 'clinichq'
+        AND (${rawConditions.join(" OR ")})
+      ORDER BY (payload->>'Appointment Date')::date DESC NULLS LAST
+      LIMIT 20
+      `,
+      rawParams
+    );
+  }
+
+  // Analyze results and find discrepancies
+  const inAtlas = atlasResults.length > 0;
+  const inRaw = rawResults.length > 0;
+  const rawUnprocessed = rawResults.filter(r => !r.is_processed);
+
+  // If found in raw but not in Atlas, log for review
+  if (inRaw && !inAtlas && rawResults.length > 0) {
+    const firstRaw = rawResults[0];
+    try {
+      await queryOne(
+        `
+        INSERT INTO trapper.review_queue (
+          entity_type,
+          entity_id,
+          reason,
+          details,
+          source_system,
+          created_at
+        ) VALUES (
+          'unlinked_appointment',
+          $1,
+          'Tippy lookup found raw ClinicHQ record not linked to Atlas cat',
+          $2,
+          'tippy_lookup',
+          NOW()
+        )
+        ON CONFLICT DO NOTHING
+        `,
+        [
+          firstRaw.source_row_id,
+          JSON.stringify({
+            search_params: { microchip, catName, ownerName, ownerPhone },
+            raw_record: firstRaw,
+            searched_at: new Date().toISOString(),
+          }),
+        ]
+      );
+    } catch {
+      // Ignore errors logging to review queue
+    }
+  }
+
+  // Build response
+  if (!inAtlas && !inRaw) {
+    return {
+      success: true,
+      data: {
+        found: false,
+        in_atlas: false,
+        in_raw_clinichq: false,
+        message: `No records found for this search. The cat may not have visited the FFSC clinic, or the search terms don't match our records.`,
+        suggestion: "Try searching with different spelling, or check the microchip number is correct.",
+      },
+    };
+  }
+
+  if (inAtlas && !inRaw) {
+    const cat = atlasResults[0];
+    return {
+      success: true,
+      data: {
+        found: true,
+        in_atlas: true,
+        in_raw_clinichq: false,
+        atlas_record: {
+          cat_name: cat.cat_name,
+          microchip: cat.microchip,
+          altered_status: cat.altered_status,
+          appointment_count: cat.appointment_count,
+          last_appointment: cat.last_appointment,
+          last_service: cat.last_service,
+          known_owners: cat.owner_names,
+        },
+        message: `Found in Atlas: "${cat.cat_name}" (${cat.altered_status || "unknown status"}). ${cat.appointment_count} appointment(s) on record. Last visit: ${cat.last_appointment || "unknown"}.`,
+        note: "This cat exists in Atlas but no matching raw ClinicHQ staged record was found (may have been cleaned up after processing).",
+      },
+    };
+  }
+
+  if (!inAtlas && inRaw) {
+    const raw = rawResults[0];
+    return {
+      success: true,
+      data: {
+        found: true,
+        in_atlas: false,
+        in_raw_clinichq: true,
+        raw_record: {
+          cat_name: raw.cat_name,
+          microchip: raw.microchip,
+          owner_name: raw.owner_name,
+          owner_phone: raw.owner_phone,
+          owner_address: raw.owner_address,
+          appointment_date: raw.appointment_date,
+          service_type: raw.service_type,
+          is_processed: raw.is_processed,
+        },
+        raw_record_count: rawResults.length,
+        unprocessed_count: rawUnprocessed.length,
+        message: `Found in raw ClinicHQ data but NOT linked in Atlas. Last appointment: ${raw.appointment_date || "unknown"} under name "${raw.owner_name}" for cat "${raw.cat_name}".`,
+        discrepancy: {
+          reason: "Record exists in ClinicHQ but not properly linked in Atlas",
+          likely_causes: [
+            "Name/address mismatch preventing identity linking",
+            "Missing or invalid microchip number",
+            "Processing pipeline hasn't run yet",
+            raw.is_processed ? "Processed but entity linking failed" : "Record not yet processed",
+          ],
+          action: "This has been logged for review. A data admin should investigate the linking issue.",
+        },
+      },
+    };
+  }
+
+  // Both Atlas and Raw found - compare
+  const atlasRec = atlasResults[0];
+  const rawRec = rawResults[0];
+  const nameMatch = atlasRec.cat_name?.toLowerCase() === rawRec.cat_name?.toLowerCase();
+  const chipMatch = atlasRec.microchip === rawRec.microchip;
+
+  return {
+    success: true,
+    data: {
+      found: true,
+      in_atlas: true,
+      in_raw_clinichq: true,
+      atlas_record: {
+        cat_name: atlasRec.cat_name,
+        microchip: atlasRec.microchip,
+        altered_status: atlasRec.altered_status,
+        appointment_count: atlasRec.appointment_count,
+        last_appointment: atlasRec.last_appointment,
+        last_service: atlasRec.last_service,
+        known_owners: atlasRec.owner_names,
+      },
+      raw_record: {
+        cat_name: rawRec.cat_name,
+        owner_name: rawRec.owner_name,
+        appointment_date: rawRec.appointment_date,
+        service_type: rawRec.service_type,
+      },
+      raw_record_count: rawResults.length,
+      data_quality: {
+        names_match: nameMatch,
+        microchips_match: chipMatch,
+        status: nameMatch && chipMatch ? "good" : "review_needed",
+      },
+      message: `Found in both Atlas and raw ClinicHQ. In Atlas as "${atlasRec.cat_name}" (${atlasRec.altered_status || "unknown"}), ${atlasRec.appointment_count} appointments. Raw ClinicHQ shows last booking under "${rawRec.owner_name}" for "${rawRec.cat_name}".`,
+      summary: nameMatch && chipMatch
+        ? "Records match well between Atlas and ClinicHQ."
+        : `Note: Name in Atlas is "${atlasRec.cat_name}", in ClinicHQ booking it's "${rawRec.cat_name}". ${!chipMatch ? "Microchip numbers also differ." : ""}`,
+    },
+  };
 }
