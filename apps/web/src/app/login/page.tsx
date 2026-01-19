@@ -42,8 +42,13 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (data.success) {
-        // Redirect to intended page or dashboard
-        router.push(redirect);
+        // Check if password change is required
+        if (data.password_change_required) {
+          router.push("/change-password");
+        } else {
+          // Redirect to intended page or dashboard
+          router.push(redirect);
+        }
       } else {
         setError(data.error || "Login failed");
       }

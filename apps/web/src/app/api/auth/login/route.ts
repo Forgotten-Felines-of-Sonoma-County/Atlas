@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { login, setSessionCookie } from "@/lib/auth";
+import { queryOne } from "@/lib/db";
 
 /**
  * POST /api/auth/login
@@ -37,6 +38,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if password change is required
+    const staffInfo = await queryOne<{ password_change_required: boolean }>(
+      `SELECT COALESCE(password_change_required, FALSE) as password_change_required
+       FROM trapper.staff WHERE staff_id = $1`,
+      [result.staff!.staff_id]
+    );
+
     // Create response with user data
     const response = NextResponse.json({
       success: true,
@@ -46,6 +54,7 @@ export async function POST(request: NextRequest) {
         email: result.staff!.email,
         auth_role: result.staff!.auth_role,
       },
+      password_change_required: staffInfo?.password_change_required || false,
     });
 
     // Set session cookie
