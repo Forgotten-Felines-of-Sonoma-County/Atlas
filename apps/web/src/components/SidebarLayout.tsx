@@ -27,6 +27,9 @@ export function SidebarLayout({ children, sections, title, backLink }: SidebarLa
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
+  // Check if this is a print route - these should have no sidebar
+  const isPrintRoute = pathname?.includes("/print");
+
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
@@ -47,6 +50,11 @@ export function SidebarLayout({ children, sections, title, backLink }: SidebarLa
     if (href !== "/" && pathname?.startsWith(href + "/")) return true;
     return false;
   };
+
+  // Print routes get no sidebar, just the content
+  if (isPrintRoute) {
+    return <>{children}</>;
+  }
 
   const sidebarContent = (
     <>

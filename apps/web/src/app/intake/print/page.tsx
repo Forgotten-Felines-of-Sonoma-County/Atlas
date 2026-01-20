@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { URGENT_SITUATION_EXAMPLES } from "@/lib/intake-options";
+
+type FormVersion = "staff" | "client";
 
 export default function PrintableIntakeForm() {
   const [includeKittenPage, setIncludeKittenPage] = useState(true);
+  const [formVersion, setFormVersion] = useState<FormVersion>("client");
+
+  const isStaff = formVersion === "staff";
 
   return (
     <div className="print-wrapper">
@@ -28,7 +32,7 @@ export default function PrintableIntakeForm() {
 
         .print-wrapper {
           font-family: Helvetica, Arial, sans-serif;
-          font-size: 9.5pt;
+          font-size: ${isStaff ? '10pt' : '9.5pt'};
           line-height: 1.3;
           color: #2c3e50;
         }
@@ -51,7 +55,7 @@ export default function PrintableIntakeForm() {
           justify-content: space-between;
           align-items: center;
           padding-bottom: 8px;
-          margin-bottom: 10px;
+          margin-bottom: ${isStaff ? '12px' : '10px'};
           border-bottom: 2px solid #3498db;
         }
 
@@ -82,21 +86,21 @@ export default function PrintableIntakeForm() {
         }
 
         .section {
-          margin-bottom: 10px;
+          margin-bottom: ${isStaff ? '14px' : '10px'};
         }
 
         .section-title {
-          font-size: 10pt;
+          font-size: ${isStaff ? '11pt' : '10pt'};
           color: #3498db;
           border-bottom: 1.5px solid #ecf0f1;
           padding-bottom: 3px;
-          margin-bottom: 6px;
+          margin-bottom: ${isStaff ? '8px' : '6px'};
         }
 
         .field-row {
           display: flex;
-          gap: 10px;
-          margin-bottom: 6px;
+          gap: ${isStaff ? '12px' : '10px'};
+          margin-bottom: ${isStaff ? '8px' : '6px'};
         }
 
         .field {
@@ -110,7 +114,7 @@ export default function PrintableIntakeForm() {
 
         .field label {
           display: block;
-          font-size: 7.5pt;
+          font-size: ${isStaff ? '8pt' : '7.5pt'};
           font-weight: 600;
           color: #7f8c8d;
           text-transform: uppercase;
@@ -121,21 +125,21 @@ export default function PrintableIntakeForm() {
         .field-input {
           border: 1px solid #bdc3c7;
           border-radius: 4px;
-          padding: 4px 6px;
-          min-height: 22px;
+          padding: ${isStaff ? '6px 8px' : '4px 6px'};
+          min-height: ${isStaff ? '28px' : '22px'};
           background: #fff;
         }
 
-        .field-input.sm { min-height: 20px; padding: 3px 5px; }
-        .field-input.lg { min-height: 70px; }
-        .field-input.md { min-height: 45px; }
-        .field-input.xl { min-height: 100px; }
+        .field-input.sm { min-height: ${isStaff ? '26px' : '20px'}; padding: ${isStaff ? '5px 7px' : '3px 5px'}; }
+        .field-input.lg { min-height: ${isStaff ? '90px' : '70px'}; }
+        .field-input.md { min-height: ${isStaff ? '60px' : '45px'}; }
+        .field-input.xl { min-height: ${isStaff ? '120px' : '100px'}; }
 
         .options-row {
           display: flex;
           align-items: center;
           gap: 4px;
-          font-size: 9pt;
+          font-size: ${isStaff ? '9.5pt' : '9pt'};
           margin-bottom: 4px;
           flex-wrap: wrap;
         }
@@ -149,13 +153,13 @@ export default function PrintableIntakeForm() {
         .option {
           display: inline-flex;
           align-items: center;
-          gap: 3px;
-          margin-right: 10px;
+          gap: ${isStaff ? '4px' : '3px'};
+          margin-right: ${isStaff ? '14px' : '10px'};
         }
 
         .bubble {
-          width: 12px;
-          height: 12px;
+          width: ${isStaff ? '14px' : '12px'};
+          height: ${isStaff ? '14px' : '12px'};
           border: 1.5px solid #3498db;
           border-radius: 50%;
           background: #fff;
@@ -163,8 +167,8 @@ export default function PrintableIntakeForm() {
         }
 
         .checkbox {
-          width: 12px;
-          height: 12px;
+          width: ${isStaff ? '14px' : '12px'};
+          height: ${isStaff ? '14px' : '12px'};
           border: 1.5px solid #3498db;
           border-radius: 2px;
           background: #fff;
@@ -181,7 +185,7 @@ export default function PrintableIntakeForm() {
           border: 1.5px solid #f39c12;
           background: #fef9e7;
           padding: 8px 10px;
-          margin-bottom: 10px;
+          margin-bottom: ${isStaff ? '14px' : '10px'};
           border-radius: 6px;
         }
 
@@ -199,7 +203,7 @@ export default function PrintableIntakeForm() {
           border: 1.5px solid #e74c3c;
           background: #fdedec;
           padding: 8px 10px;
-          margin-bottom: 10px;
+          margin-bottom: ${isStaff ? '14px' : '10px'};
           border-radius: 6px;
         }
 
@@ -230,8 +234,8 @@ export default function PrintableIntakeForm() {
           background: #f0f3f4;
           border: 1.5px dashed #bdc3c7;
           border-radius: 6px;
-          padding: 10px 12px;
-          margin-top: 10px;
+          padding: ${isStaff ? '12px 14px' : '10px 12px'};
+          margin-top: ${isStaff ? '14px' : '10px'};
         }
 
         .staff-section .section-title {
@@ -293,6 +297,25 @@ export default function PrintableIntakeForm() {
           margin-bottom: 4px;
         }
 
+        .version-badge {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 8pt;
+          font-weight: 600;
+          margin-left: 10px;
+        }
+
+        .version-badge.staff {
+          background: #e8f4fd;
+          color: #2980b9;
+        }
+
+        .version-badge.client {
+          background: #e8f6f3;
+          color: #16a085;
+        }
+
         @media screen {
           body { background: #ecf0f1 !important; }
           .print-wrapper { padding: 20px; }
@@ -312,6 +335,7 @@ export default function PrintableIntakeForm() {
             padding: 20px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.15);
             z-index: 1000;
+            width: 280px;
           }
           .print-controls h3 {
             margin: 0 0 12px 0;
@@ -355,12 +379,61 @@ export default function PrintableIntakeForm() {
             background: #f0f0f0;
             color: #333;
           }
+          .version-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+          }
+          .version-selector button {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+          }
+          .version-selector button.active {
+            border-color: #3498db;
+            background: #e8f4fd;
+            color: #2980b9;
+          }
+          .version-selector button:hover:not(.active) {
+            border-color: #bbb;
+          }
         }
       `}</style>
 
       {/* Print Controls */}
       <div className="print-controls">
         <h3>Print Options</h3>
+
+        <div style={{ marginBottom: "12px", fontSize: "13px", fontWeight: 600, color: "#666" }}>
+          Form Version
+        </div>
+        <div className="version-selector">
+          <button
+            className={formVersion === "staff" ? "active" : ""}
+            onClick={() => setFormVersion("staff")}
+          >
+            Staff
+          </button>
+          <button
+            className={formVersion === "client" ? "active" : ""}
+            onClick={() => setFormVersion("client")}
+          >
+            Client
+          </button>
+        </div>
+
+        <div style={{ fontSize: "11px", color: "#888", marginBottom: "16px", lineHeight: 1.4 }}>
+          {isStaff
+            ? "Simplified form with larger boxes for phone intake"
+            : "Full form with guidance for clients to fill out"}
+        </div>
+
         <label>
           <input
             type="checkbox"
@@ -382,24 +455,35 @@ export default function PrintableIntakeForm() {
         {/* Header */}
         <div className="print-header">
           <div>
-            <h1>Help Request Form</h1>
-            <div className="subtitle">Tell us about the cats that need help</div>
+            <h1>
+              Help Request Form
+              <span className={`version-badge ${formVersion}`}>
+                {isStaff ? "Staff Use" : "Client Form"}
+              </span>
+            </h1>
+            <div className="subtitle">
+              {isStaff
+                ? "Phone/walk-in intake form"
+                : "Tell us about the cats that need help"}
+            </div>
           </div>
           <img src="/logo.png" alt="Forgotten Felines" className="header-logo" />
         </div>
 
-        {/* Intro Note */}
-        <div className="intro-note">
-          <strong>Thank you for reaching out!</strong> Fill out this form completely so we can best help the cats.
-          Fill bubbles completely: ● &nbsp;|&nbsp; <strong>Phone:</strong> (707) 576-7999 &nbsp;|&nbsp; <strong>Web:</strong> forgottenfelines.com
-        </div>
+        {/* Intro Note - Client only */}
+        {!isStaff && (
+          <div className="intro-note">
+            <strong>Thank you for reaching out!</strong> Fill out this form completely so we can best help the cats.
+            Fill bubbles completely: ● &nbsp;|&nbsp; <strong>Phone:</strong> (707) 576-7999 &nbsp;|&nbsp; <strong>Web:</strong> forgottenfelines.com
+          </div>
+        )}
 
         {/* Third-Party Report */}
         <div className="third-party-box">
           <div className="title">
             <span className="checkbox"></span>
             Reporting on behalf of someone else?
-            <span className="hint">(neighbor, property manager, etc.)</span>
+            {!isStaff && <span className="hint">(neighbor, property manager, etc.)</span>}
           </div>
           <div className="field-row" style={{ marginBottom: 0 }}>
             <div className="field">
@@ -419,7 +503,9 @@ export default function PrintableIntakeForm() {
 
         {/* Section 1: Contact */}
         <div className="section">
-          <div className="section-title">Your Contact Information</div>
+          <div className="section-title">
+            {isStaff ? "Caller Contact Information" : "Your Contact Information"}
+          </div>
           <div className="field-row" style={{ marginBottom: 0 }}>
             <div className="field">
               <label>First Name *</label>
@@ -525,21 +611,32 @@ export default function PrintableIntakeForm() {
           </div>
         </div>
 
-        {/* Emergency */}
+        {/* Emergency - condensed for staff */}
         <div className="emergency-box">
           <div className="title">
             <span className="checkbox"></span>
             This is an urgent situation
-            <span className="hint">({URGENT_SITUATION_EXAMPLES})</span>
+            {!isStaff && <span className="hint">(injured, trapped, abandoned kittens)</span>}
           </div>
-          <div className="note">
-            <strong>Note:</strong> FFSC is a spay/neuter clinic, NOT a 24hr hospital. For life-threatening emergencies:
-            <strong> Pet Care Hospital (707) 579-3900</strong>
-            <span style={{ marginLeft: "10px" }}>
-              <span className="checkbox" style={{ width: "10px", height: "10px", display: "inline-block", verticalAlign: "middle" }}></span>
-              <span style={{ marginLeft: "3px" }}>I acknowledge this</span>
-            </span>
-          </div>
+          {!isStaff && (
+            <div className="note">
+              <strong>Note:</strong> FFSC is a spay/neuter clinic, NOT a 24hr hospital. For life-threatening emergencies:
+              <strong> Pet Care Hospital (707) 579-3900</strong>
+              <span style={{ marginLeft: "10px" }}>
+                <span className="checkbox" style={{ width: "10px", height: "10px", display: "inline-block", verticalAlign: "middle" }}></span>
+                <span style={{ marginLeft: "3px" }}>I acknowledge this</span>
+              </span>
+            </div>
+          )}
+          {isStaff && (
+            <div className="note" style={{ fontSize: "8.5pt" }}>
+              <strong>Pet Care Hospital:</strong> (707) 579-3900
+              <span style={{ marginLeft: "16px" }}>
+                <span className="checkbox" style={{ width: "10px", height: "10px", display: "inline-block", verticalAlign: "middle" }}></span>
+                <span style={{ marginLeft: "3px" }}>Acknowledged</span>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Section 4: Tell Us More + Situation Combined */}
@@ -548,30 +645,38 @@ export default function PrintableIntakeForm() {
           <div className="options-row" style={{ marginBottom: "4px" }}>
             <span className="option"><span className="checkbox"></span> Medical concerns</span>
             <span className="option"><span className="checkbox"></span> Property access available</span>
-            <span className="option"><span className="checkbox"></span> I'm the property owner</span>
+            <span className="option"><span className="checkbox"></span> {isStaff ? "Property owner" : "I'm the property owner"}</span>
             <span className="option"><span className="checkbox"></span> Others also feeding</span>
-            <span style={{ marginLeft: "14px", fontWeight: 600 }}>Heard from:</span>
-            <span className="option"><span className="bubble"></span> Website</span>
-            <span className="option"><span className="bubble"></span> Social media</span>
-            <span className="option"><span className="bubble"></span> Friend</span>
-            <span className="option"><span className="bubble"></span> Vet/shelter</span>
+            {!isStaff && (
+              <>
+                <span style={{ marginLeft: "14px", fontWeight: 600 }}>Heard from:</span>
+                <span className="option"><span className="bubble"></span> Website</span>
+                <span className="option"><span className="bubble"></span> Social media</span>
+                <span className="option"><span className="bubble"></span> Friend</span>
+                <span className="option"><span className="bubble"></span> Vet/shelter</span>
+              </>
+            )}
           </div>
-          <div style={{ fontSize: "8pt", color: "#7f8c8d", marginBottom: "4px" }}>
-            Describe: cat colors/behavior, medical concerns, best times to reach you, where cats are seen, access notes
-          </div>
+          {!isStaff && (
+            <div style={{ fontSize: "8pt", color: "#7f8c8d", marginBottom: "4px" }}>
+              Describe: cat colors/behavior, medical concerns, best times to reach you, where cats are seen, access notes
+            </div>
+          )}
           <div className="field-input lg"></div>
         </div>
 
-        {/* Signature */}
-        <div className="signature-area">
-          <div className="consent">
-            By submitting, you agree to be contacted by Forgotten Felines regarding this request.
+        {/* Signature - only for client */}
+        {!isStaff && (
+          <div className="signature-area">
+            <div className="consent">
+              By submitting, you agree to be contacted by Forgotten Felines regarding this request.
+            </div>
+            <div className="sig-fields">
+              <span><strong>Date:</strong> ____________</span>
+              <span><strong>Signature:</strong> ____________________________</span>
+            </div>
           </div>
-          <div className="sig-fields">
-            <span><strong>Date:</strong> ____________</span>
-            <span><strong>Signature:</strong> ____________________________</span>
-          </div>
-        </div>
+        )}
 
         {/* Staff Section */}
         <div className="staff-section">
@@ -604,6 +709,16 @@ export default function PrintableIntakeForm() {
             <span className="option"><span className="bubble"></span> Out of area</span>
             <span className="option"><span className="bubble"></span> Review</span>
           </div>
+          {isStaff && (
+            <div className="field" style={{ marginTop: "8px" }}>
+              <label>Staff notes</label>
+              <div className="field-input md"></div>
+            </div>
+          )}
+        </div>
+
+        <div className="footer">
+          Forgotten Felines of Sonoma County • (707) 576-7999 • forgottenfelines.com • Page 1{includeKittenPage ? " of 2" : ""}
         </div>
       </div>
 
@@ -613,7 +728,12 @@ export default function PrintableIntakeForm() {
           {/* Header */}
           <div className="print-header">
             <div>
-              <h1>Kitten Details</h1>
+              <h1>
+                Kitten Details
+                <span className={`version-badge ${formVersion}`}>
+                  {isStaff ? "Staff Use" : "Client Form"}
+                </span>
+              </h1>
               <div className="subtitle">Complete if kittens are present at the location</div>
             </div>
             <img src="/logo.png" alt="Forgotten Felines" className="header-logo" />
@@ -693,17 +813,19 @@ export default function PrintableIntakeForm() {
             </div>
           </div>
 
-          {/* Foster Program Info - Full Section */}
-          <div className="foster-info">
-            <h3>About Our Foster Program</h3>
-            <ul>
-              <li><strong>Age matters:</strong> Under 12 weeks is ideal for socialization. 12-16 weeks needs intensive work.</li>
-              <li><strong>Behavior matters:</strong> Friendly/handleable kittens are prioritized for foster placement.</li>
-              <li><strong>Mom helps:</strong> Spayed mom with kittens increases foster likelihood.</li>
-              <li>Older or feral kittens (12+ weeks, hard to handle) may need Feral Fix & Return (FFR) instead.</li>
-              <li><strong>Space is limited</strong> and foster placement is not guaranteed until day of assessment.</li>
-            </ul>
-          </div>
+          {/* Foster Program Info - Client only, abbreviated for staff */}
+          {!isStaff && (
+            <div className="foster-info">
+              <h3>About Our Foster Program</h3>
+              <ul>
+                <li><strong>Age matters:</strong> Under 12 weeks is ideal for socialization. 12-16 weeks needs intensive work.</li>
+                <li><strong>Behavior matters:</strong> Friendly/handleable kittens are prioritized for foster placement.</li>
+                <li><strong>Mom helps:</strong> Spayed mom with kittens increases foster likelihood.</li>
+                <li>Older or feral kittens (12+ weeks, hard to handle) may need Feral Fix & Return (FFR) instead.</li>
+                <li><strong>Space is limited</strong> and foster placement is not guaranteed until day of assessment.</li>
+              </ul>
+            </div>
+          )}
 
           {/* Staff Section */}
           <div className="staff-section">
@@ -745,7 +867,7 @@ export default function PrintableIntakeForm() {
 
             <div className="field" style={{ marginTop: "6px" }}>
               <label>Staff notes (foster contact, follow-up, trapping plan)</label>
-              <div className="field-input md"></div>
+              <div className="field-input lg"></div>
             </div>
           </div>
 
