@@ -3975,7 +3975,7 @@ async function queryPartnerOrgStats(
       `
       SELECT
         COUNT(*) as total_appointments,
-        COUNT(DISTINCT COALESCE(payload->>'Microchip Number', payload->>'Number')) as unique_cats,
+        COUNT(DISTINCT COALESCE(NULLIF(payload->>'Microchip Number', ''), payload->>'Number')) as unique_cats,
         COUNT(DISTINCT payload->>'Microchip Number') FILTER (WHERE payload->>'Microchip Number' IS NOT NULL AND payload->>'Microchip Number' != '') as with_microchip,
         MIN((payload->>'Date')::date)::text as earliest_date,
         MAX((payload->>'Date')::date)::text as latest_date
