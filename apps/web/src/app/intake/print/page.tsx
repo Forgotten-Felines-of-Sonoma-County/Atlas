@@ -18,7 +18,7 @@ export default function PrintableIntakeForm() {
         @media print {
           @page { size: letter; margin: 0.4in; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
-          .print-controls, .tippy-chat, [class*="tippy"], #tippy-root { display: none !important; }
+          .print-controls, .tippy-fab, .tippy-chat-panel { display: none !important; }
           .print-wrapper {
             width: 100% !important;
             padding: 0 !important;
@@ -34,8 +34,12 @@ export default function PrintableIntakeForm() {
             overflow: visible !important;
           }
           .print-page:last-child { page-break-after: auto; }
-          .section { margin-bottom: 8px !important; }
-          .staff-section { margin-top: 8px !important; }
+          .print-header { margin-bottom: 8px !important; }
+          .section { margin-bottom: 7px !important; }
+          .intro-note { margin-bottom: 8px !important; }
+          .third-party-box, .emergency-box { margin-bottom: 8px !important; }
+          .staff-section { margin-top: 6px !important; padding: 8px 10px !important; }
+          .signature-area { margin-top: 8px !important; }
         }
 
         body { margin: 0; padding: 0; }

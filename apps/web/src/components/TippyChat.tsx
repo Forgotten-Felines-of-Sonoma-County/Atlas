@@ -14,6 +14,7 @@ interface TippyResponse {
   message: string;
   suggestions?: string[];
   links?: { label: string; href: string }[];
+  conversationId?: string;
 }
 
 const QUICK_ACTIONS = [
@@ -29,6 +30,7 @@ export function TippyChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [conversationId, setConversationId] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -72,6 +74,7 @@ export function TippyChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMessage,
+          conversationId, // Pass back for conversation tracking
           history: messages.slice(-10).map((m) => ({
             role: m.role,
             content: m.content,
@@ -80,6 +83,11 @@ export function TippyChat() {
       });
 
       const data: TippyResponse = await res.json();
+
+      // Capture conversationId from response for tracking
+      if (data.conversationId) {
+        setConversationId(data.conversationId);
+      }
 
       // Add assistant response
       const assistantMsg: Message = {
@@ -112,6 +120,7 @@ export function TippyChat() {
   if (!isOpen) {
     return (
       <button
+        className="tippy-fab"
         onClick={() => setIsOpen(true)}
         style={{
           position: "fixed",
@@ -149,6 +158,7 @@ export function TippyChat() {
 
   return (
     <div
+      className="tippy-chat-panel"
       style={{
         position: "fixed",
         bottom: "24px",
@@ -417,6 +427,7 @@ export function TippyChat() {
           setSelectedMessage(null);
         }}
         tippyMessage={selectedMessage?.content || ""}
+        conversationId={conversationId}
         conversationContext={messages.slice(-10).map((m) => ({
           role: m.role,
           content: m.content,
