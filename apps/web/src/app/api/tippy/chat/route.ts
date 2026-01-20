@@ -35,6 +35,7 @@ Tool selection guide:
 - Cats in a city/region (Santa Rosa, west county, etc.) → use query_cats_altered_in_area
 - Cats from partner orgs (SCAS, shelters) → use query_partner_org_stats
 - Cat by microchip or owner → use lookup_cat_appointment
+- Colony size history or discrepancies → use query_colony_estimate_history
 - "Tell [person] that..." or "Message [person] about..." → use send_staff_message
 - "Remind me to..." → use create_reminder
 
@@ -44,6 +45,7 @@ EXAMPLES of when to use tools:
 - User: "How many SCAS cats have we done?" → CALL query_partner_org_stats(organization: "SCAS")
 - User: "Tell me about Jane Smith" → CALL comprehensive_person_lookup(identifier: "Jane Smith")
 - User: "situation at 678 Main St" → CALL comprehensive_place_lookup(address: "678 Main St")
+- User: "Why does Airtable show 21 cats but Atlas shows 15?" → CALL query_colony_estimate_history(address: "<the address>")
 - User: "Tell Ben that the colony at Oak St needs attention" → CALL send_staff_message(recipient_name: "Ben", subject: "Oak St colony needs attention", content: "...", entity_type: "place", entity_identifier: "Oak St")
 - User: "Remind me to follow up on 115 Magnolia tomorrow" → CALL create_reminder(title: "Follow up on 115 Magnolia", entity_type: "place", entity_identifier: "115 Magnolia", remind_at: <tomorrow>)
 
@@ -129,6 +131,57 @@ function getToolsForAccessLevel(
 
   // 'full' access gets all tools
   return TIPPY_TOOLS;
+}
+
+/**
+ * Detect user intent and optionally force a specific tool
+ * Returns tool_choice parameter for API call if strong intent detected
+ */
+function detectIntentAndForceToolChoice(
+  message: string,
+  accessLevel: string
+): { type: "auto" } | { type: "tool"; name: string } | undefined {
+  const lower = message.toLowerCase();
+
+  // REMINDER patterns - highest priority for write users
+  if (accessLevel === "read_write" || accessLevel === "full") {
+    const reminderPatterns = [
+      /remind me/i,
+      /don't let me forget/i,
+      /i need to remember/i,
+      /set a reminder/i,
+      /add.*reminder/i,
+      /follow up on.*(?:later|tomorrow|next|week)/i,
+      /check on.*(?:later|tomorrow|next|week)/i,
+    ];
+    if (reminderPatterns.some((p) => p.test(message))) {
+      return { type: "tool", name: "create_reminder" };
+    }
+
+    // MESSAGE patterns - "tell X that...", "message X about..."
+    if (/^(tell|message|let)\s+\w+\s+(that|about|know)/i.test(lower)) {
+      return { type: "tool", name: "send_staff_message" };
+    }
+  }
+
+  // TRAPPER stats patterns
+  if (
+    /how many.*(trappers?|volunteers?)/i.test(lower) ||
+    /active trappers/i.test(lower) ||
+    /trapper (stats|count|numbers)/i.test(lower)
+  ) {
+    return { type: "tool", name: "query_trapper_stats" };
+  }
+
+  // PARTNER ORG patterns (SCAS, shelter, etc.)
+  if (
+    /how many.*(scas|shelter|humane)/i.test(lower) ||
+    /scas (cats?|stats)/i.test(lower)
+  ) {
+    return { type: "tool", name: "query_partner_org_stats" };
+  }
+
+  return undefined; // Let Claude decide
 }
 
 /**
@@ -305,13 +358,17 @@ export async function POST(request: NextRequest) {
       { role: "user" as const, content: message },
     ];
 
+    // Detect intent and potentially force tool choice for reliable invocation
+    const forcedToolChoice = detectIntentAndForceToolChoice(message, aiAccessLevel || "read_only");
+
     // Call Claude API with filtered tools
     let response = await client.messages.create({
-      model: "claude-3-haiku-20240307", // Using Haiku for speed and cost
+      model: "claude-3-5-haiku-20241022", // Using 3.5 Haiku for better tool reliability
       max_tokens: 1024,
       system: systemPrompt,
       messages,
       tools: availableTools.length > 0 ? availableTools : undefined,
+      tool_choice: forcedToolChoice,
     });
 
     // Create tool context for staff-specific operations
@@ -382,7 +439,7 @@ export async function POST(request: NextRequest) {
 
       // Call Claude again with tool results
       response = await client.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: "claude-3-5-haiku-20241022",
         max_tokens: 1024,
         system: systemPrompt,
         messages,

@@ -652,6 +652,45 @@ export const TIPPY_TOOLS = [
       required: ["source", "entity_type", "entity_id"],
     },
   },
+  {
+    name: "query_partner_org_stats",
+    description:
+      "Get statistics on cats processed from partner organizations like SCAS (Sonoma County Animal Services), Humane Society, or other shelters. Use when someone asks 'how many SCAS cats?' or 'cats from [organization name]'. Partner orgs have their name in the owner/client last name field in ClinicHQ.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        organization: {
+          type: "string",
+          description: "Organization name or abbreviation (e.g., 'SCAS', 'Humane Society', 'shelter')",
+        },
+        time_period: {
+          type: "string",
+          enum: ["all_time", "this_year", "last_30_days", "last_90_days"],
+          description: "Time period for statistics (default: all_time)",
+        },
+      },
+      required: ["organization"],
+    },
+  },
+  {
+    name: "query_colony_estimate_history",
+    description:
+      "Show all colony size estimates over time for a place with their sources and confidence levels. Use when users ask why colony sizes differ between systems (e.g., 'why does Airtable say 21 but Atlas says 15?'), want to see estimate history, or ask about how colony size was determined.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        address_search: {
+          type: "string",
+          description: "Address or place name to search for",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum estimates to return (default 10)",
+        },
+      },
+      required: ["address_search"],
+    },
+  },
 ];
 
 /**
@@ -840,6 +879,18 @@ export async function executeToolCall(
           toolInput.source as string,
           toolInput.entity_type as string,
           toolInput.entity_id as string
+        );
+
+      case "query_partner_org_stats":
+        return await queryPartnerOrgStats(
+          toolInput.organization as string,
+          toolInput.time_period as string | undefined
+        );
+
+      case "query_colony_estimate_history":
+        return await queryColonyEstimateHistory(
+          toolInput.address_search as string,
+          toolInput.limit as number | undefined
         );
 
       default:
@@ -2821,6 +2872,49 @@ async function queryCatJourney(
   );
 
   if (!catResult) {
+    // If not found in Atlas and searching by name, check raw ClinicHQ data
+    if (catName) {
+      interface RawClinicRecord {
+        patient_name: string;
+        microchip: string | null;
+        appointment_date: string | null;
+        service_type: string | null;
+        owner_name: string | null;
+      }
+
+      const rawResults = await queryRows<RawClinicRecord>(
+        `
+        SELECT DISTINCT
+          payload->>'Patient Name' as patient_name,
+          payload->>'Microchip Number' as microchip,
+          payload->>'Appointment Date' as appointment_date,
+          payload->>'Service' as service_type,
+          TRIM(COALESCE(payload->>'Client First Name', '') || ' ' || COALESCE(payload->>'Client Last Name', '')) as owner_name
+        FROM trapper.staged_records
+        WHERE source_system = 'clinichq'
+          AND payload->>'Patient Name' ILIKE $1
+        ORDER BY (payload->>'Appointment Date')::date DESC NULLS LAST
+        LIMIT 10
+        `,
+        [`%${catName}%`]
+      );
+
+      if (rawResults.length > 0) {
+        return {
+          success: true,
+          data: {
+            found: true,
+            in_atlas: false,
+            in_clinichq: true,
+            raw_matches: rawResults,
+            count: rawResults.length,
+            message: `Found "${catName}" in raw ClinicHQ data but not fully linked in Atlas. These cats have clinic records under that name.`,
+            suggestion: "For complete journey information, try searching by the microchip number if one is shown above.",
+          },
+        };
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -3813,6 +3907,278 @@ async function querySourceExtension(
         message: `Extension table for ${source} ${entityType} not available`,
         note: "This extension table may be created in a future migration",
       },
+    };
+  }
+}
+
+/**
+ * Query statistics for cats from partner organizations (SCAS, Humane Society, etc.)
+ * Partner orgs have their name in the Owner Last Name field in ClinicHQ
+ */
+async function queryPartnerOrgStats(
+  organization: string,
+  timePeriod?: string
+): Promise<ToolResult> {
+  // Normalize organization name for searching
+  const orgSearch = organization.trim().toUpperCase();
+
+  // Common organization aliases
+  const orgPatterns: Record<string, string[]> = {
+    "SCAS": ["SCAS", "SONOMA COUNTY ANIMAL", "COUNTY ANIMAL SERVICES"],
+    "HUMANE": ["HUMANE SOCIETY", "HUMANE"],
+    "SHELTER": ["SHELTER", "ANIMAL SHELTER"],
+  };
+
+  // Build search patterns
+  let searchPatterns: string[] = [orgSearch];
+  for (const [key, patterns] of Object.entries(orgPatterns)) {
+    if (orgSearch.includes(key) || patterns.some(p => orgSearch.includes(p))) {
+      searchPatterns = [...new Set([...searchPatterns, ...patterns])];
+    }
+  }
+
+  // Build date filter
+  let dateFilter = "";
+  const now = new Date();
+  if (timePeriod === "this_year") {
+    dateFilter = `AND (payload->>'Appointment Date')::date >= '${now.getFullYear()}-01-01'`;
+  } else if (timePeriod === "last_30_days") {
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    dateFilter = `AND (payload->>'Appointment Date')::date >= '${thirtyDaysAgo.toISOString().split('T')[0]}'`;
+  } else if (timePeriod === "last_90_days") {
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    dateFilter = `AND (payload->>'Appointment Date')::date >= '${ninetyDaysAgo.toISOString().split('T')[0]}'`;
+  }
+
+  // Build OR conditions for search patterns
+  const searchConditions = searchPatterns.map((_, i) =>
+    `(payload->>'Owner Last Name' ILIKE $${i + 1} OR payload->>'Owner First Name' ILIKE $${i + 1})`
+  ).join(" OR ");
+
+  interface OrgStats {
+    total_appointments: number;
+    unique_cats: number;
+    with_microchip: number;
+    earliest_date: string | null;
+    latest_date: string | null;
+    year_breakdown: Record<string, number>;
+  }
+
+  interface YearCount {
+    year: string;
+    count: number;
+  }
+
+  try {
+    // Get aggregate stats
+    const stats = await queryOne<OrgStats>(
+      `
+      SELECT
+        COUNT(*) as total_appointments,
+        COUNT(DISTINCT COALESCE(payload->>'Microchip Number', payload->>'Number')) as unique_cats,
+        COUNT(DISTINCT payload->>'Microchip Number') FILTER (WHERE payload->>'Microchip Number' IS NOT NULL AND payload->>'Microchip Number' != '') as with_microchip,
+        MIN((payload->>'Appointment Date')::date)::text as earliest_date,
+        MAX((payload->>'Appointment Date')::date)::text as latest_date
+      FROM trapper.staged_records
+      WHERE source_system = 'clinichq'
+        AND source_table = 'owner_info'
+        AND (${searchConditions})
+        ${dateFilter}
+      `,
+      searchPatterns.map(p => `%${p}%`)
+    );
+
+    // Get year breakdown
+    const yearBreakdown = await queryRows<YearCount>(
+      `
+      SELECT
+        EXTRACT(YEAR FROM (payload->>'Appointment Date')::date)::text as year,
+        COUNT(*) as count
+      FROM trapper.staged_records
+      WHERE source_system = 'clinichq'
+        AND source_table = 'owner_info'
+        AND (${searchConditions})
+        ${dateFilter}
+      GROUP BY 1
+      ORDER BY 1 DESC
+      LIMIT 5
+      `,
+      searchPatterns.map(p => `%${p}%`)
+    );
+
+    // Get sample recent appointments
+    interface RecentAppt {
+      appointment_number: string;
+      cat_identifier: string;
+      date: string;
+    }
+
+    const recentAppointments = await queryRows<RecentAppt>(
+      `
+      SELECT
+        payload->>'Number' as appointment_number,
+        COALESCE(payload->>'Owner First Name', 'Unknown') as cat_identifier,
+        LEFT(payload->>'Appointment Date', 10) as date
+      FROM trapper.staged_records
+      WHERE source_system = 'clinichq'
+        AND source_table = 'owner_info'
+        AND (${searchConditions})
+        ${dateFilter}
+      ORDER BY (payload->>'Appointment Date')::date DESC
+      LIMIT 5
+      `,
+      searchPatterns.map(p => `%${p}%`)
+    );
+
+    if (!stats || stats.total_appointments === 0) {
+      return {
+        success: true,
+        data: {
+          found: false,
+          organization: organization,
+          searched_patterns: searchPatterns,
+          message: `No appointments found for "${organization}". Try different spelling or check if this organization uses a different name in ClinicHQ.`,
+          suggestion: "Partner organizations typically have their name in the 'Owner Last Name' field in ClinicHQ records.",
+        },
+      };
+    }
+
+    // Format year breakdown for display
+    const yearStats: Record<string, number> = {};
+    yearBreakdown.forEach(y => {
+      yearStats[y.year] = Number(y.count);
+    });
+
+    return {
+      success: true,
+      data: {
+        found: true,
+        organization: organization,
+        searched_patterns: searchPatterns,
+        time_period: timePeriod || "all_time",
+        stats: {
+          total_appointments: Number(stats.total_appointments),
+          unique_cats: Number(stats.unique_cats),
+          with_microchip: Number(stats.with_microchip),
+          date_range: {
+            earliest: stats.earliest_date,
+            latest: stats.latest_date,
+          },
+          by_year: yearStats,
+        },
+        recent_appointments: recentAppointments,
+        note: "Partner org appointments are identified by organization name in the Owner Last Name field in ClinicHQ. Animal IDs appear in the Owner First Name field.",
+      },
+    };
+  } catch (error) {
+    console.error("queryPartnerOrgStats error:", error);
+    return {
+      success: false,
+      error: `Failed to query partner organization stats: ${error instanceof Error ? error.message : "Unknown error"}`,
+    };
+  }
+}
+
+/**
+ * Query colony estimate history for a place to explain discrepancies
+ */
+async function queryColonyEstimateHistory(
+  addressSearch: string,
+  limit?: number
+): Promise<ToolResult> {
+  const maxResults = limit || 10;
+
+  interface EstimateRecord {
+    estimate_id: string;
+    total_cats: number | null;
+    source_type: string;
+    source_system: string | null;
+    observation_date: string | null;
+    reported_at: string;
+    confidence: number;
+    notes: string | null;
+    place_name: string | null;
+    formatted_address: string | null;
+  }
+
+  try {
+    const results = await queryRows<EstimateRecord>(
+      `
+      WITH place_match AS (
+        SELECT place_id, display_name, formatted_address
+        FROM trapper.places
+        WHERE (display_name ILIKE $1 OR formatted_address ILIKE $1)
+          AND merged_into_place_id IS NULL
+        ORDER BY
+          CASE WHEN display_name ILIKE $1 THEN 0 ELSE 1 END,
+          display_name
+        LIMIT 1
+      )
+      SELECT
+        pce.estimate_id::text,
+        pce.total_cats,
+        pce.source_type,
+        pce.source_system,
+        pce.observation_date::text,
+        pce.reported_at::text,
+        COALESCE(csc.base_confidence, 0.5) as confidence,
+        pce.notes,
+        pm.display_name as place_name,
+        pm.formatted_address
+      FROM trapper.place_colony_estimates pce
+      JOIN place_match pm ON pce.place_id = pm.place_id
+      LEFT JOIN trapper.colony_source_confidence csc ON pce.source_type = csc.source_type
+      ORDER BY pce.observation_date DESC NULLS LAST, pce.reported_at DESC
+      LIMIT $2
+      `,
+      [`%${addressSearch}%`, maxResults]
+    );
+
+    if (!results || results.length === 0) {
+      return {
+        success: true,
+        data: {
+          found: false,
+          message: `No colony estimates found for "${addressSearch}". This location may not have any recorded colony size observations.`,
+          suggestion: "Try a more specific address, or check if the location is recorded under a different name.",
+        },
+      };
+    }
+
+    // Build summary lines
+    const summaryLines = results.map((r, i) => {
+      const date = r.observation_date || r.reported_at?.split("T")[0] || "unknown date";
+      const source = r.source_system ? `${r.source_type} via ${r.source_system}` : r.source_type;
+      const conf = Math.round(r.confidence * 100);
+      const note = r.notes ? ` - "${r.notes.substring(0, 50)}${r.notes.length > 50 ? "..." : ""}"` : "";
+      return `${i + 1}. ${date}: ${r.total_cats ?? "?"} cats (${source}, ${conf}% confidence)${note}`;
+    });
+
+    const placeName = results[0].place_name || results[0].formatted_address || addressSearch;
+
+    return {
+      success: true,
+      data: {
+        found: true,
+        place: placeName,
+        address: results[0].formatted_address,
+        estimates: results.map((r) => ({
+          date: r.observation_date || r.reported_at?.split("T")[0],
+          total_cats: r.total_cats,
+          source_type: r.source_type,
+          source_system: r.source_system,
+          confidence: Math.round(r.confidence * 100),
+          notes: r.notes,
+        })),
+        count: results.length,
+        summary: `Colony estimate history for ${placeName}:\n\n${summaryLines.join("\n")}\n\nNote: Different sources have different confidence levels:\n- 'verified_cats' (100%) = actual cats documented in database\n- 'post_clinic_survey' (85%) = Project 75 survey data\n- 'trapper_site_visit' (80%) = trapper observation\n- 'airtable'/'trapping_request' (60%) = request form estimates\n- 'intake_form' (55%) = web submission estimates\n\nDiscrepancies often arise from:\n1. Different observation dates\n2. Different sources with varying confidence\n3. Natural population changes over time`,
+      },
+    };
+  } catch (error) {
+    console.error("queryColonyEstimateHistory error:", error);
+    return {
+      success: false,
+      error: `Failed to query colony estimate history: ${error instanceof Error ? error.message : "Unknown error"}`,
     };
   }
 }
