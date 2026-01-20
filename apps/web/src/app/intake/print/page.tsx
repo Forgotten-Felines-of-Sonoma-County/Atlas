@@ -16,16 +16,25 @@ export default function PrintableIntakeForm() {
         @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@600;700&display=swap');
 
         @media print {
-          @page { size: letter; margin: 0.4in; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          @page { size: letter; margin: 0.5in; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
           .print-controls { display: none !important; }
+          .print-wrapper {
+            width: 100% !important;
+            padding: 0 !important;
+          }
           .print-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
             padding: 0 !important;
             box-shadow: none !important;
             margin: 0 !important;
             page-break-after: always;
+            overflow: visible !important;
           }
           .print-page:last-child { page-break-after: auto; }
+          .field-row { gap: 8px !important; }
         }
 
         body { margin: 0; padding: 0; }
