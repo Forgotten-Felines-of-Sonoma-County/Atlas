@@ -141,6 +141,13 @@ export default function AdminPage() {
                   accent="#fdf4ff"
                 />
                 <AdminCard
+                  href="/admin/ai-access"
+                  title="Tippy AI Access"
+                  description="Control AI capabilities"
+                  icon="🔐"
+                  accent="#eff6ff"
+                />
+                <AdminCard
                   href="/admin/organizations"
                   title="Organizations"
                   description="Departments and programs"

@@ -48,6 +48,30 @@ interface BeaconDashboardSummary {
 
 export async function GET() {
   try {
+    // Check if required views exist before querying
+    const viewCheck = await queryOne<{ summary_exists: boolean; clusters_exists: boolean }>(`
+      SELECT
+        EXISTS(SELECT 1 FROM pg_views WHERE schemaname = 'trapper' AND viewname = 'v_beacon_summary') as summary_exists,
+        EXISTS(SELECT 1 FROM pg_matviews WHERE schemaname = 'trapper' AND matviewname = 'mv_beacon_clusters') as clusters_exists
+    `, []);
+
+    if (!viewCheck?.summary_exists || !viewCheck?.clusters_exists) {
+      const missing = [];
+      if (!viewCheck?.summary_exists) missing.push("v_beacon_summary (MIG_340)");
+      if (!viewCheck?.clusters_exists) missing.push("mv_beacon_clusters (MIG_341)");
+
+      return NextResponse.json({
+        error: "Beacon views not deployed",
+        missing,
+        hint: "Run: ./scripts/deploy-critical-migrations.sh",
+        migrations_needed: [
+          "MIG_340__beacon_calculation_views.sql",
+          "MIG_341__beacon_clustering.sql",
+        ],
+        health_check: "/api/beacon/health",
+      }, { status: 503 });
+    }
+
     // Fetch summary data from views
     const [placeSummary, clusterSummary, workRemaining] = await Promise.all([
       // Place-level summary
@@ -186,9 +210,22 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Error fetching Beacon summary:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch Beacon summary" },
-      { status: 500 }
-    );
+
+    // Check if it's a "relation does not exist" error
+    const errorMessage = String(error);
+    if (errorMessage.includes("does not exist") || errorMessage.includes("relation")) {
+      return NextResponse.json({
+        error: "Beacon database views not found",
+        details: errorMessage,
+        hint: "Run: ./scripts/deploy-critical-migrations.sh",
+        health_check: "/api/beacon/health",
+      }, { status: 503 });
+    }
+
+    return NextResponse.json({
+      error: "Failed to fetch Beacon summary",
+      details: errorMessage,
+      health_check: "/api/health/db",
+    }, { status: 500 });
   }
 }

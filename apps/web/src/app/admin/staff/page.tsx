@@ -16,6 +16,7 @@ interface Staff {
   is_active: boolean;
   hired_date: string | null;
   source_record_id: string | null;
+  ai_access_level: string | null;
 }
 
 const DEPARTMENTS = [
@@ -26,6 +27,13 @@ const DEPARTMENTS = [
   "Volunteers",
   "Marketing",
   "Other",
+];
+
+const AI_ACCESS_LEVELS = [
+  { value: "none", label: "None", description: "No AI assistant access" },
+  { value: "read_only", label: "Read Only", description: "Can query data, cannot create or modify" },
+  { value: "read_write", label: "Read + Write", description: "Can query data and create reminders, feedback, etc." },
+  { value: "full", label: "Full Access", description: "All capabilities including admin tools" },
 ];
 
 export default function StaffManagementPage() {
@@ -49,6 +57,7 @@ export default function StaffManagementPage() {
     role: "",
     department: "",
     hired_date: "",
+    ai_access_level: "read_only",
   });
 
   const fetchStaff = useCallback(async () => {
@@ -86,6 +95,7 @@ export default function StaffManagementPage() {
       role: s.role,
       department: s.department || "",
       hired_date: s.hired_date || "",
+      ai_access_level: s.ai_access_level || "read_only",
     });
     setEditMode(true);
   };
@@ -100,6 +110,7 @@ export default function StaffManagementPage() {
       role: "",
       department: "",
       hired_date: "",
+      ai_access_level: "read_only",
     });
     setShowAddModal(true);
   };
@@ -253,11 +264,25 @@ export default function StaffManagementPage() {
                           <div style={{ fontWeight: 600, fontSize: "1rem" }}>{s.display_name}</div>
                           <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{s.role}</div>
                         </div>
-                        {!s.is_active && (
-                          <span style={{ fontSize: "0.7rem", padding: "0.125rem 0.5rem", background: "#dc3545", color: "#fff", borderRadius: "4px" }}>
-                            Inactive
-                          </span>
-                        )}
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          {s.ai_access_level && s.ai_access_level !== "none" && (
+                            <span style={{
+                              fontSize: "0.65rem",
+                              padding: "0.125rem 0.4rem",
+                              background: s.ai_access_level === "full" ? "#6f42c1" :
+                                s.ai_access_level === "read_write" ? "#198754" : "#0d6efd",
+                              color: "#fff",
+                              borderRadius: "3px",
+                            }}>
+                              AI: {s.ai_access_level === "read_write" ? "R/W" : s.ai_access_level === "read_only" ? "RO" : s.ai_access_level}
+                            </span>
+                          )}
+                          {!s.is_active && (
+                            <span style={{ fontSize: "0.7rem", padding: "0.125rem 0.5rem", background: "#dc3545", color: "#fff", borderRadius: "4px" }}>
+                              Inactive
+                            </span>
+                          )}
+                        </div>
                       </div>
                       {s.email && (
                         <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "var(--muted)" }}>
@@ -403,6 +428,25 @@ export default function StaffManagementPage() {
                   style={{ width: "100%", padding: "0.5rem" }}
                 />
               </div>
+            </div>
+
+            {/* AI Access Level - Full width */}
+            <div style={{ marginTop: "1rem", padding: "1rem", background: "var(--card-bg, rgba(0,0,0,0.03))", borderRadius: "8px" }}>
+              <label style={{ display: "block", fontSize: "0.8rem", marginBottom: "0.25rem", fontWeight: 500 }}>
+                Tippy AI Access Level
+              </label>
+              <select
+                value={formData.ai_access_level}
+                onChange={(e) => setFormData({ ...formData, ai_access_level: e.target.value })}
+                style={{ width: "100%", padding: "0.5rem" }}
+              >
+                {AI_ACCESS_LEVELS.map((level) => (
+                  <option key={level.value} value={level.value}>{level.label}</option>
+                ))}
+              </select>
+              <p style={{ margin: "0.5rem 0 0", fontSize: "0.75rem", color: "var(--muted)" }}>
+                {AI_ACCESS_LEVELS.find(l => l.value === formData.ai_access_level)?.description}
+              </p>
             </div>
 
             {selectedStaff.source_record_id && (

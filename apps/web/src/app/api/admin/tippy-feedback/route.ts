@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
         s.display_name as staff_name,
         tf.tippy_message,
         tf.user_correction,
+        tf.conversation_id,
         tf.entity_type,
         tf.entity_id,
         tf.feedback_type,

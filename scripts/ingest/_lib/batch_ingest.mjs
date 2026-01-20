@@ -9,12 +9,14 @@
  * - Connection pooling for reliability
  * - Progress logging
  * - Two-phase: bulk insert staged records, then bulk link to run
+ * - Auto-processing through Data Engine after ingest (optional)
  */
 
 import pg from 'pg';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
+import { processAfterIngest } from './data_engine_client.mjs';
 
 const { Pool } = pg;
 
@@ -74,6 +76,8 @@ export class BatchIngestRunner {
     this.sourceTable = options.sourceTable;
     this.batchSize = options.batchSize || 500;
     this.idFieldCandidates = options.idFieldCandidates || [];
+    this.autoProcess = options.autoProcess ?? true; // Auto-process through Data Engine
+    this.processAll = options.processAll ?? false; // Process all pending records
     this.pool = null;
     this.runId = null;
     this.startTime = null;
@@ -85,6 +89,7 @@ export class BatchIngestRunner {
       errors: 0,
       batches: 0,
     };
+    this.processStats = null; // Data Engine processing stats
   }
 
   async connect() {
@@ -132,6 +137,23 @@ export class BatchIngestRunner {
         run_status = 'completed', run_duration_ms = $4, completed_at = NOW()
       WHERE run_id = $1
     `, [this.runId, this.stats.inserted, this.stats.linked, durationMs]);
+
+    // Auto-process through Data Engine if enabled
+    if (this.autoProcess && this.stats.inserted > 0) {
+      try {
+        this.processStats = await processAfterIngest(
+          this.sourceSystem,
+          this.sourceTable,
+          {
+            batchSize: this.batchSize,
+            processAll: this.processAll,
+          }
+        );
+      } catch (e) {
+        console.error('Data Engine processing error:', e.message);
+        // Don't fail the ingest run if processing fails
+      }
+    }
   }
 
   async failRun(errorMessage) {
@@ -287,5 +309,8 @@ export const colors = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
 };
+
+// Re-export data engine functions for convenience
+export { processAfterIngest, processDataEngine, getDataEngineStats } from './data_engine_client.mjs';
 
 export default BatchIngestRunner;

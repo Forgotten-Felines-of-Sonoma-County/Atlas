@@ -15,6 +15,7 @@ interface Staff {
   is_active: boolean;
   hired_date: string | null;
   source_record_id: string | null;
+  ai_access_level: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest) {
         is_active,
         hired_date,
         source_record_id,
+        ai_access_level,
         created_at,
         updated_at
       FROM trapper.staff

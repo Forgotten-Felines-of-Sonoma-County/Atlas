@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
     const {
       tippy_message,
       user_correction,
+      conversation_id,
       conversation_context,
       entity_type,
       entity_id,
@@ -39,6 +40,8 @@ export async function POST(request: NextRequest) {
       "incorrect_location",
       "incorrect_person",
       "outdated_info",
+      "missing_data",
+      "missing_capability",
       "other",
     ];
     if (!validTypes.includes(feedback_type)) {
@@ -66,17 +69,19 @@ export async function POST(request: NextRequest) {
         staff_id,
         tippy_message,
         user_correction,
+        conversation_id,
         conversation_context,
         entity_type,
         entity_id,
         feedback_type
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING feedback_id, created_at
       `,
       [
         session.staff_id,
         tippy_message,
         user_correction,
+        conversation_id || null,
         conversation_context ? JSON.stringify(conversation_context) : null,
         entity_type || null,
         entity_id || null,
@@ -100,6 +105,8 @@ export async function POST(request: NextRequest) {
         incorrect_location: "data_correction",
         incorrect_person: "data_correction",
         outdated_info: "stale_data",
+        missing_data: "data_gap",
+        missing_capability: "feature_request",
         other: "other",
       };
 

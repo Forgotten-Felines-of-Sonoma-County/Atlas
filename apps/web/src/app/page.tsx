@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { formatDateLocal } from "@/lib/formatters";
+import { MyItemsWidget } from "@/components/MyItemsWidget";
 
 interface ActiveRequest {
   request_id: string;
@@ -674,6 +675,11 @@ export default function Home() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* My Items Section */}
+      <div style={{ marginTop: "24px" }}>
+        <MyItemsWidget maxItems={3} />
       </div>
 
       {/* Quick Actions */}

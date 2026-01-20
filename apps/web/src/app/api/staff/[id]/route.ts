@@ -16,6 +16,7 @@ interface Staff {
   hired_date: string | null;
   end_date: string | null;
   source_record_id: string | null;
+  ai_access_level: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -44,6 +45,7 @@ export async function GET(
         hired_date,
         end_date,
         source_record_id,
+        ai_access_level,
         created_at,
         updated_at
       FROM trapper.staff
@@ -92,6 +94,7 @@ export async function PATCH(
       'is_active',
       'hired_date',
       'end_date',
+      'ai_access_level',
     ];
 
     for (const field of allowedFields) {

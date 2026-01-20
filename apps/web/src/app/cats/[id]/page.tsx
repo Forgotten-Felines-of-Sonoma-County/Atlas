@@ -12,6 +12,7 @@ import { VerificationBadge, LastVerified } from "@/components/VerificationBadge"
 import { formatDateLocal } from "@/lib/formatters";
 import ReportDeceasedModal from "@/components/ReportDeceasedModal";
 import RecordBirthModal from "@/components/RecordBirthModal";
+import { MediaGallery } from "@/components/MediaGallery";
 
 interface Owner {
   person_id: string;
@@ -594,8 +595,17 @@ export default function CatDetailPage() {
         border: "1px solid #dee2e6",
       }}>
         <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
-          {/* Photo */}
-          <PhotoSection photoUrl={cat.photo_url} catName={cat.display_name} />
+          {/* Photo Gallery */}
+          <div style={{ width: "180px" }}>
+            <MediaGallery
+              entityType="cat"
+              entityId={cat.cat_id}
+              allowUpload={true}
+              maxDisplay={1}
+              defaultMediaType="cat_photo"
+              allowedMediaTypes={["cat_photo"]}
+            />
+          </div>
 
           {/* Patient Info */}
           <div style={{ flex: 1, minWidth: "200px" }}>

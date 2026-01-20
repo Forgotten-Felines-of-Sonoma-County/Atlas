@@ -29,6 +29,22 @@ interface BeaconCluster {
 
 export async function GET(request: NextRequest) {
   try {
+    // Check if the materialized view exists
+    const viewCheck = await queryOne<{ exists: boolean }>(`
+      SELECT EXISTS(
+        SELECT 1 FROM pg_matviews WHERE schemaname = 'trapper' AND matviewname = 'mv_beacon_clusters'
+      ) as exists
+    `, []);
+
+    if (!viewCheck?.exists) {
+      return NextResponse.json({
+        error: "Beacon clusters view not deployed",
+        missing: ["mv_beacon_clusters (MIG_341)"],
+        hint: "Run: ./scripts/deploy-critical-migrations.sh",
+        health_check: "/api/beacon/health",
+      }, { status: 503 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
 
     // Clustering parameters
@@ -126,10 +142,22 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error fetching Beacon clusters:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch Beacon cluster data" },
-      { status: 500 }
-    );
+
+    const errorMessage = String(error);
+    if (errorMessage.includes("does not exist") || errorMessage.includes("relation")) {
+      return NextResponse.json({
+        error: "Beacon clusters view or function not found",
+        details: errorMessage,
+        hint: "Run: ./scripts/deploy-critical-migrations.sh",
+        health_check: "/api/beacon/health",
+      }, { status: 503 });
+    }
+
+    return NextResponse.json({
+      error: "Failed to fetch Beacon cluster data",
+      details: errorMessage,
+      health_check: "/api/health/db",
+    }, { status: 500 });
   }
 }
 

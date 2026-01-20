@@ -18,6 +18,7 @@ import { PlaceLinksSection } from "@/components/PlaceLinksSection";
 import { SiteStatsCard } from "@/components/SiteStatsCard";
 import { VerificationBadge, LastVerified } from "@/components/VerificationBadge";
 import { formatDateLocal } from "@/lib/formatters";
+import { MediaGallery } from "@/components/MediaGallery";
 
 interface Cat {
   cat_id: string;
@@ -38,6 +39,18 @@ interface PlaceRelationship {
   place_name: string;
   relationship_type: string;
   relationship_label: string;
+}
+
+interface PlaceContext {
+  context_id: string;
+  context_type: string;
+  context_label: string;
+  valid_from: string | null;
+  evidence_type: string | null;
+  confidence: number;
+  is_verified: boolean;
+  assigned_at: string;
+  source_system: string | null;
 }
 
 interface PlaceDetail {
@@ -61,6 +74,7 @@ interface PlaceDetail {
   verified_at: string | null;
   verified_by: string | null;
   verified_by_name: string | null;
+  contexts?: PlaceContext[];
 }
 
 interface RelatedRequest {
@@ -380,6 +394,20 @@ export default function PlaceDetailPage() {
     neighborhood: "#6c757d",
   };
 
+  // Context type colors for badges
+  const contextTypeColors: Record<string, { bg: string; color: string }> = {
+    colony_site: { bg: "#dc3545", color: "#fff" },
+    foster_home: { bg: "#198754", color: "#fff" },
+    adopter_residence: { bg: "#0d6efd", color: "#fff" },
+    volunteer_location: { bg: "#6610f2", color: "#fff" },
+    trapper_base: { bg: "#fd7e14", color: "#000" },
+    trap_pickup: { bg: "#ffc107", color: "#000" },
+    clinic: { bg: "#20c997", color: "#000" },
+    shelter: { bg: "#6f42c1", color: "#fff" },
+    partner_org: { bg: "#0dcaf0", color: "#000" },
+    feeding_station: { bg: "#adb5bd", color: "#000" },
+  };
+
   return (
     <div>
       <BackButton fallbackHref="/places" />
@@ -399,6 +427,25 @@ export default function PlaceDetailPage() {
               {place.place_kind.replace(/_/g, " ")}
             </span>
           )}
+          {/* Context badges */}
+          {place.contexts && place.contexts.length > 0 && place.contexts.map((ctx) => {
+            const colors = contextTypeColors[ctx.context_type] || { bg: "#6c757d", color: "#fff" };
+            return (
+              <span
+                key={ctx.context_id}
+                className="badge"
+                style={{
+                  fontSize: "0.5em",
+                  background: colors.bg,
+                  color: colors.color,
+                }}
+                title={`${ctx.context_label}${ctx.is_verified ? " (Verified)" : ""} - ${Math.round(ctx.confidence * 100)}% confidence`}
+              >
+                {ctx.context_label}
+                {ctx.is_verified && " ✓"}
+              </span>
+            );
+          })}
           <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
             <a
               href={`/places/${place.place_id}/print`}
@@ -677,6 +724,17 @@ export default function PlaceDetailPage() {
             </span>
           </div>
         </div>
+      </Section>
+
+      {/* Site Photos */}
+      <Section title="Photos">
+        <MediaGallery
+          entityType="place"
+          entityId={place.place_id}
+          allowUpload={true}
+          defaultMediaType="site_photo"
+          allowedMediaTypes={["site_photo", "evidence"]}
+        />
       </Section>
 
       {/* Cats - Clickable Links */}

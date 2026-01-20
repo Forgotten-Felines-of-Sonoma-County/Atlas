@@ -38,6 +38,22 @@ interface BeaconPlace {
 
 export async function GET(request: NextRequest) {
   try {
+    // Check if the view exists before querying
+    const viewCheck = await queryOne<{ exists: boolean }>(`
+      SELECT EXISTS(
+        SELECT 1 FROM pg_views WHERE schemaname = 'trapper' AND viewname = 'v_beacon_place_metrics'
+      ) as exists
+    `, []);
+
+    if (!viewCheck?.exists) {
+      return NextResponse.json({
+        error: "Beacon places view not deployed",
+        missing: ["v_beacon_place_metrics (MIG_340)"],
+        hint: "Run: ./scripts/deploy-critical-migrations.sh",
+        health_check: "/api/beacon/health",
+      }, { status: 503 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
 
     // Geographic bounds: "south,west,north,east" (lat,lng,lat,lng)
@@ -149,9 +165,21 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error fetching Beacon places:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch Beacon place data" },
-      { status: 500 }
-    );
+
+    const errorMessage = String(error);
+    if (errorMessage.includes("does not exist") || errorMessage.includes("relation")) {
+      return NextResponse.json({
+        error: "Beacon places view not found",
+        details: errorMessage,
+        hint: "Run: ./scripts/deploy-critical-migrations.sh",
+        health_check: "/api/beacon/health",
+      }, { status: 503 });
+    }
+
+    return NextResponse.json({
+      error: "Failed to fetch Beacon place data",
+      details: errorMessage,
+      health_check: "/api/health/db",
+    }, { status: 500 });
   }
 }

@@ -8,6 +8,7 @@ interface TippyFeedback {
   staff_name: string;
   tippy_message: string;
   user_correction: string;
+  conversation_id: string | null;
   entity_type: string | null;
   entity_id: string | null;
   entity_name: string | null;
@@ -43,6 +44,8 @@ const FEEDBACK_TYPE_LABELS: Record<string, string> = {
   incorrect_location: "Wrong Location",
   incorrect_person: "Wrong Person",
   outdated_info: "Outdated Info",
+  missing_data: "Missing Data",
+  missing_capability: "Feature Request",
   other: "Other",
 };
 

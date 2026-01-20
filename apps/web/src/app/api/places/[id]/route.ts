@@ -22,6 +22,18 @@ interface PlaceDetailRow {
   person_count: number;
 }
 
+interface PlaceContext {
+  context_id: string;
+  context_type: string;
+  context_label: string;
+  valid_from: string | null;
+  evidence_type: string | null;
+  confidence: number;
+  is_verified: boolean;
+  assigned_at: string;
+  source_system: string | null;
+}
+
 interface VerificationInfo {
   verified_at: string | null;
   verified_by: string | null;
@@ -95,11 +107,33 @@ export async function GET(
       [placeId]
     );
 
+    // Fetch place contexts (colony_site, foster_home, etc.)
+    const contextsResult = await query<PlaceContext>(
+      `SELECT
+         pc.context_id,
+         pc.context_type,
+         pct.display_label AS context_label,
+         pc.valid_from,
+         pc.evidence_type,
+         pc.confidence,
+         pc.is_verified,
+         pc.assigned_at,
+         pc.source_system
+       FROM trapper.place_contexts pc
+       JOIN trapper.place_context_types pct ON pct.context_type = pc.context_type
+       WHERE pc.place_id = $1
+         AND pc.valid_to IS NULL
+       ORDER BY pct.sort_order`,
+      [placeId]
+    );
+    const contexts = contextsResult?.rows || [];
+
     const response = {
       ...place,
       verified_at: verification?.verified_at || null,
       verified_by: verification?.verified_by || null,
       verified_by_name: verification?.verified_by_name || null,
+      contexts,
     };
 
     // Include redirect info if the original ID was merged

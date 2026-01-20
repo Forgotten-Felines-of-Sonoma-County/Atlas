@@ -127,6 +127,8 @@ Where:
 - `person_roles` - Role assignments (trapper, volunteer, etc.)
 - `request_trapper_assignments` - Many-to-many request-trapper links
 - `processing_jobs` - Centralized job queue for data processing
+- `place_contexts` - Place relevance tags (colony_site, foster_home, etc.)
+- `person_cat_relationships` - Foster/adopter/owner links between people and cats
 
 ### Centralized Processing Pipeline (MIG_312, MIG_313)
 
@@ -361,6 +363,9 @@ Required in `.env`:
 | `v_data_engine_health` | Data Engine health metrics |
 | `v_data_engine_review_queue` | Pending identity reviews |
 | `v_households_summary` | Household statistics by place |
+| `v_place_active_contexts` | Active place context tags |
+| `v_place_context_summary` | Aggregated contexts per place |
+| `v_person_cat_history` | Person-cat relationships with details |
 
 ## Key Tables
 
@@ -441,6 +446,55 @@ INSERT INTO trapper.place_colony_estimates (
 ### Key View
 `v_place_colony_status` - Aggregates all estimates with weighted confidence
 
+## Place Context Tagging (MIG_464)
+
+Places are tagged with contextual relevance (colony site, foster home, adopter residence, etc.). This enables queries like "show me foster homes in Petaluma" or "list colony sites in West County."
+
+### Key Tables
+- `place_context_types` - Lookup table for context types (colony_site, foster_home, etc.)
+- `place_contexts` - Tags places with context types (temporal validity, evidence tracking)
+
+### Context Types
+| Type | Description |
+|------|-------------|
+| `colony_site` | Active or historical colony location |
+| `foster_home` | Location where cats are fostered |
+| `adopter_residence` | Home where adopted cats live |
+| `volunteer_location` | Volunteer's home/base |
+| `trapper_base` | Trapper's home/staging location |
+| `clinic` | Veterinary clinic |
+| `shelter` | Animal shelter |
+| `partner_org` | Partner organization |
+
+### Functions
+- `assign_place_context(place_id, context_type, ...)` - Idempotent context assignment
+- `end_place_context(place_id, context_type)` - End active context
+
+### Views
+- `v_place_active_contexts` - All currently active contexts with labels
+- `v_place_context_summary` - Aggregated contexts per place
+
+### Auto-Assignment
+When requests are created with a place, `colony_site` context is auto-assigned via trigger.
+
+## Person-Cat Relationships (MIG_465)
+
+Tracks relationships between people and cats (foster, adopter, owner, caretaker).
+
+### Key Tables
+- `person_cat_relationships` - Links people to cats with relationship type
+
+### Views
+- `v_person_cat_history` - Shows person-cat relationships with cat details
+- `query_person_cat_history(name, email, type)` - Query function for foster/adopter history
+
+### ShelterLuv Outcomes
+ShelterLuv adoption/return outcomes are processed via:
+```sql
+SELECT * FROM trapper.process_shelterluv_outcomes(500);
+```
+This creates adopter relationships and tags places with `adopter_residence` context.
+
 ## Cat-Place Linking (MIG_235)
 
 Cats from clinic appointments are linked to places via owner contact info:
@@ -472,3 +526,5 @@ Trappers are linked to appointments directly for accurate stats:
 - Don't assume single trapper per request (use `request_trapper_assignments`)
 - Don't confuse colony size (estimate) with cats caught (verified clinic data)
 - Don't return 404 for merged entities - Check `merged_into_place_id` and redirect
+- Don't hardcode place context types - Use `place_context_types` table
+- Don't INSERT directly into place_contexts - Use `assign_place_context()` function

@@ -115,6 +115,7 @@ BEGIN
     END LOOP;
 
     -- Flag data entry errors (addresses in Animal ID field)
+    -- Exclude 'SCAS' placeholder (those cats are identifiable by microchip)
     FOR v_record IN
         SELECT
             sr.id as staged_record_id,
@@ -124,13 +125,15 @@ BEGIN
         WHERE sr.source_system = 'clinichq'
           AND sr.source_table = 'owner_info'
           AND sr.payload->>'Owner Last Name' = 'SCAS'
+          AND sr.payload->>'Owner First Name' != 'SCAS'  -- Exclude SCAS placeholder
           AND (
               -- Looks like an address (has numbers and common street suffixes)
               sr.payload->>'Owner First Name' ~* '(ave|st|dr|ln|rd|blvd|way|ct|cir|hwy|lane|drive|street|avenue|road|boulevard)'
-              -- Or doesn't match SCAS animal ID pattern
+              -- Or doesn't match SCAS animal ID pattern and isn't a valid name
               OR (sr.payload->>'Owner First Name' !~ '^A[0-9]+'
                   AND sr.payload->>'Owner First Name' !~ '^[0-9]+$'
-                  AND LENGTH(sr.payload->>'Owner First Name') > 3)
+                  AND LENGTH(sr.payload->>'Owner First Name') > 3
+                  AND sr.payload->>'Owner First Name' !~* '^(mr\.|mrs\.|ms\.)?[a-z]+$')  -- Allow simple names
           )
           AND NOT EXISTS (
               SELECT 1 FROM trapper.data_quality_issues dq

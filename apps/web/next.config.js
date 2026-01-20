@@ -1,8 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Server Actions config (stable in Next.js 14+)
-  serverActions: {
-    bodySizeLimit: '50mb',
+  // Server Actions are enabled by default in Next.js 14+
+  // Body size limit for server actions
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '50mb',
+    },
   },
 };
 

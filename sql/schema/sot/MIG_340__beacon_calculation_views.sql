@@ -42,17 +42,18 @@ WITH place_cats AS (
         c.cat_id,
         c.display_name as cat_name,
         c.sex,
-        -- Check if altered via appointments
+        -- Check if altered via appointments (spay/neuter procedure)
         EXISTS(
             SELECT 1 FROM trapper.sot_appointments a
             WHERE a.cat_id = c.cat_id
               AND (
-                  a.procedure_type IN ('spay', 'neuter', 'spay/neuter')
-                  OR a.is_altered = TRUE
+                  a.is_spay = TRUE
+                  OR a.is_neuter = TRUE
+                  OR a.service_is_spay = TRUE
+                  OR a.service_is_neuter = TRUE
               )
         ) as is_altered,
-        cpr.first_seen_at,
-        cpr.last_seen_at,
+        cpr.created_at as first_seen_at,
         cpr.relationship_type
     FROM trapper.cat_place_relationships cpr
     JOIN trapper.sot_cats c ON c.cat_id = cpr.cat_id

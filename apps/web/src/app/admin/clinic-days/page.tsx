@@ -113,6 +113,22 @@ export default function ClinicDaysPage() {
     notes: "",
   });
 
+  // Master list import
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    imported?: number;
+    matched?: number;
+    match_details?: { high_confidence: number; medium_confidence: number; low_confidence: number };
+    trappers_resolved?: number;
+    trappers_total?: number;
+    summary?: { females_altered: number; males_altered: number; walkin: number; already_altered: number };
+    error?: string;
+    existingCount?: number;
+  } | null>(null);
+
   // New entry form
   const [newEntry, setNewEntry] = useState({
     source_description: "",
@@ -349,6 +365,73 @@ export default function ClinicDaysPage() {
         notes: selectedDay.notes || "",
       });
       setShowEditModal(true);
+    }
+  };
+
+  // Import master list
+  const handleImport = async () => {
+    if (!importFile) {
+      alert("Please select a file");
+      return;
+    }
+
+    setImporting(true);
+    setImportResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+
+      const res = await fetch(`/api/admin/clinic-days/${selectedDate}/import`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setImportResult({ success: true, ...data });
+        // Reload entries and day data
+        const dayRes = await fetch(`/api/admin/clinic-days/${selectedDate}`);
+        const dayData = await dayRes.json();
+        setSelectedDay(dayData.clinic_day);
+        setEntries(dayData.entries || []);
+        // Reload clinic days list
+        const listRes = await fetch("/api/admin/clinic-days?include_comparison=true&limit=90");
+        const listData = await listRes.json();
+        setClinicDays(listData.clinic_days || []);
+      } else {
+        setImportResult({ success: false, error: data.error, existingCount: data.existingCount });
+      }
+    } catch {
+      setImportResult({ success: false, error: "Failed to import file" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Clear master list entries
+  const handleClearImport = async () => {
+    if (!confirm("Delete all master list entries for this date? This cannot be undone.")) return;
+
+    try {
+      const res = await fetch(`/api/admin/clinic-days/${selectedDate}/import`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        alert(`Deleted ${data.deleted} entries`);
+        // Reload
+        const dayRes = await fetch(`/api/admin/clinic-days/${selectedDate}`);
+        const dayData = await dayRes.json();
+        setSelectedDay(dayData.clinic_day);
+        setEntries(dayData.entries || []);
+        setImportResult(null);
+        setImportFile(null);
+      }
+    } catch {
+      alert("Failed to delete entries");
     }
   };
 
@@ -640,6 +723,13 @@ export default function ClinicDaysPage() {
                     Edit Day Settings
                   </button>
                 )}
+                <button
+                  onClick={() => { setShowImportModal(true); setImportResult(null); setImportFile(null); }}
+                  className="btn"
+                  style={{ background: "var(--success-bg)", color: "var(--success-text)" }}
+                >
+                  Import Master List
+                </button>
                 <button
                   onClick={loadComparison}
                   className="btn"
@@ -1210,6 +1300,129 @@ export default function ClinicDaysPage() {
                 <button onClick={handleUpdateDay} className="btn btn-primary">
                   Save Changes
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Master List Modal */}
+      {showImportModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={(e) => e.target === e.currentTarget && setShowImportModal(false)}
+        >
+          <div className="card" style={{ width: "560px", maxWidth: "90%" }}>
+            <h2 style={{ marginTop: 0 }}>Import Master List</h2>
+            <p style={{ color: "var(--muted)", marginBottom: "16px" }}>
+              Import SharePoint master list Excel file for{" "}
+              {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div>
+                <label style={{ fontSize: "0.85rem", fontWeight: 500 }}>Excel File (.xlsx)</label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    marginTop: "4px",
+                    border: "1px solid var(--card-border)",
+                    borderRadius: "4px",
+                    background: "var(--section-bg)",
+                    color: "var(--foreground)",
+                  }}
+                />
+                {importFile && (
+                  <p style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "4px" }}>
+                    Selected: {importFile.name}
+                  </p>
+                )}
+              </div>
+
+              {/* Import Result */}
+              {importResult && (
+                <div
+                  style={{
+                    padding: "12px",
+                    borderRadius: "8px",
+                    background: importResult.success ? "var(--success-bg)" : "var(--danger-bg)",
+                    border: `1px solid ${importResult.success ? "var(--success-text)" : "var(--danger-text)"}`,
+                  }}
+                >
+                  {importResult.success ? (
+                    <>
+                      <h4 style={{ margin: "0 0 8px 0", color: "var(--success-text)" }}>Import Successful</h4>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "0.85rem" }}>
+                        <div><strong>Imported:</strong> {importResult.imported} entries</div>
+                        <div><strong>Matched:</strong> {importResult.matched} to ClinicHQ</div>
+                        <div><strong>Trappers:</strong> {importResult.trappers_resolved}/{importResult.trappers_total} resolved</div>
+                        <div><strong>Unmatched:</strong> {(importResult.imported || 0) - (importResult.matched || 0)}</div>
+                      </div>
+                      {importResult.match_details && (
+                        <div style={{ marginTop: "8px", fontSize: "0.8rem", color: "var(--muted)" }}>
+                          Match confidence: {importResult.match_details.high_confidence} high, {importResult.match_details.medium_confidence} medium, {importResult.match_details.low_confidence} low
+                        </div>
+                      )}
+                      {importResult.summary && (
+                        <div style={{ marginTop: "8px", fontSize: "0.8rem" }}>
+                          <strong>Summary:</strong> {importResult.summary.females_altered} spays, {importResult.summary.males_altered} neuters, {importResult.summary.walkin} wellness, {importResult.summary.already_altered} already altered
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <h4 style={{ margin: "0 0 8px 0", color: "var(--danger-text)" }}>Import Failed</h4>
+                      <p style={{ margin: 0 }}>{importResult.error}</p>
+                      {importResult.existingCount && importResult.existingCount > 0 && (
+                        <button
+                          onClick={handleClearImport}
+                          style={{
+                            marginTop: "8px",
+                            padding: "6px 12px",
+                            background: "var(--danger-text)",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          Clear existing entries and retry
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "8px" }}>
+                <button onClick={() => setShowImportModal(false)} className="btn">
+                  {importResult?.success ? "Done" : "Cancel"}
+                </button>
+                {!importResult?.success && (
+                  <button
+                    onClick={handleImport}
+                    className="btn btn-primary"
+                    disabled={!importFile || importing}
+                  >
+                    {importing ? "Importing..." : "Import"}
+                  </button>
+                )}
               </div>
             </div>
           </div>

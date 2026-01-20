@@ -38,7 +38,9 @@ RETURNS TABLE (
     cluster_status TEXT,
     bounding_box_geojson TEXT,
     cluster_audit JSONB
-) AS $$
+)
+SET search_path = extensions, public, trapper
+AS $$
 BEGIN
     RETURN QUERY
     WITH clustered AS (
