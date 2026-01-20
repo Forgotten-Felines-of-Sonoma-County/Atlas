@@ -241,6 +241,7 @@ export function AdminSidebar({ children }: { children: React.ReactNode }) {
         { label: "Training Materials", href: "/admin/education-materials", icon: "📚" },
         { label: "Automations", href: "/admin/automations", icon: "⚡" },
         { label: "Staff", href: "/admin/staff", icon: "👥" },
+        { label: "Trappers", href: "/trappers", icon: "🪤" },
       ],
     },
     {

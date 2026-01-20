@@ -16,6 +16,17 @@ export interface ToolResult {
 }
 
 /**
+ * Context passed to tool execution for staff-specific operations
+ */
+export interface ToolContext {
+  staffId: string;
+  staffName: string;
+  aiAccessLevel: string;
+  conversationId?: string;
+  recentToolResults?: ToolResult[];  // For save_lookup to reference prior queries
+}
+
+/**
  * Tool definitions for Claude's tool use feature
  */
 export const TIPPY_TOOLS = [
@@ -92,16 +103,31 @@ export const TIPPY_TOOLS = [
   {
     name: "query_cats_altered_in_area",
     description:
-      "Get count of cats that have been spayed/neutered in a specific city or area. Use when user asks 'how many cats have we altered/fixed/spayed/neutered in [city]?' or similar area-based alteration questions.",
+      "Get count of cats that have been spayed/neutered in a specific city, region, or area. IMPORTANT: Use this for ANY regional questions like 'west county', 'north county', 'russian river', 'wine country', etc. Also use for city-level questions like 'Santa Rosa', 'Petaluma'. Handles regional names by expanding to constituent cities.",
     input_schema: {
       type: "object" as const,
       properties: {
         area: {
           type: "string",
-          description: "City or area name to search for (e.g., 'Novato', 'Santa Rosa', 'Petaluma')",
+          description: "City or region name. Can be a city (e.g., 'Santa Rosa', 'Petaluma'), a region (e.g., 'west county', 'russian river', 'wine country', 'north county'), or a neighborhood (e.g., 'Coffey Park', 'Rincon Valley')",
         },
       },
       required: ["area"],
+    },
+  },
+  {
+    name: "query_region_stats",
+    description:
+      "Get comprehensive statistics for a region or area including cats, requests, and colonies. Use for broad questions like 'what's happening in west county?', 'tell me about the russian river area', 'cat population in north county'. Handles regional names (west county, russian river, wine country, north county, south county, sonoma valley, the springs, etc.)",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        region: {
+          type: "string",
+          description: "Region or area name (e.g., 'west county', 'russian river', 'north county', 'wine country', 'Petaluma area')",
+        },
+      },
+      required: ["region"],
     },
   },
   {
@@ -198,14 +224,231 @@ export const TIPPY_TOOLS = [
       required: [],
     },
   },
+  {
+    name: "create_reminder",
+    description:
+      "Create a personal reminder for the current staff member. Use when they say things like 'Remind me to check on X', 'Don't let me forget...', 'I need to follow up on X next week'. Supports relative times like 'tomorrow', 'next week', 'in 3 days'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        title: {
+          type: "string",
+          description: "Short title for the reminder (e.g., 'Check on Oak St colony', 'Follow up with Smith')",
+        },
+        notes: {
+          type: "string",
+          description: "Optional additional details or context",
+        },
+        due_time: {
+          type: "string",
+          description: "When to remind - accepts relative (tomorrow, next week, in 3 days, in 2 hours) or ISO date string",
+        },
+        entity_type: {
+          type: "string",
+          enum: ["place", "cat", "person", "request", "intake"],
+          description: "Type of entity this reminder relates to (optional)",
+        },
+        entity_identifier: {
+          type: "string",
+          description: "Address, name, or ID to link to an entity (optional - Tippy will try to find the entity)",
+        },
+      },
+      required: ["title", "due_time"],
+    },
+  },
+  {
+    name: "save_lookup",
+    description:
+      "Save the current research/lookup to the staff member's personal lookups for later reference. Use when they say 'save this', 'add this to my lookups', 'I want to remember this research'. Only call AFTER you've gathered data to save.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        title: {
+          type: "string",
+          description: "Title for the saved lookup (e.g., 'Oak St colony research', 'Smith family history')",
+        },
+        summary: {
+          type: "string",
+          description: "Brief summary of findings to show in the dashboard",
+        },
+        query_text: {
+          type: "string",
+          description: "The original question/search that was asked",
+        },
+      },
+      required: ["title", "summary"],
+    },
+  },
+  {
+    name: "log_data_discrepancy",
+    description:
+      "Internal tool to log a data discrepancy found during lookup. Use when raw ClinicHQ data doesn't match processed Atlas records. Do NOT announce to user - just log silently for admin review.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        title: {
+          type: "string",
+          description: "Brief description of the discrepancy",
+        },
+        description: {
+          type: "string",
+          description: "Detailed explanation of the mismatch",
+        },
+        entity_type: {
+          type: "string",
+          enum: ["cat", "place", "person", "request"],
+          description: "Type of entity affected",
+        },
+        entity_id: {
+          type: "string",
+          description: "UUID of the affected entity (if known)",
+        },
+        raw_data: {
+          type: "object",
+          description: "The raw/staged record data",
+        },
+        processed_data: {
+          type: "object",
+          description: "The processed Atlas record data",
+        },
+        suggested_fix: {
+          type: "string",
+          description: "Suggested resolution approach",
+        },
+      },
+      required: ["title", "description"],
+    },
+  },
+  {
+    name: "log_site_observation",
+    description:
+      "Log a site observation or cat sighting report from the user. Creates a PENDING review item with lower confidence (40%) than UI submissions (75%). After logging, encourage the user to submit via the Atlas UI for a higher-weight observation. Use when someone says 'I saw X cats at Y location' or reports colony observations.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        address: {
+          type: "string",
+          description: "Address or location description where observation was made",
+        },
+        cat_count: {
+          type: "number",
+          description: "Estimated number of cats observed",
+        },
+        observation_notes: {
+          type: "string",
+          description: "Additional details about the observation (cat descriptions, behavior, conditions)",
+        },
+        observer_name: {
+          type: "string",
+          description: "Name of person making the observation (from context)",
+        },
+      },
+      required: ["address", "cat_count"],
+    },
+  },
+  {
+    name: "query_person_cat_relationships",
+    description:
+      "Get foster/adopter/owner history for a person - how many cats they've fostered, adopted, or owned. Use when someone asks 'How many cats has X fostered?' or 'What cats has Jane adopted?' Also returns where cats came from (clinic, ShelterLuv, etc.)",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        person_name: {
+          type: "string",
+          description: "Person's name to search for",
+        },
+        person_email: {
+          type: "string",
+          description: "Person's email to search for (more precise than name)",
+        },
+        relationship_type: {
+          type: "string",
+          enum: ["adopter", "foster", "owner", "caretaker"],
+          description: "Optional filter by relationship type",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "query_places_by_context",
+    description:
+      "Find places by context type - colony sites, foster homes, adopter residences, clinics, etc. Use when someone asks 'Show me foster homes in Petaluma' or 'Where are the colony sites in west county?'",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        context_type: {
+          type: "string",
+          enum: ["colony_site", "foster_home", "adopter_residence", "volunteer_location", "trapper_base", "clinic", "shelter", "partner_org"],
+          description: "Type of place context to search for",
+        },
+        area: {
+          type: "string",
+          description: "Optional area/city/region to filter by (e.g., 'Petaluma', 'west county', 'Santa Rosa')",
+        },
+      },
+      required: ["context_type"],
+    },
+  },
+  {
+    name: "query_cat_journey",
+    description:
+      "Track a cat's journey through FFSC - where trapped, clinic visits, foster placements, adoption. Use when someone asks 'What's the history of cat with microchip X?' or 'Where did this cat come from?'",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        microchip: {
+          type: "string",
+          description: "Microchip number to search for",
+        },
+        cat_name: {
+          type: "string",
+          description: "Cat's name to search for",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "query_trapper_stats",
+    description:
+      "Get statistics about FFSC trappers - counts by type, active/inactive status, performance metrics, or individual trapper details. Use when users ask about trappers, active volunteers, trapper counts, or trapper performance.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query_type: {
+          type: "string",
+          enum: ["summary", "by_type", "individual", "top_performers"],
+          description:
+            "summary=org-wide counts, by_type=breakdown by trapper type, individual=specific trapper stats, top_performers=ranked list",
+        },
+        trapper_name: {
+          type: "string",
+          description: "For individual lookups - trapper's name to search",
+        },
+        trapper_type: {
+          type: "string",
+          enum: ["all", "ffsc_trapper", "community_trapper", "coordinator", "head_trapper"],
+          description: "Filter by trapper type (for by_type and top_performers)",
+        },
+        limit: {
+          type: "number",
+          description: "Max results for lists (default 10)",
+        },
+      },
+      required: ["query_type"],
+    },
+  },
 ];
 
 /**
  * Execute a tool call and return results
+ * Context is optional for backward compatibility but required for staff-specific tools
  */
 export async function executeToolCall(
   toolName: string,
-  toolInput: Record<string, unknown>
+  toolInput: Record<string, unknown>,
+  context?: ToolContext
 ): Promise<ToolResult> {
   try {
     switch (toolName) {
@@ -229,6 +472,9 @@ export async function executeToolCall(
 
       case "query_cats_altered_in_area":
         return await queryCatsAlteredInArea(toolInput.area as string);
+
+      case "query_region_stats":
+        return await queryRegionStats(toolInput.region as string);
 
       case "query_person_history":
         return await queryPersonHistory(toolInput.name_search as string);
@@ -254,6 +500,70 @@ export async function executeToolCall(
           toolInput.cat_name as string | undefined,
           toolInput.owner_name as string | undefined,
           toolInput.owner_phone as string | undefined
+        );
+
+      case "create_reminder":
+        return await createReminder(
+          toolInput.title as string,
+          toolInput.due_time as string,
+          toolInput.notes as string | undefined,
+          toolInput.entity_type as string | undefined,
+          toolInput.entity_identifier as string | undefined,
+          context
+        );
+
+      case "save_lookup":
+        return await saveLookup(
+          toolInput.title as string,
+          toolInput.summary as string,
+          toolInput.query_text as string | undefined,
+          context
+        );
+
+      case "log_data_discrepancy":
+        return await logDataDiscrepancy(
+          toolInput.title as string,
+          toolInput.description as string,
+          toolInput.entity_type as string | undefined,
+          toolInput.entity_id as string | undefined,
+          toolInput.raw_data as Record<string, unknown> | undefined,
+          toolInput.processed_data as Record<string, unknown> | undefined,
+          toolInput.suggested_fix as string | undefined
+        );
+
+      case "log_site_observation":
+        return await logSiteObservation(
+          toolInput.address as string,
+          toolInput.cat_count as number,
+          toolInput.observation_notes as string | undefined,
+          context
+        );
+
+      case "query_person_cat_relationships":
+        return await queryPersonCatRelationships(
+          toolInput.person_name as string | undefined,
+          toolInput.person_email as string | undefined,
+          toolInput.relationship_type as string | undefined
+        );
+
+      case "query_places_by_context":
+        return await queryPlacesByContext(
+          toolInput.context_type as string,
+          toolInput.area as string | undefined
+        );
+
+      case "query_cat_journey":
+        return await queryCatJourney(
+          toolInput.microchip as string | undefined,
+          toolInput.cat_name as string | undefined
+        );
+
+      case "query_trapper_stats":
+        return await queryTrapperStats(
+          toolInput.query_type as string,
+          toolInput.trapper_name as string | undefined,
+          toolInput.trapper_type as string | undefined,
+          toolInput.limit as number | undefined
         );
 
       default:
@@ -845,6 +1155,140 @@ async function queryCatsAlteredInArea(area: string): Promise<ToolResult> {
       summary: isRegionalSearch
         ? `${result.total_cats_altered} cats have been altered in ${area} (includes: ${searchPatterns.slice(0, 5).join(", ")}${searchPatterns.length > 5 ? ", and more" : ""})`
         : `${result.total_cats_altered} cats have been altered in ${area}`,
+    },
+  };
+}
+
+/**
+ * Query comprehensive stats for a region
+ * Handles regional names like "west county", "russian river", etc.
+ */
+async function queryRegionStats(region: string): Promise<ToolResult> {
+  // Get all cities/areas this region encompasses
+  const searchPatterns = getAreaSearchPatterns(region);
+  const isRegionalSearch = searchPatterns.length > 1;
+
+  // Build the WHERE clause for multiple patterns
+  const patternPlaceholders = searchPatterns.map((_, i) => `p.formatted_address ILIKE $${i + 1}`).join(" OR ");
+  const params = searchPatterns.map(p => `%${p}%`);
+
+  // Get comprehensive stats for the region
+  const result = await queryOne<{
+    total_places: number;
+    total_cats: number;
+    cats_altered: number;
+    cats_unaltered: number;
+    total_requests: number;
+    completed_requests: number;
+    active_requests: number;
+    total_colony_estimates: number;
+    avg_colony_size: number;
+    largest_colony: number;
+    cities_with_activity: string[];
+  }>(
+    `
+    WITH regional_places AS (
+      SELECT DISTINCT p.place_id, p.formatted_address
+      FROM trapper.places p
+      WHERE (${patternPlaceholders})
+        AND p.merged_into_place_id IS NULL
+    ),
+    cat_stats AS (
+      SELECT
+        COUNT(DISTINCT c.cat_id) as total_cats,
+        COUNT(DISTINCT c.cat_id) FILTER (WHERE c.altered_status IN ('spayed', 'neutered', 'Yes')) as cats_altered,
+        COUNT(DISTINCT c.cat_id) FILTER (WHERE c.altered_status IN ('intact', 'No') OR c.altered_status IS NULL) as cats_unaltered
+      FROM regional_places rp
+      JOIN trapper.cat_place_relationships cpr ON cpr.place_id = rp.place_id
+      JOIN trapper.sot_cats c ON c.cat_id = cpr.cat_id
+    ),
+    request_stats AS (
+      SELECT
+        COUNT(*) as total_requests,
+        COUNT(*) FILTER (WHERE r.status = 'completed') as completed_requests,
+        COUNT(*) FILTER (WHERE r.status NOT IN ('completed', 'cancelled')) as active_requests
+      FROM trapper.sot_requests r
+      JOIN regional_places rp ON r.place_id = rp.place_id
+    ),
+    colony_stats AS (
+      SELECT
+        COUNT(*) as total_estimates,
+        COALESCE(AVG(pce.total_cats), 0) as avg_colony_size,
+        COALESCE(MAX(pce.total_cats), 0) as largest_colony
+      FROM trapper.place_colony_estimates pce
+      JOIN regional_places rp ON pce.place_id = rp.place_id
+    ),
+    city_activity AS (
+      SELECT DISTINCT
+        CASE
+          ${searchPatterns.map(city => `WHEN rp.formatted_address ILIKE '%${city.replace(/'/g, "''")}%' THEN '${city.replace(/'/g, "''")}'`).join("\n          ")}
+          ELSE 'Other'
+        END as city
+      FROM regional_places rp
+    )
+    SELECT
+      (SELECT COUNT(*) FROM regional_places) as total_places,
+      cs.total_cats,
+      cs.cats_altered,
+      cs.cats_unaltered,
+      rs.total_requests,
+      rs.completed_requests,
+      rs.active_requests,
+      cos.total_estimates as total_colony_estimates,
+      ROUND(cos.avg_colony_size::numeric, 1) as avg_colony_size,
+      cos.largest_colony,
+      ARRAY(SELECT city FROM city_activity WHERE city != 'Other' LIMIT 10) as cities_with_activity
+    FROM cat_stats cs, request_stats rs, colony_stats cos
+    `,
+    params
+  );
+
+  if (!result || (result.total_places === 0 && result.total_cats === 0)) {
+    return {
+      success: true,
+      data: {
+        found: false,
+        region: region,
+        searched_cities: isRegionalSearch ? searchPatterns : undefined,
+        message: isRegionalSearch
+          ? `No data found for ${region} (searched: ${searchPatterns.slice(0, 5).join(", ")}${searchPatterns.length > 5 ? ", ..." : ""}). This region may be outside FFSC's primary service area.`
+          : `No data found for ${region}. This may be outside FFSC's primary service area.`,
+      },
+    };
+  }
+
+  // Calculate alteration rate
+  const totalTracked = (result.cats_altered || 0) + (result.cats_unaltered || 0);
+  const alterationRate = totalTracked > 0
+    ? Math.round((result.cats_altered / totalTracked) * 100)
+    : 0;
+
+  return {
+    success: true,
+    data: {
+      found: true,
+      region: region,
+      is_regional_search: isRegionalSearch,
+      searched_cities: searchPatterns,
+      stats: {
+        places_tracked: result.total_places,
+        cats_in_database: result.total_cats,
+        cats_altered: result.cats_altered,
+        cats_unaltered: result.cats_unaltered,
+        alteration_rate_pct: alterationRate,
+        total_requests: result.total_requests,
+        completed_requests: result.completed_requests,
+        active_requests: result.active_requests,
+        colony_estimates: result.total_colony_estimates,
+        avg_colony_size: result.avg_colony_size,
+        largest_colony: result.largest_colony,
+        cities_with_activity: result.cities_with_activity,
+      },
+      summary: `**${region}** (${isRegionalSearch ? searchPatterns.slice(0, 3).join(", ") + (searchPatterns.length > 3 ? ", ..." : "") : region}):
+• ${result.total_places} places tracked with ${result.total_cats} cats in database
+• ${result.cats_altered} cats altered (${alterationRate}% alteration rate)
+• ${result.total_requests} total requests (${result.completed_requests} completed, ${result.active_requests} active)
+• ${result.total_colony_estimates} colony estimates, avg size ~${result.avg_colony_size} cats`,
     },
   };
 }
@@ -1446,4 +1890,1059 @@ async function lookupCatAppointment(
         : `Note: Name in Atlas is "${atlasRec.cat_name}", in ClinicHQ booking it's "${rawRec.cat_name}". ${!chipMatch ? "Microchip numbers also differ." : ""}`,
     },
   };
+}
+
+/**
+ * Parse relative time strings into timestamps
+ */
+function parseRelativeTime(timeStr: string): Date {
+  const now = new Date();
+  const lower = timeStr.toLowerCase().trim();
+
+  // Handle relative times
+  if (lower === "tomorrow" || lower === "tomorrow morning") {
+    const date = new Date(now);
+    date.setDate(date.getDate() + 1);
+    date.setHours(9, 0, 0, 0); // 9 AM
+    return date;
+  }
+
+  if (lower === "tomorrow afternoon") {
+    const date = new Date(now);
+    date.setDate(date.getDate() + 1);
+    date.setHours(14, 0, 0, 0); // 2 PM
+    return date;
+  }
+
+  if (lower === "next week") {
+    const date = new Date(now);
+    date.setDate(date.getDate() + 7);
+    date.setHours(9, 0, 0, 0);
+    return date;
+  }
+
+  // "in X hours/days/weeks"
+  const inMatch = lower.match(/^in\s+(\d+)\s+(hour|hours|day|days|week|weeks)$/);
+  if (inMatch) {
+    const amount = parseInt(inMatch[1], 10);
+    const unit = inMatch[2];
+    const date = new Date(now);
+
+    if (unit.startsWith("hour")) {
+      date.setHours(date.getHours() + amount);
+    } else if (unit.startsWith("day")) {
+      date.setDate(date.getDate() + amount);
+    } else if (unit.startsWith("week")) {
+      date.setDate(date.getDate() + amount * 7);
+    }
+    return date;
+  }
+
+  // Try parsing as ISO date
+  const parsed = new Date(timeStr);
+  if (!isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  // Default: tomorrow at 9 AM
+  const date = new Date(now);
+  date.setDate(date.getDate() + 1);
+  date.setHours(9, 0, 0, 0);
+  return date;
+}
+
+/**
+ * Create a personal reminder for the staff member
+ */
+async function createReminder(
+  title: string,
+  dueTime: string,
+  notes?: string,
+  entityType?: string,
+  entityIdentifier?: string,
+  context?: ToolContext
+): Promise<ToolResult> {
+  if (!context?.staffId) {
+    return {
+      success: false,
+      error: "Staff context required to create reminders. Please try again.",
+    };
+  }
+
+  const dueAt = parseRelativeTime(dueTime);
+  let entityId: string | null = null;
+
+  // Try to resolve entity if identifier provided
+  if (entityType && entityIdentifier) {
+    try {
+      let query = "";
+      let params: string[] = [];
+
+      switch (entityType) {
+        case "place":
+          query = `SELECT place_id FROM trapper.places WHERE (display_name ILIKE $1 OR formatted_address ILIKE $1) AND merged_into_place_id IS NULL LIMIT 1`;
+          params = [`%${entityIdentifier}%`];
+          break;
+        case "cat":
+          query = `SELECT cat_id FROM trapper.sot_cats WHERE display_name ILIKE $1 LIMIT 1`;
+          params = [`%${entityIdentifier}%`];
+          break;
+        case "person":
+          query = `SELECT person_id FROM trapper.sot_people WHERE display_name ILIKE $1 LIMIT 1`;
+          params = [`%${entityIdentifier}%`];
+          break;
+        case "request":
+          query = `SELECT request_id FROM trapper.sot_requests WHERE summary ILIKE $1 OR request_id::text = $1 LIMIT 1`;
+          params = [entityIdentifier.includes("-") ? entityIdentifier : `%${entityIdentifier}%`];
+          break;
+      }
+
+      if (query) {
+        const result = await queryOne<{ [key: string]: string }>(query, params);
+        if (result) {
+          entityId = Object.values(result)[0];
+        }
+      }
+    } catch {
+      // Ignore entity resolution errors
+    }
+  }
+
+  // Create the reminder
+  try {
+    const result = await queryOne<{ reminder_id: string; due_at: string }>(
+      `INSERT INTO trapper.staff_reminders (
+        staff_id, title, notes, entity_type, entity_id,
+        due_at, remind_at, created_via, tippy_conversation_id
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $6, 'tippy', $7
+      )
+      RETURNING reminder_id, due_at`,
+      [
+        context.staffId,
+        title,
+        notes || null,
+        entityId ? entityType : null,
+        entityId,
+        dueAt.toISOString(),
+        context.conversationId || null,
+      ]
+    );
+
+    if (!result) {
+      return { success: false, error: "Failed to create reminder" };
+    }
+
+    const formattedDate = dueAt.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    return {
+      success: true,
+      data: {
+        reminder_id: result.reminder_id,
+        title,
+        due_at: formattedDate,
+        entity_linked: !!entityId,
+        message: `Reminder created: "${title}" for ${formattedDate}.${entityId ? ` Linked to ${entityType}.` : ""} You'll see it on your dashboard.`,
+      },
+    };
+  } catch (error) {
+    console.error("Create reminder error:", error);
+    return { success: false, error: "Failed to create reminder" };
+  }
+}
+
+/**
+ * Save a lookup/research result to the staff member's personal lookups
+ */
+async function saveLookup(
+  title: string,
+  summary: string,
+  queryText?: string,
+  context?: ToolContext
+): Promise<ToolResult> {
+  if (!context?.staffId) {
+    return {
+      success: false,
+      error: "Staff context required to save lookups. Please try again.",
+    };
+  }
+
+  // Compile recent tool results into result_data
+  const resultData: Record<string, unknown> = {};
+  let entityType: string | null = null;
+  let entityId: string | null = null;
+
+  if (context.recentToolResults && context.recentToolResults.length > 0) {
+    const toolResults = context.recentToolResults.filter((r) => r.success && r.data);
+    resultData.tool_results = toolResults.map((r) => r.data);
+
+    // Try to extract entity info from the results
+    for (const result of toolResults) {
+      const data = result.data as Record<string, unknown>;
+      if (data.place_id && !entityId) {
+        entityType = "place";
+        entityId = data.place_id as string;
+      } else if (data.cat_id && !entityId) {
+        entityType = "cat";
+        entityId = data.cat_id as string;
+      } else if (data.person_id && !entityId) {
+        entityType = "person";
+        entityId = data.person_id as string;
+      } else if (data.places && Array.isArray(data.places) && data.places.length > 0) {
+        entityType = "place";
+        entityId = data.places[0].place_id;
+      }
+    }
+  }
+
+  try {
+    const result = await queryOne<{ lookup_id: string }>(
+      `INSERT INTO trapper.staff_lookups (
+        staff_id, title, query_text, summary, result_data,
+        entity_type, entity_id, tool_calls
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8
+      )
+      RETURNING lookup_id`,
+      [
+        context.staffId,
+        title,
+        queryText || "Research lookup",
+        summary,
+        JSON.stringify(resultData),
+        entityType,
+        entityId,
+        context.recentToolResults ? JSON.stringify(
+          context.recentToolResults.map((r) => ({
+            success: r.success,
+            has_data: !!r.data,
+          }))
+        ) : null,
+      ]
+    );
+
+    if (!result) {
+      return { success: false, error: "Failed to save lookup" };
+    }
+
+    return {
+      success: true,
+      data: {
+        lookup_id: result.lookup_id,
+        title,
+        summary,
+        entity_linked: !!entityId,
+        message: `Saved to your lookups: "${title}". You can view it anytime on your personal dashboard at /me.`,
+      },
+    };
+  } catch (error) {
+    console.error("Save lookup error:", error);
+    return { success: false, error: "Failed to save lookup" };
+  }
+}
+
+/**
+ * Log a data discrepancy for admin review
+ * This is called silently - does not return verbose info to user
+ */
+async function logDataDiscrepancy(
+  title: string,
+  description: string,
+  entityType?: string,
+  entityId?: string,
+  rawData?: Record<string, unknown>,
+  processedData?: Record<string, unknown>,
+  suggestedFix?: string
+): Promise<ToolResult> {
+  try {
+    // Build the full description with data
+    const fullDescription = JSON.stringify({
+      description,
+      raw_data: rawData || null,
+      processed_data: processedData || null,
+      logged_at: new Date().toISOString(),
+    });
+
+    await queryOne(
+      `INSERT INTO trapper.data_improvements (
+        title,
+        description,
+        entity_type,
+        entity_id,
+        category,
+        priority,
+        suggested_fix,
+        source,
+        status
+      ) VALUES (
+        $1, $2, $3, $4::uuid,
+        'missing_data',
+        'normal',
+        $5,
+        'automated_check',
+        'pending'
+      )
+      ON CONFLICT DO NOTHING`,
+      [
+        title,
+        fullDescription,
+        entityType || null,
+        entityId || null,
+        suggestedFix ? JSON.stringify({ suggestion: suggestedFix }) : null,
+      ]
+    );
+
+    // Silent success - don't expose logging details to user
+    return {
+      success: true,
+      data: {
+        logged: true,
+      },
+    };
+  } catch (error) {
+    // Log error but don't fail the tool - this is a background operation
+    console.error("Log discrepancy error:", error);
+    return {
+      success: true,
+      data: {
+        logged: false,
+        note: "Could not log discrepancy",
+      },
+    };
+  }
+}
+
+/**
+ * Log a site observation via Tippy AI
+ *
+ * This creates a PENDING review item with lower confidence (40%) than UI submissions (75%).
+ * The observation is NOT directly added to colony estimates - it goes to a review queue.
+ * This encourages staff to use the Atlas UI for higher-weight observations.
+ */
+async function logSiteObservation(
+  address: string,
+  catCount: number,
+  observationNotes?: string,
+  context?: ToolContext
+): Promise<ToolResult> {
+  if (!context?.staffId) {
+    return {
+      success: false,
+      error: "You need to be logged in to log site observations.",
+    };
+  }
+
+  try {
+    // Create a data improvement record for review rather than directly modifying data
+    const title = `AI Observation: ~${catCount} cats at ${address}`;
+    const description = JSON.stringify({
+      type: "tippy_ai_observation",
+      address,
+      estimated_cats: catCount,
+      observation_notes: observationNotes || null,
+      observer_staff_id: context.staffId,
+      observer_name: context.staffName,
+      reported_via: "tippy_chat",
+      confidence_weight: 0.40,
+      needs_verification: true,
+      logged_at: new Date().toISOString(),
+    });
+
+    await queryOne(
+      `INSERT INTO trapper.data_improvements (
+        title,
+        description,
+        category,
+        priority,
+        source,
+        status,
+        suggested_fix
+      ) VALUES (
+        $1, $2,
+        'missing_data',
+        'low',
+        'tippy_feedback',
+        'pending',
+        $3
+      )
+      RETURNING improvement_id`,
+      [
+        title,
+        description,
+        JSON.stringify({
+          action: "verify_and_add_to_colony_estimates",
+          source_type: "tippy_ai_observation",
+          confidence: 0.40,
+        }),
+      ]
+    );
+
+    return {
+      success: true,
+      data: {
+        logged: true,
+        address,
+        cat_count: catCount,
+        confidence: "40%",
+        status: "pending_review",
+        message:
+          `Observation logged: ~${catCount} cats at ${address}. ` +
+          `This will be reviewed before being added to our colony data. ` +
+          `\n\n💡 **Tip:** For observations to count with higher confidence (75%), ` +
+          `use the Atlas UI at /beacon or create a site visit report. ` +
+          `AI-reported observations have 40% weight vs 75% for UI submissions.`,
+      },
+    };
+  } catch (error) {
+    console.error("Log site observation error:", error);
+    return { success: false, error: "Failed to log observation" };
+  }
+}
+
+/**
+ * Query person-cat relationships (foster, adopter, owner history)
+ */
+async function queryPersonCatRelationships(
+  personName?: string,
+  personEmail?: string,
+  relationshipType?: string
+): Promise<ToolResult> {
+  if (!personName && !personEmail) {
+    return {
+      success: false,
+      error: "Please provide either a person name or email to search for",
+    };
+  }
+
+  interface RelationshipResult {
+    person_id: string;
+    person_name: string;
+    email: string | null;
+    relationship_type: string;
+    cat_count: number;
+    cat_names: string[];
+    cat_microchips: string[];
+    sources: string[];
+  }
+
+  const results = await queryRows<RelationshipResult>(
+    `SELECT * FROM trapper.query_person_cat_history($1, $2, $3)`,
+    [personName || null, personEmail || null, relationshipType || null]
+  );
+
+  if (!results || results.length === 0) {
+    return {
+      success: true,
+      data: {
+        found: false,
+        message: personName
+          ? `No cat relationships found for person matching "${personName}"${relationshipType ? ` with relationship type "${relationshipType}"` : ""}`
+          : `No cat relationships found for email "${personEmail}"`,
+        suggestion: "Try searching with a different name spelling or without the relationship type filter.",
+      },
+    };
+  }
+
+  // Group by person and summarize
+  const byPerson = new Map<string, RelationshipResult[]>();
+  for (const r of results) {
+    const existing = byPerson.get(r.person_id) || [];
+    existing.push(r);
+    byPerson.set(r.person_id, existing);
+  }
+
+  const summaries = Array.from(byPerson.entries()).map(([personId, rels]) => {
+    const totalCats = rels.reduce((sum, r) => sum + Number(r.cat_count), 0);
+    const relationshipCounts = rels.map(r => `${r.cat_count} ${r.relationship_type}`).join(", ");
+    const allCatNames = [...new Set(rels.flatMap(r => r.cat_names || []))].slice(0, 10);
+    const sources = [...new Set(rels.flatMap(r => r.sources || []))];
+
+    return {
+      person_id: personId,
+      person_name: rels[0].person_name,
+      email: rels[0].email,
+      total_cats: totalCats,
+      relationships: relationshipCounts,
+      cat_names: allCatNames,
+      data_sources: sources,
+    };
+  });
+
+  const primary = summaries[0];
+  const catPlural = primary.total_cats === 1 ? "cat" : "cats";
+
+  return {
+    success: true,
+    data: {
+      found: true,
+      people: summaries,
+      summary: summaries.length === 1
+        ? `**${primary.person_name}** has ${primary.total_cats} ${catPlural} in our records (${primary.relationships}). Names include: ${primary.cat_names.slice(0, 5).join(", ")}${primary.cat_names.length > 5 ? ", ..." : ""}. Data from: ${primary.data_sources.join(", ")}.`
+        : `Found ${summaries.length} people matching. Top result: ${primary.person_name} with ${primary.total_cats} ${catPlural}.`,
+    },
+  };
+}
+
+/**
+ * Query places by context type (colony sites, foster homes, etc.)
+ */
+async function queryPlacesByContext(
+  contextType: string,
+  area?: string
+): Promise<ToolResult> {
+  // Get search patterns for area (handles regional names)
+  const searchPatterns = area ? getAreaSearchPatterns(area) : [];
+  const isRegionalSearch = searchPatterns.length > 1;
+
+  let areaCondition = "";
+  let params: string[] = [contextType];
+
+  if (area && searchPatterns.length > 0) {
+    const patternConditions = searchPatterns.map((_, i) => `p.formatted_address ILIKE $${i + 2}`).join(" OR ");
+    areaCondition = `AND (${patternConditions})`;
+    params = [contextType, ...searchPatterns.map(p => `%${p}%`)];
+  }
+
+  interface PlaceContextResult {
+    place_id: string;
+    display_name: string | null;
+    formatted_address: string | null;
+    context_type: string;
+    context_label: string;
+    valid_from: string | null;
+    confidence: number;
+    is_verified: boolean;
+  }
+
+  const results = await queryRows<PlaceContextResult>(
+    `
+    SELECT
+      pc.place_id,
+      p.display_name,
+      p.formatted_address,
+      pc.context_type,
+      pct.display_label as context_label,
+      pc.valid_from::text,
+      pc.confidence,
+      pc.is_verified
+    FROM trapper.place_contexts pc
+    JOIN trapper.places p ON p.place_id = pc.place_id
+    JOIN trapper.place_context_types pct ON pct.context_type = pc.context_type
+    WHERE pc.context_type = $1
+      AND pc.valid_to IS NULL
+      AND p.merged_into_place_id IS NULL
+      ${areaCondition}
+    ORDER BY pc.confidence DESC, pc.assigned_at DESC
+    LIMIT 20
+    `,
+    params
+  );
+
+  if (!results || results.length === 0) {
+    const contextLabel = contextType.replace(/_/g, " ");
+    return {
+      success: true,
+      data: {
+        found: false,
+        context_type: contextType,
+        area: area || "all areas",
+        searched_cities: isRegionalSearch ? searchPatterns : undefined,
+        message: area
+          ? `No ${contextLabel}s found in ${area}${isRegionalSearch ? ` (searched: ${searchPatterns.slice(0, 3).join(", ")}${searchPatterns.length > 3 ? ", ..." : ""})` : ""}.`
+          : `No ${contextLabel}s found in the database.`,
+      },
+    };
+  }
+
+  const contextLabel = results[0].context_label;
+
+  return {
+    success: true,
+    data: {
+      found: true,
+      context_type: contextType,
+      context_label: contextLabel,
+      area: area || "all areas",
+      is_regional_search: isRegionalSearch,
+      searched_cities: isRegionalSearch ? searchPatterns : undefined,
+      places: results.map(r => ({
+        place_id: r.place_id,
+        name: r.display_name || r.formatted_address,
+        address: r.formatted_address,
+        since: r.valid_from,
+        confidence: r.confidence,
+        verified: r.is_verified,
+      })),
+      count: results.length,
+      summary: `Found **${results.length} ${contextLabel}(s)**${area ? ` in ${area}` : ""}${isRegionalSearch ? ` (includes ${searchPatterns.slice(0, 3).join(", ")})` : ""}. Examples: ${results.slice(0, 3).map(r => r.display_name || r.formatted_address?.split(",")[0]).join("; ")}${results.length > 3 ? "; ..." : ""}.`,
+    },
+  };
+}
+
+/**
+ * Query a cat's journey through FFSC (trapping, clinic, foster, adoption)
+ */
+async function queryCatJourney(
+  microchip?: string,
+  catName?: string
+): Promise<ToolResult> {
+  if (!microchip && !catName) {
+    return {
+      success: false,
+      error: "Please provide either a microchip number or cat name to search for",
+    };
+  }
+
+  // Find the cat
+  interface CatInfo {
+    cat_id: string;
+    display_name: string;
+    microchip: string | null;
+    altered_status: string | null;
+    breed: string | null;
+    primary_color: string | null;
+  }
+
+  const catConditions: string[] = [];
+  const catParams: string[] = [];
+  let paramIndex = 1;
+
+  if (microchip) {
+    catConditions.push(`ci.id_value = $${paramIndex}`);
+    catParams.push(microchip.replace(/\s/g, ""));
+    paramIndex++;
+  }
+  if (catName) {
+    catConditions.push(`c.display_name ILIKE $${paramIndex}`);
+    catParams.push(`%${catName}%`);
+    paramIndex++;
+  }
+
+  const catResult = await queryOne<CatInfo>(
+    `
+    SELECT DISTINCT ON (c.cat_id)
+      c.cat_id,
+      c.display_name,
+      ci.id_value as microchip,
+      c.altered_status,
+      c.breed,
+      c.primary_color
+    FROM trapper.sot_cats c
+    LEFT JOIN trapper.cat_identifiers ci ON c.cat_id = ci.cat_id AND ci.id_type = 'microchip'
+    WHERE (${catConditions.join(" OR ")})
+      AND c.merged_into_cat_id IS NULL
+    LIMIT 1
+    `,
+    catParams
+  );
+
+  if (!catResult) {
+    return {
+      success: true,
+      data: {
+        found: false,
+        message: microchip
+          ? `No cat found with microchip "${microchip}"`
+          : `No cat found matching name "${catName}"`,
+        suggestion: "Check the microchip number for typos, or try a different name spelling.",
+      },
+    };
+  }
+
+  // Get clinic appointments
+  interface AppointmentInfo {
+    appointment_date: string;
+    service_type: string | null;
+    is_spay: boolean;
+    is_neuter: boolean;
+    place_address: string | null;
+    vet_name: string | null;
+  }
+
+  const appointments = await queryRows<AppointmentInfo>(
+    `
+    SELECT
+      a.appointment_date::text,
+      a.service_type,
+      a.is_spay,
+      a.is_neuter,
+      p.formatted_address as place_address,
+      a.vet_name
+    FROM trapper.sot_appointments a
+    LEFT JOIN trapper.places p ON a.place_id = p.place_id
+    WHERE a.cat_id = $1
+    ORDER BY a.appointment_date DESC
+    `,
+    [catResult.cat_id]
+  );
+
+  // Get place relationships (where cat has been)
+  interface PlaceInfo {
+    place_id: string;
+    formatted_address: string | null;
+    relationship_type: string;
+    contexts: string[];
+  }
+
+  const places = await queryRows<PlaceInfo>(
+    `
+    SELECT
+      p.place_id,
+      p.formatted_address,
+      cpr.relationship_type,
+      ARRAY_AGG(DISTINCT pc.context_type) FILTER (WHERE pc.context_type IS NOT NULL) as contexts
+    FROM trapper.cat_place_relationships cpr
+    JOIN trapper.places p ON p.place_id = cpr.place_id
+    LEFT JOIN trapper.place_contexts pc ON pc.place_id = p.place_id AND pc.valid_to IS NULL
+    WHERE cpr.cat_id = $1
+      AND p.merged_into_place_id IS NULL
+    GROUP BY p.place_id, p.formatted_address, cpr.relationship_type
+    `,
+    [catResult.cat_id]
+  );
+
+  // Get person relationships (owners, fosters, adopters)
+  interface PersonRelInfo {
+    person_name: string;
+    relationship_type: string;
+    source_system: string;
+  }
+
+  const personRels = await queryRows<PersonRelInfo>(
+    `
+    SELECT
+      p.display_name as person_name,
+      pcr.relationship_type,
+      pcr.source_system
+    FROM trapper.person_cat_relationships pcr
+    JOIN trapper.sot_people p ON p.person_id = pcr.person_id
+    WHERE pcr.cat_id = $1
+      AND p.merged_into_person_id IS NULL
+    ORDER BY pcr.created_at DESC
+    `,
+    [catResult.cat_id]
+  );
+
+  // Build journey summary
+  const journeySteps: string[] = [];
+
+  // Add origin from places with colony_site context
+  const originPlaces = places.filter(p => p.contexts?.includes("colony_site"));
+  if (originPlaces.length > 0) {
+    journeySteps.push(`🏠 **Origin**: ${originPlaces[0].formatted_address?.split(",")[0] || "Unknown location"} (colony site)`);
+  }
+
+  // Add clinic visits
+  if (appointments.length > 0) {
+    const lastAppt = appointments[0];
+    const alteredText = lastAppt.is_spay ? "spayed" : lastAppt.is_neuter ? "neutered" : lastAppt.service_type;
+    journeySteps.push(`🏥 **Clinic**: ${appointments.length} visit(s). Last: ${lastAppt.appointment_date} (${alteredText || "service"})`);
+  }
+
+  // Add foster/adopter info
+  const fosters = personRels.filter(p => p.relationship_type === "foster");
+  const adopters = personRels.filter(p => p.relationship_type === "adopter");
+  const owners = personRels.filter(p => p.relationship_type === "owner");
+
+  if (fosters.length > 0) {
+    journeySteps.push(`🏡 **Foster**: ${fosters.map(f => f.person_name).join(", ")}`);
+  }
+  if (adopters.length > 0) {
+    journeySteps.push(`❤️ **Adopted by**: ${adopters.map(a => a.person_name).join(", ")}`);
+  }
+  if (owners.length > 0 && adopters.length === 0) {
+    journeySteps.push(`👤 **Owner**: ${owners.map(o => o.person_name).join(", ")}`);
+  }
+
+  // Build summary
+  const summary = `**${catResult.display_name}** (${catResult.altered_status || "unknown status"})${catResult.microchip ? `, microchip: ${catResult.microchip}` : ""}
+
+${journeySteps.length > 0 ? journeySteps.join("\n") : "Limited journey data available."}`;
+
+  return {
+    success: true,
+    data: {
+      found: true,
+      cat: {
+        cat_id: catResult.cat_id,
+        name: catResult.display_name,
+        microchip: catResult.microchip,
+        altered_status: catResult.altered_status,
+        breed: catResult.breed,
+        color: catResult.primary_color,
+      },
+      journey: {
+        appointments: appointments.length,
+        places_linked: places.length,
+        people_linked: personRels.length,
+        fosters: fosters.map(f => f.person_name),
+        adopters: adopters.map(a => a.person_name),
+        owners: owners.map(o => o.person_name),
+        clinic_history: appointments.slice(0, 5).map(a => ({
+          date: a.appointment_date,
+          service: a.is_spay ? "Spay" : a.is_neuter ? "Neuter" : a.service_type,
+          location: a.place_address?.split(",")[0],
+        })),
+      },
+      summary,
+    },
+  };
+}
+
+/**
+ * Query trapper statistics - counts, types, performance metrics
+ */
+async function queryTrapperStats(
+  queryType: string,
+  trapperName?: string,
+  trapperType?: string,
+  limit?: number
+): Promise<ToolResult> {
+  const maxResults = limit || 10;
+
+  switch (queryType) {
+    case "summary": {
+      // Get aggregate stats from v_trapper_aggregate_stats
+      const aggregates = await queryOne<{
+        total_active_trappers: number;
+        ffsc_trappers: number;
+        community_trappers: number;
+        inactive_trappers: number;
+        all_clinic_cats: number;
+        all_clinic_days: number;
+        avg_cats_per_day_all: number;
+        all_cats_caught: number;
+      }>(
+        `SELECT
+          total_active_trappers,
+          ffsc_trappers,
+          community_trappers,
+          inactive_trappers,
+          all_clinic_cats,
+          all_clinic_days,
+          ROUND(avg_cats_per_day_all, 1) as avg_cats_per_day_all,
+          all_cats_caught
+        FROM trapper.v_trapper_aggregate_stats
+        LIMIT 1`
+      );
+
+      if (!aggregates) {
+        // Fallback to direct query if view doesn't exist
+        const fallback = await queryOne<{ total: number; ffsc: number; community: number }>(
+          `SELECT
+            COUNT(*) FILTER (WHERE role_status = 'active') as total,
+            COUNT(*) FILTER (WHERE trapper_type = 'ffsc_trapper' AND role_status = 'active') as ffsc,
+            COUNT(*) FILTER (WHERE trapper_type = 'community_trapper' AND role_status = 'active') as community
+          FROM trapper.person_roles
+          WHERE role = 'trapper'`
+        );
+        return {
+          success: true,
+          data: {
+            total_active: fallback?.total || 0,
+            ffsc_trappers: fallback?.ffsc || 0,
+            community_trappers: fallback?.community || 0,
+            summary: `FFSC has ${fallback?.total || 0} active trappers: ${fallback?.ffsc || 0} FFSC volunteers and ${fallback?.community || 0} community trappers.`,
+          },
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          total_active: aggregates.total_active_trappers,
+          ffsc_trappers: aggregates.ffsc_trappers,
+          community_trappers: aggregates.community_trappers,
+          inactive_trappers: aggregates.inactive_trappers,
+          total_clinic_cats: aggregates.all_clinic_cats,
+          total_clinic_days: aggregates.all_clinic_days,
+          avg_cats_per_day: aggregates.avg_cats_per_day_all,
+          total_cats_caught: aggregates.all_cats_caught,
+          summary: `FFSC has ${aggregates.total_active_trappers} active trappers: ${aggregates.ffsc_trappers} FFSC volunteers and ${aggregates.community_trappers} community trappers. Together they've brought ${aggregates.all_clinic_cats} cats to clinic over ${aggregates.all_clinic_days} clinic days.`,
+        },
+      };
+    }
+
+    case "by_type": {
+      // Get counts broken down by trapper type
+      const byType = await queryRows<{
+        trapper_type: string;
+        role_status: string;
+        count: number;
+      }>(
+        `SELECT
+          trapper_type,
+          role_status,
+          COUNT(*) as count
+        FROM trapper.person_roles
+        WHERE role = 'trapper' AND trapper_type IS NOT NULL
+        ${trapperType && trapperType !== "all" ? "AND trapper_type = $1" : ""}
+        GROUP BY trapper_type, role_status
+        ORDER BY trapper_type, role_status`,
+        trapperType && trapperType !== "all" ? [trapperType] : []
+      );
+
+      const breakdown: Record<string, { active: number; inactive: number }> = {};
+      for (const row of byType) {
+        if (!breakdown[row.trapper_type]) {
+          breakdown[row.trapper_type] = { active: 0, inactive: 0 };
+        }
+        if (row.role_status === "active") {
+          breakdown[row.trapper_type].active = row.count;
+        } else {
+          breakdown[row.trapper_type].inactive += row.count;
+        }
+      }
+
+      const summaryParts = Object.entries(breakdown).map(
+        ([type, counts]) => `${type.replace(/_/g, " ")}: ${counts.active} active, ${counts.inactive} inactive`
+      );
+
+      return {
+        success: true,
+        data: {
+          breakdown,
+          summary: summaryParts.join("; ") || "No trappers found",
+        },
+      };
+    }
+
+    case "individual": {
+      if (!trapperName) {
+        return {
+          success: false,
+          error: "Please provide a trapper name to look up individual stats",
+        };
+      }
+
+      // Find the trapper and get their stats
+      const trapper = await queryOne<{
+        person_id: string;
+        display_name: string;
+        trapper_type: string;
+        role_status: string;
+        active_assignments: number;
+        completed_assignments: number;
+        total_cats_caught: number;
+        total_clinic_cats: number;
+        unique_clinic_days: number;
+        avg_cats_per_day: number;
+        total_altered: number;
+        first_activity_date: string;
+        last_activity_date: string;
+      }>(
+        `SELECT
+          person_id,
+          display_name,
+          trapper_type,
+          role_status,
+          COALESCE(active_assignments, 0) as active_assignments,
+          COALESCE(completed_assignments, 0) as completed_assignments,
+          COALESCE(total_cats_caught, 0) as total_cats_caught,
+          COALESCE(total_clinic_cats, 0) as total_clinic_cats,
+          COALESCE(unique_clinic_days, 0) as unique_clinic_days,
+          COALESCE(ROUND(avg_cats_per_day, 1), 0) as avg_cats_per_day,
+          COALESCE(total_altered, 0) as total_altered,
+          first_activity_date::text,
+          last_activity_date::text
+        FROM trapper.v_trapper_full_stats
+        WHERE display_name ILIKE $1
+        LIMIT 1`,
+        [`%${trapperName}%`]
+      );
+
+      if (!trapper) {
+        return {
+          success: true,
+          data: {
+            found: false,
+            summary: `No trapper found matching "${trapperName}"`,
+          },
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          found: true,
+          trapper: {
+            name: trapper.display_name,
+            type: trapper.trapper_type,
+            status: trapper.role_status,
+          },
+          stats: {
+            active_assignments: trapper.active_assignments,
+            completed_assignments: trapper.completed_assignments,
+            total_cats_caught: trapper.total_cats_caught,
+            total_clinic_cats: trapper.total_clinic_cats,
+            clinic_days: trapper.unique_clinic_days,
+            avg_cats_per_day: trapper.avg_cats_per_day,
+            total_altered: trapper.total_altered,
+            first_activity: trapper.first_activity_date,
+            last_activity: trapper.last_activity_date,
+          },
+          summary: `${trapper.display_name} (${trapper.trapper_type?.replace(/_/g, " ")}): ${trapper.total_clinic_cats} cats to clinic, ${trapper.total_altered} altered, ${trapper.completed_assignments} requests completed. Last active: ${trapper.last_activity_date || "unknown"}.`,
+        },
+      };
+    }
+
+    case "top_performers": {
+      // Get top performers by total clinic cats
+      const topTrappers = await queryRows<{
+        display_name: string;
+        trapper_type: string;
+        total_clinic_cats: number;
+        total_altered: number;
+        unique_clinic_days: number;
+        completed_assignments: number;
+      }>(
+        `SELECT
+          display_name,
+          trapper_type,
+          COALESCE(total_clinic_cats, 0) as total_clinic_cats,
+          COALESCE(total_altered, 0) as total_altered,
+          COALESCE(unique_clinic_days, 0) as unique_clinic_days,
+          COALESCE(completed_assignments, 0) as completed_assignments
+        FROM trapper.v_trapper_full_stats
+        WHERE role_status = 'active'
+        ${trapperType && trapperType !== "all" ? "AND trapper_type = $1" : ""}
+        ORDER BY total_clinic_cats DESC NULLS LAST
+        LIMIT $${trapperType && trapperType !== "all" ? "2" : "1"}`,
+        trapperType && trapperType !== "all" ? [trapperType, maxResults] : [maxResults]
+      );
+
+      const topList = topTrappers.map((t, i) =>
+        `${i + 1}. ${t.display_name}: ${t.total_clinic_cats} cats, ${t.total_altered} altered, ${t.unique_clinic_days} clinic days`
+      );
+
+      return {
+        success: true,
+        data: {
+          trappers: topTrappers.map(t => ({
+            name: t.display_name,
+            type: t.trapper_type,
+            clinic_cats: t.total_clinic_cats,
+            altered: t.total_altered,
+            clinic_days: t.unique_clinic_days,
+            completed_requests: t.completed_assignments,
+          })),
+          summary: `Top ${topTrappers.length} trappers by clinic cats:\n${topList.join("\n")}`,
+        },
+      };
+    }
+
+    default:
+      return {
+        success: false,
+        error: `Unknown query type: ${queryType}. Use 'summary', 'by_type', 'individual', or 'top_performers'.`,
+      };
+  }
 }

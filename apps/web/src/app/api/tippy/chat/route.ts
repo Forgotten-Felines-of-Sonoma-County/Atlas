@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { TIPPY_TOOLS, executeToolCall } from "../tools";
+import { TIPPY_TOOLS, executeToolCall, ToolContext, ToolResult } from "../tools";
+import { getSession } from "@/lib/auth";
+import { queryOne, execute } from "@/lib/db";
 
 /**
  * Tippy Chat API
@@ -24,6 +26,8 @@ KEY CAPABILITY: You have access to the Atlas database through tools! When users 
 - Request statistics → use query_request_stats
 - FFR impact metrics → use query_ffr_impact
 - Person's history → use query_person_history
+- Trapper counts or stats → use query_trapper_stats
+- Cat's full journey/history → use query_cat_journey
 
 Always use tools when the user asks for specific data. Be confident in your answers when you have data.
 
@@ -68,12 +72,126 @@ interface ChatMessage {
 interface ChatRequest {
   message: string;
   history?: ChatMessage[];
+  conversationId?: string;
+}
+
+// Tools that require write access (read_write or full)
+// Note: lookup_cat_appointment is READ-ONLY (moved out of this list)
+const WRITE_TOOLS = ["log_field_event", "create_reminder", "save_lookup", "log_site_observation"];
+
+// Tools that require full access only
+const ADMIN_TOOLS: string[] = [];
+
+/**
+ * Filter tools based on user's AI access level
+ */
+function getToolsForAccessLevel(
+  accessLevel: string | null
+): typeof TIPPY_TOOLS {
+  if (!accessLevel || accessLevel === "none") {
+    return []; // No tools
+  }
+
+  if (accessLevel === "read_only") {
+    // Filter out write and admin tools
+    return TIPPY_TOOLS.filter(
+      (tool) =>
+        !WRITE_TOOLS.includes(tool.name) && !ADMIN_TOOLS.includes(tool.name)
+    );
+  }
+
+  if (accessLevel === "read_write") {
+    // Filter out admin-only tools
+    return TIPPY_TOOLS.filter((tool) => !ADMIN_TOOLS.includes(tool.name));
+  }
+
+  // 'full' access gets all tools
+  return TIPPY_TOOLS;
+}
+
+/**
+ * Create or retrieve a conversation record
+ */
+async function getOrCreateConversation(
+  conversationId: string | undefined,
+  staffId: string | undefined
+): Promise<string> {
+  // If existing conversation ID provided, use it
+  if (conversationId) {
+    return conversationId;
+  }
+
+  // Create new conversation
+  const result = await queryOne<{ conversation_id: string }>(
+    `INSERT INTO trapper.tippy_conversations (staff_id)
+     VALUES ($1)
+     RETURNING conversation_id`,
+    [staffId || null]
+  );
+
+  return result?.conversation_id || `conv_${Date.now()}`;
+}
+
+/**
+ * Store a message in the conversation
+ */
+async function storeMessage(
+  conversationId: string,
+  role: "user" | "assistant" | "tool_result",
+  content: string,
+  toolCalls?: unknown,
+  toolResults?: unknown,
+  tokens?: number
+): Promise<void> {
+  try {
+    // Only store if conversationId is a valid UUID (from DB)
+    if (!conversationId.startsWith("conv_")) {
+      await execute(
+        `INSERT INTO trapper.tippy_messages
+         (conversation_id, role, content, tool_calls, tool_results, tokens_used)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          conversationId,
+          role,
+          content,
+          toolCalls ? JSON.stringify(toolCalls) : null,
+          toolResults ? JSON.stringify(toolResults) : null,
+          tokens || null,
+        ]
+      );
+    }
+  } catch (error) {
+    // Don't fail the chat if storage fails
+    console.error("Failed to store Tippy message:", error);
+  }
+}
+
+/**
+ * Update conversation with tools used
+ */
+async function updateConversationTools(
+  conversationId: string,
+  toolNames: string[]
+): Promise<void> {
+  try {
+    if (!conversationId.startsWith("conv_") && toolNames.length > 0) {
+      await execute(
+        `UPDATE trapper.tippy_conversations
+         SET tools_used = array_cat(tools_used, $2::text[]),
+             updated_at = NOW()
+         WHERE conversation_id = $1`,
+        [conversationId, toolNames]
+      );
+    }
+  } catch (error) {
+    console.error("Failed to update conversation tools:", error);
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
-    const { message, history = [] } = body;
+    const { message, history = [], conversationId: clientConversationId } = body;
 
     if (!message || typeof message !== "string") {
       return NextResponse.json(
@@ -82,17 +200,79 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get user's session and AI access level
+    const session = await getSession(request);
+    let aiAccessLevel: string | null = "read_only"; // Default to read_only
+    let userName: string | null = null;
+
+    if (session?.staff_id) {
+      const staffInfo = await queryOne<{
+        ai_access_level: string | null;
+        display_name: string | null;
+      }>(
+        `SELECT ai_access_level, display_name FROM trapper.staff WHERE staff_id = $1`,
+        [session.staff_id]
+      );
+      aiAccessLevel = staffInfo?.ai_access_level || "read_only";
+      userName = staffInfo?.display_name || null;
+    }
+
+    // Check if user has any AI access
+    if (aiAccessLevel === "none") {
+      return NextResponse.json({
+        message:
+          "I'm sorry, but your account doesn't have access to Tippy. Please contact an administrator if you need AI assistance.",
+      });
+    }
+
+    // Get tools available to this user
+    const availableTools = getToolsForAccessLevel(aiAccessLevel);
+
+    // Create or get conversation for history tracking
+    const conversationId = await getOrCreateConversation(
+      clientConversationId,
+      session?.staff_id
+    );
+
+    // Store the user message
+    await storeMessage(conversationId, "user", message);
+
     // Check for API key
     const apiKey = process.env.ANTHROPIC_API_KEY;
 
     if (!apiKey) {
       // Fallback to simple pattern matching if no API key
       const fallbackResponse = getFallbackResponse(message);
-      return NextResponse.json({ message: fallbackResponse });
+      await storeMessage(conversationId, "assistant", fallbackResponse);
+      return NextResponse.json({ message: fallbackResponse, conversationId });
     }
 
     // Initialize Anthropic client
     const client = new Anthropic({ apiKey });
+
+    // Customize system prompt based on access level
+    let systemPrompt = SYSTEM_PROMPT;
+    if (userName) {
+      systemPrompt += `\n\nYou are speaking with ${userName}.`;
+    }
+    if (aiAccessLevel === "read_only") {
+      systemPrompt +=
+        "\n\nIMPORTANT: This user has read-only access. Do not offer to log events, create reminders, or make any database changes. You can only query and report data.";
+    } else if (aiAccessLevel === "read_write" || aiAccessLevel === "full") {
+      systemPrompt +=
+        "\n\nADDITIONAL CAPABILITIES for this user:\n" +
+        "- **REMINDERS** (IMPORTANT): Use create_reminder tool when they use ANY of these phrases:\n" +
+        "  - 'remind me', 'don't let me forget', 'I need to remember'\n" +
+        "  - 'follow up on', 'check on X later', 'next week'\n" +
+        "  - 'set a reminder', 'add to my reminders'\n" +
+        "  Example: 'Remind me to follow up on 115 Magnolia' → create_reminder(title='Follow up on 115 Magnolia')\n" +
+        "  Example: 'I need to check on the Main St colony next week' → create_reminder(title='Check on Main St colony')\n" +
+        "  ALWAYS create the reminder FIRST, then query additional data if helpful.\n" +
+        "- Save research: Use save_lookup when they say 'save this', 'add to my lookups', after gathering info they want to keep\n" +
+        "- Log field events: Use log_field_event when they report observations like 'I saw 5 cats at Oak St today'\n" +
+        "- Log site observations: Use log_site_observation for colony observations with estimated counts\n" +
+        "Their reminders and lookups appear on their personal dashboard at /me.";
+    }
 
     // Build messages array
     const messages: Anthropic.MessageParam[] = [
@@ -103,14 +283,27 @@ export async function POST(request: NextRequest) {
       { role: "user" as const, content: message },
     ];
 
-    // Call Claude API with tools
+    // Call Claude API with filtered tools
     let response = await client.messages.create({
       model: "claude-3-haiku-20240307", // Using Haiku for speed and cost
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages,
-      tools: TIPPY_TOOLS,
+      tools: availableTools.length > 0 ? availableTools : undefined,
     });
+
+    // Create tool context for staff-specific operations
+    const recentToolResults: ToolResult[] = [];
+    const toolContext: ToolContext = {
+      staffId: session?.staff_id || "",
+      staffName: userName || "Unknown",
+      aiAccessLevel: aiAccessLevel || "read_only",
+      conversationId,
+      recentToolResults,
+    };
+
+    // Track tools used during conversation
+    const toolsUsedInThisRequest: string[] = [];
 
     // Handle tool use loop (max 3 iterations to prevent infinite loops)
     let iterations = 0;
@@ -126,23 +319,36 @@ export async function POST(request: NextRequest) {
 
       if (toolUseBlocks.length === 0) break;
 
-      // Execute each tool call
+      // Track tool names used
+      toolUseBlocks.forEach((toolUse) => {
+        if (!toolsUsedInThisRequest.includes(toolUse.name)) {
+          toolsUsedInThisRequest.push(toolUse.name);
+        }
+      });
+
+      // Execute each tool call with context
+      const toolResultsContent = await Promise.all(
+        toolUseBlocks.map(async (toolUse) => {
+          const result = await executeToolCall(
+            toolUse.name,
+            toolUse.input as Record<string, unknown>,
+            toolContext
+          );
+
+          // Track results for save_lookup to reference
+          recentToolResults.push(result);
+
+          return {
+            type: "tool_result" as const,
+            tool_use_id: toolUse.id,
+            content: JSON.stringify(result),
+          };
+        })
+      );
+
       const toolResults: Anthropic.MessageParam = {
         role: "user",
-        content: await Promise.all(
-          toolUseBlocks.map(async (toolUse) => {
-            const result = await executeToolCall(
-              toolUse.name,
-              toolUse.input as Record<string, unknown>
-            );
-
-            return {
-              type: "tool_result" as const,
-              tool_use_id: toolUse.id,
-              content: JSON.stringify(result),
-            };
-          })
-        ),
+        content: toolResultsContent,
       };
 
       // Add assistant's response and tool results to messages
@@ -156,9 +362,9 @@ export async function POST(request: NextRequest) {
       response = await client.messages.create({
         model: "claude-3-haiku-20240307",
         max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         messages,
-        tools: TIPPY_TOOLS,
+        tools: availableTools.length > 0 ? availableTools : undefined,
       });
     }
 
@@ -166,7 +372,22 @@ export async function POST(request: NextRequest) {
     const textContent = response.content.find((c) => c.type === "text");
     const assistantMessage = textContent?.type === "text" ? textContent.text : "I'm not sure how to help with that.";
 
-    return NextResponse.json({ message: assistantMessage });
+    // Store assistant response and update conversation tools
+    await storeMessage(
+      conversationId,
+      "assistant",
+      assistantMessage,
+      toolsUsedInThisRequest.length > 0 ? { tools: toolsUsedInThisRequest } : undefined,
+      undefined,
+      response.usage?.output_tokens
+    );
+
+    // Update conversation with tools used
+    if (toolsUsedInThisRequest.length > 0) {
+      await updateConversationTools(conversationId, toolsUsedInThisRequest);
+    }
+
+    return NextResponse.json({ message: assistantMessage, conversationId });
   } catch (error) {
     console.error("Tippy chat error:", error);
 
