@@ -368,7 +368,7 @@ export async function POST(request: NextRequest) {
       system: systemPrompt,
       messages,
       tools: availableTools.length > 0 ? availableTools : undefined,
-      tool_choice: forcedToolChoice,
+      ...(forcedToolChoice && { tool_choice: forcedToolChoice }),
     });
 
     // Create tool context for staff-specific operations
