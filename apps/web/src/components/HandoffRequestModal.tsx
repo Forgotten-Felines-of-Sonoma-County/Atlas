@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import AddressAutocomplete from "./AddressAutocomplete";
 
 interface HandoffRequestModalProps {
   isOpen: boolean;
@@ -21,6 +22,18 @@ interface PersonSearchResult {
   email: string | null;
   phone: string | null;
   address: string | null;
+}
+
+interface PlaceDetails {
+  place_id: string;
+  formatted_address: string;
+  name: string;
+  geometry: {
+    location: {
+      lat: number;
+      lng: number;
+    };
+  };
 }
 
 const HANDOFF_REASONS = [
@@ -584,20 +597,22 @@ export function HandoffRequestModal({
             >
               New Location/Address *
             </label>
-            <input
-              type="text"
-              value={newAddress}
-              onChange={(e) => setNewAddress(e.target.value)}
-              placeholder="Address where cats will be cared for"
+            <div
               style={{
-                width: "100%",
-                padding: "10px 12px",
                 border: "1px solid var(--border)",
                 borderRadius: "8px",
-                fontSize: "0.9rem",
-                background: "var(--input-bg, #fff)",
+                overflow: "hidden",
               }}
-            />
+            >
+              <AddressAutocomplete
+                value={newAddress}
+                onChange={setNewAddress}
+                onPlaceSelect={(place: PlaceDetails) => {
+                  setNewAddress(place.formatted_address);
+                }}
+                placeholder="Start typing an address..."
+              />
+            </div>
           </div>
 
           {/* Contact Info */}
