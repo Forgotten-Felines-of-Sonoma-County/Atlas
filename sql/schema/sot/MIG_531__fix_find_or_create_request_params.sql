@@ -2,8 +2,9 @@
 \echo 'MIG_531: Fix find_or_create_request parameter names'
 \echo '=============================================='
 
--- Fix the parameter names: p_latitude/p_longitude -> p_lat/p_lng
--- to match find_or_create_place_deduped signature
+-- Fix the parameter names to match actual function signatures:
+-- - find_or_create_place_deduped: p_lat/p_lng (not p_latitude/p_longitude)
+-- - find_or_create_person: p_first_name/p_last_name (not p_name)
 
 CREATE OR REPLACE FUNCTION trapper.find_or_create_request(
   p_source_system TEXT,
@@ -33,6 +34,9 @@ DECLARE
   v_resolved_requester_id UUID;
   v_existing_request_id UUID;
   v_now TIMESTAMPTZ := COALESCE(p_source_created_at, NOW());
+  v_first_name TEXT;
+  v_last_name TEXT;
+  v_comma_pos INT;
 BEGIN
   -- Check for existing request with same source
   SELECT request_id INTO v_existing_request_id
@@ -63,10 +67,25 @@ BEGIN
 
   -- If no person_id but contact info provided, create/find the person
   IF v_resolved_requester_id IS NULL AND (p_requester_email IS NOT NULL OR p_requester_phone IS NOT NULL OR p_requester_name IS NOT NULL) THEN
+    -- Parse name (expected format: "Last, First" or just "Name")
+    IF p_requester_name IS NOT NULL THEN
+      v_comma_pos := POSITION(',' IN p_requester_name);
+      IF v_comma_pos > 0 THEN
+        -- "Last, First" format
+        v_last_name := TRIM(SUBSTRING(p_requester_name FROM 1 FOR v_comma_pos - 1));
+        v_first_name := TRIM(SUBSTRING(p_requester_name FROM v_comma_pos + 1));
+      ELSE
+        -- Single name - treat as first name
+        v_first_name := TRIM(p_requester_name);
+        v_last_name := NULL;
+      END IF;
+    END IF;
+
     v_resolved_requester_id := trapper.find_or_create_person(
       p_email := p_requester_email,
       p_phone := p_requester_phone,
-      p_name := p_requester_name,
+      p_first_name := v_first_name,
+      p_last_name := v_last_name,
       p_address := p_raw_address,
       p_source_system := p_source_system
     );
