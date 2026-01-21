@@ -917,6 +917,7 @@ export function HandoffRequestModal({
       {showAddressDropdown && addressPredictions.length > 0 && (
         <div
           ref={addressDropdownRef}
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
             top: dropdownPosition.top,
