@@ -76,6 +76,12 @@ interface RequestDetailRow {
   // Activity tracking (MIG_182)
   last_activity_at: string | null;
   last_activity_type: string | null;
+  // Redirect/Handoff fields
+  redirected_to_request_id: string | null;
+  redirected_from_request_id: string | null;
+  redirect_reason: string | null;
+  redirect_at: string | null;
+  transfer_type: string | null;
   // Place info
   place_id: string | null;
   place_name: string | null;
@@ -183,6 +189,12 @@ export async function GET(
         -- Activity tracking
         r.last_activity_at,
         r.last_activity_type,
+        -- Redirect/Handoff fields
+        r.redirected_to_request_id,
+        r.redirected_from_request_id,
+        r.redirect_reason,
+        r.redirect_at,
+        r.transfer_type,
         -- Place info (use address if place name matches requester name)
         r.place_id,
         CASE
@@ -316,6 +328,7 @@ const VALID_STATUSES = [
   "completed",
   "partial",
   "cancelled",
+  "redirected",
 ];
 const VALID_PRIORITIES = ["urgent", "high", "normal", "low"];
 const VALID_HOLD_REASONS = [

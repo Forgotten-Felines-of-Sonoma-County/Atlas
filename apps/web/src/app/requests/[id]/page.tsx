@@ -12,6 +12,8 @@ import { LinkedCatsSection } from "@/components/LinkedCatsSection";
 import LogObservationModal from "@/components/LogObservationModal";
 import { ColonyEstimates } from "@/components/ColonyEstimates";
 import { MediaGallery } from "@/components/MediaGallery";
+import { RedirectRequestModal } from "@/components/RedirectRequestModal";
+import { HandoffRequestModal } from "@/components/HandoffRequestModal";
 
 interface RequestDetail {
   request_id: string;
@@ -101,6 +103,12 @@ interface RequestDetail {
   kitten_assessment_notes: string | null;
   kitten_assessed_by: string | null;
   kitten_assessed_at: string | null;
+  // Redirect fields
+  redirected_to_request_id: string | null;
+  redirected_from_request_id: string | null;
+  transfer_type: string | null;
+  redirect_reason: string | null;
+  redirect_at: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -111,6 +119,7 @@ const STATUS_OPTIONS = [
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
   { value: "on_hold", label: "On Hold" },
+  { value: "redirected", label: "Redirected" },
 ];
 
 const PRIORITY_OPTIONS = [
@@ -160,6 +169,8 @@ function StatusBadge({ status }: { status: string }) {
     completed: { bg: "#20c997", color: "#000" },
     cancelled: { bg: "#6c757d", color: "#fff" },
     on_hold: { bg: "#ffc107", color: "#000" },
+    redirected: { bg: "#9ca3af", color: "#fff" },
+    handed_off: { bg: "#0d9488", color: "#fff" },
   };
   const style = colors[status] || { bg: "#6c757d", color: "#fff" };
 
@@ -246,6 +257,8 @@ export default function RequestDetailPage() {
   // Observation modal state
   const [showObservationModal, setShowObservationModal] = useState(false);
   const [pendingCompletion, setPendingCompletion] = useState(false); // Track if we're completing after observation
+  const [showRedirectModal, setShowRedirectModal] = useState(false);
+  const [showHandoffModal, setShowHandoffModal] = useState(false);
 
   // Kitten assessment state
   const [editingKittens, setEditingKittens] = useState(false);
@@ -828,9 +841,136 @@ export default function RequestDetailPage() {
             <button onClick={() => setEditing(true)} style={{ padding: "0.5rem 1rem" }}>
               Edit
             </button>
+            {request.status !== "redirected" && request.status !== "handed_off" && request.status !== "completed" && request.status !== "cancelled" && (
+              <>
+                <button
+                  onClick={() => setShowRedirectModal(true)}
+                  style={{
+                    padding: "0.5rem 1rem",
+                    background: "transparent",
+                    color: "#6f42c1",
+                    border: "1px solid #6f42c1",
+                  }}
+                  title="Redirect this request to a new address/contact"
+                >
+                  Redirect
+                </button>
+                <button
+                  onClick={() => setShowHandoffModal(true)}
+                  style={{
+                    padding: "0.5rem 1rem",
+                    background: "transparent",
+                    color: "#0d9488",
+                    border: "1px solid #0d9488",
+                  }}
+                  title="Hand off to a new caretaker at a different location"
+                >
+                  Hand Off
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
+
+      {/* Redirect/Handoff Banners */}
+      {request.redirected_to_request_id && request.transfer_type === 'handoff' && (
+        <div
+          style={{
+            padding: "12px 16px",
+            background: "#d1fae5",
+            borderRadius: "8px",
+            marginBottom: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+          }}
+        >
+          <span style={{ fontSize: "1.25rem" }}>🤝</span>
+          <div>
+            <strong style={{ color: "#065f46" }}>This request was handed off</strong>
+            <p style={{ margin: "4px 0 0", fontSize: "0.9rem", color: "#047857" }}>
+              {request.redirect_reason && <span>{request.redirect_reason}. </span>}
+              <a href={`/requests/${request.redirected_to_request_id}`} style={{ color: "#0d9488", fontWeight: 500 }}>
+                View the new caretaker&apos;s request →
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {request.redirected_to_request_id && request.transfer_type !== 'handoff' && (
+        <div
+          style={{
+            padding: "12px 16px",
+            background: "#e8daff",
+            borderRadius: "8px",
+            marginBottom: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+          }}
+        >
+          <span style={{ fontSize: "1.25rem" }}>↪️</span>
+          <div>
+            <strong>This request was redirected</strong>
+            <p style={{ margin: "4px 0 0", fontSize: "0.9rem" }}>
+              {request.redirect_reason && <span>{request.redirect_reason}. </span>}
+              <a href={`/requests/${request.redirected_to_request_id}`} style={{ color: "#6f42c1", fontWeight: 500 }}>
+                View the new request →
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {request.redirected_from_request_id && request.transfer_type === 'handoff' && (
+        <div
+          style={{
+            padding: "12px 16px",
+            background: "#ccfbf1",
+            borderRadius: "8px",
+            marginBottom: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+          }}
+        >
+          <span style={{ fontSize: "1.25rem" }}>🔄</span>
+          <div>
+            <strong style={{ color: "#0f766e" }}>Continuation from previous caretaker</strong>
+            <p style={{ margin: "4px 0 0", fontSize: "0.9rem", color: "#115e59" }}>
+              <a href={`/requests/${request.redirected_from_request_id}`} style={{ color: "#0d9488" }}>
+                ← View the original request
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {request.redirected_from_request_id && request.transfer_type !== 'handoff' && (
+        <div
+          style={{
+            padding: "12px 16px",
+            background: "#f0f0f0",
+            borderRadius: "8px",
+            marginBottom: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+          }}
+        >
+          <span style={{ fontSize: "1.25rem" }}>↩️</span>
+          <div>
+            <strong>This request was created from a redirect</strong>
+            <p style={{ margin: "4px 0 0", fontSize: "0.9rem" }}>
+              <a href={`/requests/${request.redirected_from_request_id}`} style={{ color: "#6f42c1" }}>
+                ← View the original request
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div style={{ color: "#dc3545", marginBottom: "1rem", padding: "0.75rem", background: "#f8d7da", borderRadius: "6px" }}>
@@ -2171,6 +2311,32 @@ export default function RequestDetailPage() {
           onSkip={pendingCompletion ? handleObservationModalClose : undefined}
         />
       )}
+
+      {/* Redirect Request Modal */}
+      <RedirectRequestModal
+        isOpen={showRedirectModal}
+        onClose={() => setShowRedirectModal(false)}
+        requestId={request.request_id}
+        originalSummary={request.summary || "FFR Request"}
+        originalAddress={request.place_address || null}
+        originalRequesterName={request.requester_name || null}
+        onSuccess={(newRequestId) => {
+          router.push(`/requests/${newRequestId}`);
+        }}
+      />
+
+      {/* Handoff Request Modal */}
+      <HandoffRequestModal
+        isOpen={showHandoffModal}
+        onClose={() => setShowHandoffModal(false)}
+        requestId={request.request_id}
+        originalSummary={request.summary || "FFR Request"}
+        originalAddress={request.place_address || null}
+        originalRequesterName={request.requester_name || null}
+        onSuccess={(newRequestId) => {
+          router.push(`/requests/${newRequestId}`);
+        }}
+      />
     </div>
   );
 }
