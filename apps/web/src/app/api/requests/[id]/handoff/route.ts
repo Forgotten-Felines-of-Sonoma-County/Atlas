@@ -12,6 +12,13 @@ interface HandoffResult {
   handoff_status: string;
 }
 
+interface ExistingPerson {
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
 /**
  * POST /api/requests/[id]/handoff
  *
@@ -36,7 +43,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const {
       handoff_reason,
       new_address,
-      new_requester_name,
+      existing_person_id,
+      new_requester_first_name,
+      new_requester_last_name,
       new_requester_phone,
       new_requester_email,
       summary,
@@ -59,9 +68,40 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Determine requester details - from existing person or manual entry
+    let firstName = new_requester_first_name;
+    let lastName = new_requester_last_name;
+    let phone = new_requester_phone;
+    let email = new_requester_email;
+
+    // If existing person selected, look up their details
+    if (existing_person_id) {
+      const existingPerson = await queryOne<ExistingPerson>(
+        `SELECT first_name, last_name,
+          (SELECT id_value FROM trapper.person_identifiers
+           WHERE person_id = $1 AND id_type = 'email' LIMIT 1) as email,
+          (SELECT id_value FROM trapper.person_identifiers
+           WHERE person_id = $1 AND id_type = 'phone' LIMIT 1) as phone
+         FROM trapper.sot_people WHERE id = $1`,
+        [existing_person_id]
+      );
+      if (existingPerson) {
+        firstName = existingPerson.first_name || firstName;
+        lastName = existingPerson.last_name || lastName;
+        // Use existing person's contact info if not overridden
+        if (!phone) phone = existingPerson.phone;
+        if (!email) email = existingPerson.email;
+      }
+    }
+
+    // Build name in "Last, First" format (Atlas convention)
+    const new_requester_name = lastName && firstName
+      ? `${lastName}, ${firstName}`
+      : lastName || firstName || null;
+
     if (!new_requester_name) {
       return NextResponse.json(
-        { error: "New caretaker name is required" },
+        { error: "New caretaker name is required (first and last name)" },
         { status: 400 }
       );
     }
@@ -85,8 +125,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         handoff_reason,
         new_address,
         new_requester_name,
-        new_requester_phone || null,
-        new_requester_email || null,
+        phone || null,
+        email || null,
         summary || null,
         notes || null,
         estimated_cat_count || null,

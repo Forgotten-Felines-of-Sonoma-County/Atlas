@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface HandoffRequestModalProps {
   isOpen: boolean;
@@ -10,6 +10,17 @@ interface HandoffRequestModalProps {
   originalAddress: string | null;
   originalRequesterName: string | null;
   onSuccess?: (newRequestId: string) => void;
+}
+
+interface PersonSearchResult {
+  entity_id: string;
+  entity_type: "person";
+  display_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
 }
 
 const HANDOFF_REASONS = [
@@ -33,9 +44,22 @@ export function HandoffRequestModal({
   const [handoffReason, setHandoffReason] = useState("");
   const [customReason, setCustomReason] = useState("");
   const [newAddress, setNewAddress] = useState("");
-  const [newRequesterName, setNewRequesterName] = useState("");
+
+  // Person search state
+  const [personSearch, setPersonSearch] = useState("");
+  const [personResults, setPersonResults] = useState<PersonSearchResult[]>([]);
+  const [searchingPeople, setSearchingPeople] = useState(false);
+  const [selectedPerson, setSelectedPerson] = useState<PersonSearchResult | null>(null);
+  const [showResults, setShowResults] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Manual entry fields (used when no person selected)
+  const [newRequesterFirstName, setNewRequesterFirstName] = useState("");
+  const [newRequesterLastName, setNewRequesterLastName] = useState("");
   const [newRequesterPhone, setNewRequesterPhone] = useState("");
   const [newRequesterEmail, setNewRequesterEmail] = useState("");
+
   const [summary, setSummary] = useState("");
   const [notes, setNotes] = useState("");
   const [estimatedCatCount, setEstimatedCatCount] = useState<number | "">("");
@@ -43,13 +67,28 @@ export function HandoffRequestModal({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
       setHandoffReason("");
       setCustomReason("");
       setNewAddress("");
-      setNewRequesterName("");
+      setPersonSearch("");
+      setPersonResults([]);
+      setSelectedPerson(null);
+      setNewRequesterFirstName("");
+      setNewRequesterLastName("");
       setNewRequesterPhone("");
       setNewRequesterEmail("");
       setSummary("");
@@ -59,6 +98,64 @@ export function HandoffRequestModal({
       setSuccess(false);
     }
   }, [isOpen]);
+
+  const searchPeople = async (query: string) => {
+    if (query.length < 2) {
+      setPersonResults([]);
+      setShowResults(false);
+      return;
+    }
+    setSearchingPeople(true);
+    setShowResults(true);
+    try {
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=person&limit=8`);
+      if (response.ok) {
+        const data = await response.json();
+        setPersonResults(data.results || []);
+      }
+    } catch (err) {
+      console.error("Failed to search people:", err);
+    } finally {
+      setSearchingPeople(false);
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setPersonSearch(value);
+    setSelectedPerson(null); // Clear selection when typing
+
+    // Debounce search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      searchPeople(value);
+    }, 300);
+  };
+
+  const handleSelectPerson = (person: PersonSearchResult) => {
+    setSelectedPerson(person);
+    setPersonSearch(person.display_name);
+    setShowResults(false);
+
+    // Auto-fill fields from selected person
+    setNewRequesterFirstName(person.first_name || "");
+    setNewRequesterLastName(person.last_name || "");
+    setNewRequesterPhone(person.phone || "");
+    setNewRequesterEmail(person.email || "");
+    if (person.address) {
+      setNewAddress(person.address);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedPerson(null);
+    setPersonSearch("");
+    setNewRequesterFirstName("");
+    setNewRequesterLastName("");
+    setNewRequesterPhone("");
+    setNewRequesterEmail("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,8 +177,9 @@ export function HandoffRequestModal({
       return;
     }
 
-    if (!newRequesterName.trim()) {
-      setError("Please enter the new caretaker's name");
+    // Need either a selected person or first+last name
+    if (!selectedPerson && (!newRequesterFirstName.trim() || !newRequesterLastName.trim())) {
+      setError("Please search for an existing person or enter their first and last name");
       return;
     }
 
@@ -97,7 +195,10 @@ export function HandoffRequestModal({
               ? customReason
               : HANDOFF_REASONS.find((r) => r.value === handoffReason)?.label,
           new_address: newAddress,
-          new_requester_name: newRequesterName,
+          // If person selected, pass their ID; otherwise pass name fields
+          existing_person_id: selectedPerson?.entity_id || null,
+          new_requester_first_name: newRequesterFirstName || null,
+          new_requester_last_name: newRequesterLastName || null,
           new_requester_phone: newRequesterPhone || null,
           new_requester_email: newRequesterEmail || null,
           summary: summary || null,
@@ -305,8 +406,8 @@ export function HandoffRequestModal({
             New Caretaker Details
           </h3>
 
-          {/* New Caretaker Name */}
-          <div style={{ marginBottom: "16px" }}>
+          {/* Person Search */}
+          <div style={{ marginBottom: "16px" }} ref={searchContainerRef}>
             <label
               style={{
                 display: "block",
@@ -315,22 +416,160 @@ export function HandoffRequestModal({
                 marginBottom: "6px",
               }}
             >
-              New Caretaker Name *
+              Search for Existing Person
             </label>
-            <input
-              type="text"
-              value={newRequesterName}
-              onChange={(e) => setNewRequesterName(e.target.value)}
-              placeholder="Name of person taking over"
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-                fontSize: "0.9rem",
-                background: "var(--input-bg, #fff)",
-              }}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type="text"
+                value={personSearch}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onFocus={() => personResults.length > 0 && setShowResults(true)}
+                placeholder="Type a name to search..."
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  paddingRight: selectedPerson ? "36px" : "12px",
+                  border: `1px solid ${selectedPerson ? "#0d9488" : "var(--border)"}`,
+                  borderRadius: "8px",
+                  fontSize: "0.9rem",
+                  background: selectedPerson ? "#f0fdfa" : "var(--input-bg, #fff)",
+                }}
+              />
+              {selectedPerson && (
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  style={{
+                    position: "absolute",
+                    right: "8px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#666",
+                    fontSize: "1.2rem",
+                    lineHeight: 1,
+                  }}
+                >
+                  &times;
+                </button>
+              )}
+
+              {/* Search Results Dropdown */}
+              {showResults && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    background: "var(--card-bg, #fff)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "8px",
+                    marginTop: "4px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                    zIndex: 10,
+                    maxHeight: "200px",
+                    overflow: "auto",
+                  }}
+                >
+                  {searchingPeople ? (
+                    <div style={{ padding: "12px", color: "var(--muted)", fontSize: "0.9rem" }}>
+                      Searching...
+                    </div>
+                  ) : personResults.length > 0 ? (
+                    personResults.map((person) => (
+                      <div
+                        key={person.entity_id}
+                        onClick={() => handleSelectPerson(person)}
+                        style={{
+                          padding: "10px 12px",
+                          cursor: "pointer",
+                          borderBottom: "1px solid var(--border)",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#f0fdfa")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        <div style={{ fontWeight: 500, fontSize: "0.9rem" }}>
+                          {person.display_name}
+                        </div>
+                        <div style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+                          {[person.email, person.phone, person.address]
+                            .filter(Boolean)
+                            .join(" • ")}
+                        </div>
+                      </div>
+                    ))
+                  ) : personSearch.length >= 2 ? (
+                    <div style={{ padding: "12px", color: "var(--muted)", fontSize: "0.9rem" }}>
+                      No people found. Enter details below to create new.
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+            {selectedPerson && (
+              <div style={{ marginTop: "6px", fontSize: "0.8rem", color: "#0d9488" }}>
+                Selected existing person - fields auto-filled below
+              </div>
+            )}
+          </div>
+
+          {/* First Name / Last Name */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.85rem",
+                  fontWeight: 500,
+                  marginBottom: "6px",
+                }}
+              >
+                First Name *
+              </label>
+              <input
+                type="text"
+                value={newRequesterFirstName}
+                onChange={(e) => setNewRequesterFirstName(e.target.value)}
+                placeholder="First name"
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "8px",
+                  fontSize: "0.9rem",
+                  background: "var(--input-bg, #fff)",
+                }}
+              />
+            </div>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.85rem",
+                  fontWeight: 500,
+                  marginBottom: "6px",
+                }}
+              >
+                Last Name *
+              </label>
+              <input
+                type="text"
+                value={newRequesterLastName}
+                onChange={(e) => setNewRequesterLastName(e.target.value)}
+                placeholder="Last name"
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "8px",
+                  fontSize: "0.9rem",
+                  background: "var(--input-bg, #fff)",
+                }}
+              />
+            </div>
           </div>
 
           {/* New Address */}
