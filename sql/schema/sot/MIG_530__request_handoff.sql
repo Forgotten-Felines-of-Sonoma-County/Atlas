@@ -142,7 +142,7 @@ BEGIN
     'request', p_original_request_id, 'field_update', 'status',
     to_jsonb(v_original.status::TEXT), '"handed_off"',
     'Handed off to ' || p_new_requester_name || ': ' || p_handoff_reason,
-    'handoff_workflow', p_created_by
+    'api', p_created_by
   );
 
   RETURN QUERY SELECT p_original_request_id, v_new_request_id, 'success'::TEXT;
