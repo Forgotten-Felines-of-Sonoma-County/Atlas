@@ -758,7 +758,7 @@ export function HandoffRequestModal({
           </div>
 
           {/* Cat Count & Summary */}
-          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "12px", marginBottom: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "12px", marginBottom: "16px" }}>
             <div>
               <label
                 style={{
@@ -767,8 +767,9 @@ export function HandoffRequestModal({
                   fontWeight: 500,
                   marginBottom: "6px",
                 }}
+                title="Unfixed cats still needing spay/neuter"
               >
-                Est. Cats
+                Cats Needing TNR
               </label>
               <input
                 type="number"
