@@ -152,15 +152,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Handle specific error messages from the function
     if (error instanceof Error) {
-      if (error.message.includes("not found")) {
+      const msg = error.message;
+
+      if (msg.includes("not found")) {
         return NextResponse.json({ error: "Request not found" }, { status: 404 });
       }
-      if (error.message.includes("already been closed")) {
+      if (msg.includes("already been closed")) {
         return NextResponse.json(
           { error: "This request has already been closed and cannot be handed off" },
           { status: 400 }
         );
       }
+
+      // Return the actual error message for debugging
+      return NextResponse.json(
+        { error: `Failed to hand off request: ${msg}` },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json(
