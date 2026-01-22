@@ -32,11 +32,20 @@ interface PlaceDetails {
   people?: Array<{ person_id: string; display_name: string; role: string }>;
 }
 
+interface PersonAddress {
+  place_id: string;
+  formatted_address: string;
+  display_name: string | null;
+  role: string;
+  confidence: number | null;
+}
+
 interface PersonDetails {
   person_id: string;
   display_name: string;
   email?: string;
   phone?: string;
+  addresses?: PersonAddress[];
 }
 
 interface EmailCheckResult {
@@ -508,9 +517,14 @@ function NewRequestForm() {
 
   const selectPerson = async (result: SearchResult) => {
     try {
-      const response = await fetch(`/api/people/${result.entity_id}`);
-      if (response.ok) {
-        const person = await response.json();
+      // Fetch person details and addresses in parallel
+      const [personResponse, addressResponse] = await Promise.all([
+        fetch(`/api/people/${result.entity_id}`),
+        fetch(`/api/people/${result.entity_id}/addresses`),
+      ]);
+
+      if (personResponse.ok) {
+        const person = await personResponse.json();
         // Extract email and phone from identifiers (API returns id_value, not id_value_norm)
         const emailId = person.identifiers?.find((id: { id_type: string }) => id.id_type === "email");
         const phoneId = person.identifiers?.find((id: { id_type: string }) => id.id_type === "phone");
@@ -518,11 +532,22 @@ function NewRequestForm() {
         const email = emailId?.id_value || "";
         const phone = phoneId?.id_value || "";
 
+        // Get addresses if available
+        let addresses: PersonAddress[] = [];
+        if (addressResponse.ok) {
+          const addressData = await addressResponse.json();
+          addresses = addressData.addresses || [];
+          console.log("[FFR] Fetched addresses for person:", person.display_name, addresses);
+        } else {
+          console.log("[FFR] Failed to fetch addresses:", addressResponse.status);
+        }
+
         setSelectedPerson({
           person_id: person.person_id,
           display_name: person.display_name,
           email,
           phone,
+          addresses,
         });
         // Pre-fill the fields
         const nameParts = person.display_name?.split(" ") || [];
@@ -663,6 +688,18 @@ function NewRequestForm() {
     setEmailWarning(null);
     setEditingContactInfo(false);
     setOriginalContactInfo(null);
+  };
+
+  // Use a known address from the selected person as the cat location
+  const useKnownAddress = (address: PersonAddress) => {
+    setSelectedPlace({
+      place_id: address.place_id,
+      display_name: address.display_name || address.formatted_address,
+      formatted_address: address.formatted_address,
+      locality: null,
+    });
+    setPlaceSearch("");
+    setShowDropdown(false);
   };
 
   const toggleUrgencyReason = (reason: string) => {
@@ -1415,6 +1452,56 @@ function NewRequestForm() {
         {/* SECTION 1: Location */}
         <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
           <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Cat Location</h2>
+
+          {/* Known addresses from selected person */}
+          {selectedPerson?.addresses && selectedPerson.addresses.length > 0 && !selectedPlace && (
+            <div
+              style={{
+                marginBottom: "1rem",
+                padding: "1rem",
+                background: "#d4edda",
+                border: "2px solid #28a745",
+                borderRadius: "8px",
+              }}
+            >
+              <p style={{ margin: "0 0 0.75rem", fontWeight: 600, color: "#155724" }}>
+                📍 Quick fill from {selectedPerson.display_name}'s known addresses:
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {selectedPerson.addresses.map((addr) => (
+                  <button
+                    key={addr.place_id}
+                    type="button"
+                    onClick={() => useKnownAddress(addr)}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "0.75rem",
+                      background: "#fff",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span>
+                      <span style={{ display: "block" }}>{addr.formatted_address}</span>
+                      {addr.role && (
+                        <span className="text-muted text-sm">({addr.role})</span>
+                      )}
+                    </span>
+                    <span style={{ color: "var(--primary)", fontWeight: 500, fontSize: "0.85rem" }}>
+                      Use this address
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-muted text-sm" style={{ margin: "0.75rem 0 0" }}>
+                Or search for a different address below
+              </p>
+            </div>
+          )}
 
           {selectedPlace ? (
             <div

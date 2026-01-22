@@ -66,12 +66,21 @@ interface PlaceDetails {
   }>;
 }
 
+interface PersonAddress {
+  place_id: string;
+  formatted_address: string;
+  display_name: string | null;
+  role: string;
+  confidence: number | null;
+}
+
 interface PersonSuggestion {
   person_id: string;
   display_name: string;
   emails: string | null;
   phones: string | null;
   cat_count: number;
+  addresses: PersonAddress[] | null;
 }
 
 interface FormData {
@@ -240,6 +249,12 @@ function IntakeForm() {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [placeCoordinates, setPlaceCoordinates] = useState<{ lat: number; lng: number } | null>(null);
 
+  // Address selection state (for known person addresses)
+  const [personAddresses, setPersonAddresses] = useState<PersonAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [catsAtMyAddress, setCatsAtMyAddress] = useState(true); // Default true for new requests
+  const [showAddressSelection, setShowAddressSelection] = useState(false);
+
   // Determine steps based on call type
   const getSteps = (): Step[] => {
     // All paths: call_type → contact → location → cat_details → review
@@ -351,6 +366,40 @@ function IntakeForm() {
     setSelectedPersonId(person.person_id);
     setShowPersonDropdown(false);
     setPersonSuggestions([]);
+
+    // Set addresses from search results
+    if (person.addresses && person.addresses.length > 0) {
+      setPersonAddresses(person.addresses);
+      setShowAddressSelection(true);
+    } else {
+      // Fetch addresses separately if not included in search results
+      fetch(`/api/people/${person.person_id}/addresses`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.addresses && data.addresses.length > 0) {
+            setPersonAddresses(data.addresses);
+            setShowAddressSelection(true);
+          } else {
+            setPersonAddresses([]);
+            setShowAddressSelection(false);
+          }
+        })
+        .catch(() => {
+          setPersonAddresses([]);
+          setShowAddressSelection(false);
+        });
+    }
+  };
+
+  // Handle selecting a known address from person's addresses
+  const handleKnownAddressSelect = (address: PersonAddress) => {
+    setSelectedAddressId(address.place_id);
+    setFormData(prev => ({
+      ...prev,
+      cats_address: address.formatted_address || "",
+    }));
+    // Note: We store the place_id from Atlas, not Google place_id
+    setSelectedPlaceId(address.place_id);
   };
 
   // Handle address place selection from Google
@@ -654,6 +703,11 @@ function IntakeForm() {
           requester_address: formData.requester_address || undefined,
           requester_city: formData.requester_city || undefined,
           requester_zip: formData.requester_zip || undefined,
+
+          // Person/Address linking (MIG_538)
+          existing_person_id: selectedPersonId || undefined,
+          selected_address_place_id: (selectedAddressId && selectedAddressId !== "new") ? selectedAddressId : undefined,
+          cats_at_requester_address: catsAtMyAddress,
 
           // Third-party
           is_third_party_report: formData.is_third_party_report,
@@ -1198,21 +1252,133 @@ function IntakeForm() {
         <div className="card" style={{ padding: "1.5rem" }}>
           <h2 style={{ marginBottom: "1rem" }}>Cat Location</h2>
 
-          <div>
-            <label>Street Address *</label>
-            <AddressAutocomplete
-              value={formData.cats_address}
-              onChange={(value) => updateField("cats_address", value)}
-              onPlaceSelect={handlePlaceSelect}
-              placeholder="Start typing address..."
-            />
-            {errors.cats_address && <span style={{ color: "#dc3545", fontSize: "0.8rem" }}>{errors.cats_address}</span>}
-            {selectedPlaceId && (
-              <span style={{ fontSize: "0.75rem", color: "#198754", marginTop: "0.25rem", display: "block" }}>
-                Address verified via Google Maps
-              </span>
-            )}
-          </div>
+          {/* Known addresses for selected person */}
+          {showAddressSelection && personAddresses.length > 0 && (
+            <div style={{
+              marginBottom: "1.5rem",
+              padding: "1rem",
+              background: "#e7f1ff",
+              border: "1px solid #b8daff",
+              borderRadius: "8px",
+            }}>
+              <p style={{ margin: "0 0 0.75rem 0", fontWeight: 500 }}>
+                Known addresses for {formData.first_name}:
+              </p>
+
+              {/* Cats at my address checkbox */}
+              <label style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                marginBottom: "0.75rem",
+                cursor: "pointer",
+                padding: "0.5rem",
+                background: catsAtMyAddress ? "#d4edda" : "#fff",
+                border: `2px solid ${catsAtMyAddress ? "#198754" : "#ddd"}`,
+                borderRadius: "6px",
+              }}>
+                <input
+                  type="checkbox"
+                  checked={catsAtMyAddress}
+                  onChange={(e) => setCatsAtMyAddress(e.target.checked)}
+                />
+                <span>Cats are at my address</span>
+              </label>
+
+              {/* Address options */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {personAddresses.map((addr) => (
+                  <label
+                    key={addr.place_id}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "0.5rem",
+                      padding: "0.75rem",
+                      border: `2px solid ${selectedAddressId === addr.place_id ? "#0066cc" : "#ddd"}`,
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      background: selectedAddressId === addr.place_id ? "#fff" : "#f8f9fa",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="known_address"
+                      checked={selectedAddressId === addr.place_id}
+                      onChange={() => handleKnownAddressSelect(addr)}
+                    />
+                    <span>
+                      <span style={{ display: "block" }}>{addr.formatted_address}</span>
+                      {addr.role && (
+                        <span style={{ fontSize: "0.75rem", color: "#666" }}>
+                          ({addr.role})
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                ))}
+
+                {/* Enter different address option */}
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "0.75rem",
+                    border: `2px solid ${selectedAddressId === "new" ? "#0066cc" : "#ddd"}`,
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    background: selectedAddressId === "new" ? "#fff" : "#f8f9fa",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="known_address"
+                    checked={selectedAddressId === "new"}
+                    onChange={() => {
+                      setSelectedAddressId("new");
+                      setFormData(prev => ({ ...prev, cats_address: "" }));
+                      setSelectedPlaceId(null);
+                    }}
+                  />
+                  <span>Enter a different address</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Address input - show always if no known addresses, or if "new" selected */}
+          {(!showAddressSelection || selectedAddressId === "new" || personAddresses.length === 0) && (
+            <div>
+              <label>Street Address *</label>
+              <AddressAutocomplete
+                value={formData.cats_address}
+                onChange={(value) => updateField("cats_address", value)}
+                onPlaceSelect={handlePlaceSelect}
+                placeholder="Start typing address..."
+              />
+              {errors.cats_address && <span style={{ color: "#dc3545", fontSize: "0.8rem" }}>{errors.cats_address}</span>}
+              {selectedPlaceId && selectedAddressId !== "new" && (
+                <span style={{ fontSize: "0.75rem", color: "#198754", marginTop: "0.25rem", display: "block" }}>
+                  Address verified via Google Maps
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Show selected address summary when using known address */}
+          {showAddressSelection && selectedAddressId && selectedAddressId !== "new" && (
+            <div style={{
+              marginTop: "0.5rem",
+              padding: "0.75rem",
+              background: "#d4edda",
+              border: "1px solid #c3e6cb",
+              borderRadius: "6px",
+            }}>
+              <span style={{ fontWeight: 500 }}>Selected: </span>
+              {formData.cats_address}
+            </div>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem", marginTop: "0.5rem" }}>
             <input
@@ -1244,6 +1410,62 @@ function IntakeForm() {
               <option value="other">Other</option>
             </select>
           </div>
+
+          {/* Requester home address - show when cats are NOT at requester's address */}
+          {!catsAtMyAddress && selectedPersonId && (
+            <div style={{
+              marginTop: "1.5rem",
+              padding: "1rem",
+              background: "#fff3cd",
+              border: "1px solid #ffc107",
+              borderRadius: "8px",
+            }}>
+              <p style={{ margin: "0 0 0.75rem 0", fontWeight: 500 }}>
+                Your Home Address (Optional)
+              </p>
+              <p style={{ fontSize: "0.85rem", color: "#666", marginBottom: "0.75rem" }}>
+                Since the cats are at a different location, you can optionally provide your home address.
+              </p>
+              <AddressAutocomplete
+                value={formData.requester_address}
+                onChange={(value) => updateField("requester_address", value)}
+                onPlaceSelect={(place) => {
+                  // Extract city and zip from requester address
+                  let city = "";
+                  let zip = "";
+                  for (const component of place.address_components) {
+                    if (component.types.includes("locality")) {
+                      city = component.long_name;
+                    } else if (component.types.includes("postal_code")) {
+                      zip = component.long_name;
+                    }
+                  }
+                  setFormData(prev => ({
+                    ...prev,
+                    requester_city: city || prev.requester_city,
+                    requester_zip: zip || prev.requester_zip,
+                  }));
+                }}
+                placeholder="Start typing your home address..."
+              />
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "0.5rem", marginTop: "0.5rem" }}>
+                <input
+                  type="text"
+                  value={formData.requester_city}
+                  onChange={(e) => updateField("requester_city", e.target.value)}
+                  placeholder="City"
+                  style={{ fontSize: "0.9rem", padding: "0.5rem" }}
+                />
+                <input
+                  type="text"
+                  value={formData.requester_zip}
+                  onChange={(e) => updateField("requester_zip", e.target.value)}
+                  placeholder="ZIP"
+                  style={{ fontSize: "0.9rem", padding: "0.5rem" }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Quick check: is caller at location? */}
           <div style={{ marginTop: "1.5rem", background: "#f8f9fa", padding: "1rem", borderRadius: "8px" }}>

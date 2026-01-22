@@ -48,7 +48,23 @@ export async function GET(request: NextRequest) {
           FROM trapper.person_identifiers pi
           WHERE pi.person_id = p.person_id
             AND pi.id_type = 'phone'
-        ) as phones
+        ) as phones,
+        (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'place_id', ppr.place_id,
+              'formatted_address', pl.formatted_address,
+              'display_name', pl.display_name,
+              'role', ppr.role,
+              'confidence', ppr.confidence
+            )
+            ORDER BY ppr.confidence DESC NULLS LAST
+          )
+          FROM trapper.person_place_relationships ppr
+          JOIN trapper.places pl ON pl.place_id = ppr.place_id
+          WHERE ppr.person_id = p.person_id
+            AND pl.merged_into_place_id IS NULL
+        ) as addresses
       FROM trapper.sot_people p
       LEFT JOIN trapper.person_identifiers pi ON pi.person_id = p.person_id
       WHERE p.merged_into_person_id IS NULL

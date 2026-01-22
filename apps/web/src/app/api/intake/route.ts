@@ -15,6 +15,11 @@ interface IntakeSubmission {
   requester_city?: string;
   requester_zip?: string;
 
+  // Person/Address linking (new in MIG_538)
+  existing_person_id?: string;        // Selected person (skip matching)
+  selected_address_place_id?: string; // Using known address for cats
+  cats_at_requester_address?: boolean; // True if cats are at requester home
+
   // Third-party report
   is_third_party_report?: boolean;
   third_party_relationship?: string;
@@ -130,6 +135,7 @@ export async function POST(request: NextRequest) {
       `INSERT INTO trapper.web_intake_submissions (
         intake_source, source_system, first_name, last_name, email, phone,
         requester_address, requester_city, requester_zip,
+        matched_person_id, selected_address_place_id, cats_at_requester_address,
         is_third_party_report, third_party_relationship,
         property_owner_name, property_owner_phone, property_owner_email,
         cats_address, cats_city, cats_zip, county,
@@ -148,7 +154,8 @@ export async function POST(request: NextRequest) {
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
         $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34,
         $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50,
-        $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66
+        $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66,
+        $67, $68, $69
       )
       RETURNING submission_id, triage_category::TEXT, triage_score`,
       [
@@ -161,6 +168,9 @@ export async function POST(request: NextRequest) {
         body.requester_address || null,
         body.requester_city || null,
         body.requester_zip || null,
+        body.existing_person_id || null, // $10 - matched_person_id when pre-selected
+        body.selected_address_place_id || null, // $11 - place_id when using known address
+        body.cats_at_requester_address ?? true, // $12 - defaults to true
         body.is_third_party_report ?? false,
         body.third_party_relationship || null,
         body.property_owner_name || null,
