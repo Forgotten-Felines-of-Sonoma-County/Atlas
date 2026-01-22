@@ -178,16 +178,37 @@ export default function GlobalSearch() {
     }
   };
 
-  // Group suggestions by type
+  // Group suggestions by type, then collapse duplicate display_names
   const groupedSuggestions = suggestions.reduce(
     (acc, suggestion) => {
       if (!acc[suggestion.entity_type]) {
         acc[suggestion.entity_type] = [];
       }
-      acc[suggestion.entity_type].push(suggestion);
+      // Check if we already have a suggestion with the same display_name
+      const existingIndex = acc[suggestion.entity_type].findIndex(
+        (s) => s.display_name.toLowerCase().trim() === suggestion.display_name.toLowerCase().trim()
+      );
+      if (existingIndex === -1) {
+        // Add with duplicate count tracking
+        acc[suggestion.entity_type].push({
+          ...suggestion,
+          _duplicateCount: 1,
+        });
+      } else {
+        // Increment duplicate count on existing entry
+        const existing = acc[suggestion.entity_type][existingIndex] as SearchResult & { _duplicateCount?: number };
+        existing._duplicateCount = (existing._duplicateCount || 1) + 1;
+        // Keep the one with higher score
+        if (suggestion.score > existing.score) {
+          acc[suggestion.entity_type][existingIndex] = {
+            ...suggestion,
+            _duplicateCount: existing._duplicateCount,
+          };
+        }
+      }
       return acc;
     },
-    {} as Record<string, SearchResult[]>
+    {} as Record<string, (SearchResult & { _duplicateCount?: number })[]>
   );
 
   const typeOrder = ["cat", "person", "place"];
@@ -223,6 +244,7 @@ export default function GlobalSearch() {
                   flatIndex++;
                   const currentIndex = flatIndex;
                   const matchBadge = getMatchBadge(suggestion.match_reason);
+                  const duplicateCount = (suggestion as SearchResult & { _duplicateCount?: number })._duplicateCount || 1;
 
                   return (
                     <div
@@ -243,6 +265,11 @@ export default function GlobalSearch() {
                         <span className="search-suggestion-name">
                           {suggestion.display_name}
                         </span>
+                        {duplicateCount > 1 && (
+                          <span className="search-duplicate-badge">
+                            {duplicateCount} records
+                          </span>
+                        )}
                         {matchBadge && (
                           <span className="search-match-badge">{matchBadge}</span>
                         )}
@@ -364,6 +391,15 @@ export default function GlobalSearch() {
           color: var(--primary);
           border-radius: 3px;
           font-weight: 500;
+        }
+
+        .search-duplicate-badge {
+          font-size: 0.625rem;
+          padding: 0.125rem 0.5rem;
+          background: var(--primary);
+          color: white;
+          border-radius: 10px;
+          font-weight: 600;
         }
 
         .search-suggestion-subtitle {
