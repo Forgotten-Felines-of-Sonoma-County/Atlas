@@ -188,6 +188,13 @@ export default function AdminPage() {
                   icon="🧪"
                   accent="#fff7ed"
                 />
+                <AdminCard
+                  href="/admin/known-organizations"
+                  title="Known Orgs"
+                  description="Prevent org duplicates"
+                  icon="🏛️"
+                  accent="#f0fdf4"
+                />
               </div>
             </section>
 
