@@ -72,6 +72,14 @@ export function HandoffRequestModal({
   const [summary, setSummary] = useState("");
   const [notes, setNotes] = useState("");
   const [estimatedCatCount, setEstimatedCatCount] = useState<number | "">("");
+
+  // Kitten assessment state
+  const [hasKittens, setHasKittens] = useState(false);
+  const [kittenCount, setKittenCount] = useState<number | "">("");
+  const [kittenAgeWeeks, setKittenAgeWeeks] = useState<number | "">("");
+  const [kittenAssessmentStatus, setKittenAssessmentStatus] = useState("");
+  const [kittenAssessmentOutcome, setKittenAssessmentOutcome] = useState("");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -112,6 +120,11 @@ export function HandoffRequestModal({
       setSummary("");
       setNotes("");
       setEstimatedCatCount("");
+      setHasKittens(false);
+      setKittenCount("");
+      setKittenAgeWeeks("");
+      setKittenAssessmentStatus("");
+      setKittenAssessmentOutcome("");
       setError("");
       setSuccess(false);
       setAddressPredictions([]);
@@ -292,6 +305,12 @@ export function HandoffRequestModal({
           summary: summary || null,
           notes: notes || null,
           estimated_cat_count: estimatedCatCount === "" ? null : estimatedCatCount,
+          // Kitten assessment fields
+          has_kittens: hasKittens,
+          kitten_count: kittenCount === "" ? null : kittenCount,
+          kitten_age_weeks: kittenAgeWeeks === "" ? null : kittenAgeWeeks,
+          kitten_assessment_status: kittenAssessmentStatus || null,
+          kitten_assessment_outcome: kittenAssessmentOutcome || null,
         }),
       });
 
@@ -758,7 +777,7 @@ export function HandoffRequestModal({
           </div>
 
           {/* Cat Count & Summary */}
-          <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "12px", marginBottom: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: "12px", marginBottom: "16px" }}>
             <div>
               <label
                 style={{
@@ -767,9 +786,9 @@ export function HandoffRequestModal({
                   fontWeight: 500,
                   marginBottom: "6px",
                 }}
-                title="Unfixed cats still needing spay/neuter"
+                title="Adult cats at this location that still need spay/neuter (not kittens, not total colony)"
               >
-                Cats Needing TNR
+                Adult Cats Needing TNR
               </label>
               <input
                 type="number"
@@ -788,6 +807,9 @@ export function HandoffRequestModal({
                   background: "var(--input-bg, #fff)",
                 }}
               />
+              <div style={{ fontSize: "0.7rem", color: "#666", marginTop: "4px" }}>
+                Adults only - kittens below
+              </div>
             </div>
             <div>
               <label
@@ -815,6 +837,111 @@ export function HandoffRequestModal({
                 }}
               />
             </div>
+          </div>
+
+          {/* Kitten Assessment */}
+          <div style={{ marginBottom: "16px", padding: "12px", background: "var(--card-bg, #f8f9fa)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: hasKittens ? "12px" : "0" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={hasKittens}
+                  onChange={(e) => setHasKittens(e.target.checked)}
+                />
+                <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>Has Kittens (under 8 weeks)</span>
+              </label>
+            </div>
+
+            {hasKittens && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: "4px" }}>
+                    Count
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={kittenCount}
+                    onChange={(e) => setKittenCount(e.target.value === "" ? "" : parseInt(e.target.value))}
+                    placeholder="#"
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--input-bg, #fff)",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: "4px" }}>
+                    Age (weeks)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="8"
+                    value={kittenAgeWeeks}
+                    onChange={(e) => setKittenAgeWeeks(e.target.value === "" ? "" : parseInt(e.target.value))}
+                    placeholder="0-8"
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--input-bg, #fff)",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: "4px" }}>
+                    Assessment Status
+                  </label>
+                  <select
+                    value={kittenAssessmentStatus}
+                    onChange={(e) => setKittenAssessmentStatus(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--input-bg, #fff)",
+                    }}
+                  >
+                    <option value="">Not assessed</option>
+                    <option value="pending">Pending</option>
+                    <option value="assessed">Assessed</option>
+                    <option value="placed">Placed in foster</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 500, marginBottom: "4px" }}>
+                    Outcome
+                  </label>
+                  <select
+                    value={kittenAssessmentOutcome}
+                    onChange={(e) => setKittenAssessmentOutcome(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      fontSize: "0.85rem",
+                      background: "var(--input-bg, #fff)",
+                    }}
+                  >
+                    <option value="">Not decided</option>
+                    <option value="tnr_candidate">TNR candidate (8+ weeks)</option>
+                    <option value="foster_intake">Foster intake</option>
+                    <option value="pending_space">Pending foster space</option>
+                    <option value="declined">Declined</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Notes */}

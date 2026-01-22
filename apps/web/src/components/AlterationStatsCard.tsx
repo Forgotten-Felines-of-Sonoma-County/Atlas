@@ -212,8 +212,11 @@ export function AlterationStatsCard({ requestId, onUpgradeClick }: AlterationSta
           <span style={{ fontWeight: 600 }}>{stats.females}</span>
         </div>
         {stats.estimated_cat_count && (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginLeft: "auto" }}>
-            <span style={{ fontSize: "0.875rem", color: "#666" }}>Reported:</span>
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginLeft: "auto" }}
+            title="Cats still needing TNR at this location (not total colony size)"
+          >
+            <span style={{ fontSize: "0.875rem", color: "#666" }}>TNR Target:</span>
             <span style={{ fontWeight: 600 }}>{stats.estimated_cat_count}</span>
           </div>
         )}
@@ -339,7 +342,8 @@ export function AlterationStatsCard({ requestId, onUpgradeClick }: AlterationSta
         <ul style={{ margin: "0.5rem 0 0 1rem", padding: 0 }}>
           <li><strong>For This Request:</strong> Cats caught within the data window (attributable to this request)</li>
           <li><strong>Total at Place:</strong> All altered cats ever linked to this location</li>
-          <li><strong>Place Progress:</strong> Total cats / estimated colony size</li>
+          <li><strong>Place Progress:</strong> Total cats caught / TNR target (cats still needing spay/neuter)</li>
+          <li><strong>TNR Target:</strong> Cats the requester said still need spay/neuter (not total colony size)</li>
         </ul>
       </div>
     </div>

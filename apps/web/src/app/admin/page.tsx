@@ -203,6 +203,13 @@ export default function AdminPage() {
                   accent="#f0fdf4"
                 />
                 <AdminCard
+                  href="/admin/tippy-drafts"
+                  title="Tippy Drafts"
+                  description="Review AI-created requests"
+                  icon="📋"
+                  accent="#fef3c7"
+                />
+                <AdminCard
                   href="/admin/tippy-feedback"
                   title="Tippy Feedback"
                   description="Review AI assistant feedback"

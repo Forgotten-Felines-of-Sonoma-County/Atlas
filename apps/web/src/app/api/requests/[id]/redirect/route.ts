@@ -40,6 +40,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       summary,
       notes,
       estimated_cat_count,
+      // Kitten assessment fields
+      has_kittens,
+      kitten_count,
+      kitten_age_weeks,
+      kitten_assessment_status,
+      kitten_assessment_outcome,
     } = body;
 
     // Validate required fields
@@ -70,7 +76,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         p_summary := $8,
         p_notes := $9,
         p_estimated_cat_count := $10,
-        p_created_by := $11
+        p_created_by := $11,
+        p_has_kittens := $12,
+        p_kitten_count := $13,
+        p_kitten_age_weeks := $14,
+        p_kitten_assessment_status := $15,
+        p_kitten_assessment_outcome := $16
       )`,
       [
         requestId,
@@ -84,6 +95,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         notes || null,
         estimated_cat_count || null,
         `staff:${session.staff_id}`,
+        has_kittens || false,
+        kitten_count || null,
+        kitten_age_weeks || null,
+        kitten_assessment_status || null,
+        kitten_assessment_outcome || null,
       ]
     );
 

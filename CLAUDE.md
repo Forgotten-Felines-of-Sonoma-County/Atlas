@@ -350,6 +350,30 @@ Required in `.env`:
 - `AIRTABLE_PAT` - Airtable Personal Access Token
 - `GOOGLE_PLACES_API_KEY` - For geocoding
 
+## Tippy Dynamic Schema Navigation (MIG_517-521)
+
+Tippy uses dynamic schema navigation to query 190+ database views without hardcoded tools.
+
+### Key Tables
+| Table | Purpose |
+|-------|---------|
+| `tippy_view_catalog` | Registry of views Tippy can query (31 views) |
+| `tippy_proposed_corrections` | Data corrections Tippy proposes for review |
+| `tippy_unanswerable_questions` | Questions Tippy couldn't answer (gap tracking) |
+| `tippy_view_usage` | Analytics on which views are queried |
+
+### Admin Pages
+- `/admin/tippy-corrections` - Review and apply data corrections
+- `/admin/tippy-gaps` - Review unanswerable questions to identify schema gaps
+
+### Adding Views to Tippy
+```sql
+INSERT INTO trapper.tippy_view_catalog (view_name, category, description, key_columns, filter_columns, example_questions)
+VALUES ('v_my_view', 'stats', 'Description', ARRAY['col1'], ARRAY['filter_col'], ARRAY['Example question?']);
+```
+
+See `docs/TIPPY_VIEWS_AND_SCHEMA.md` for full documentation.
+
 ## Views to Know
 
 | View | Purpose |
@@ -366,6 +390,9 @@ Required in `.env`:
 | `v_place_active_contexts` | Active place context tags |
 | `v_place_context_summary` | Aggregated contexts per place |
 | `v_person_cat_history` | Person-cat relationships with details |
+| `v_tippy_view_popularity` | Which views Tippy queries most |
+| `v_tippy_pending_corrections` | Data corrections awaiting review |
+| `v_tippy_gaps_review` | Unanswerable questions for gap analysis |
 
 ## Key Tables
 
@@ -445,6 +472,46 @@ INSERT INTO trapper.place_colony_estimates (
 
 ### Key View
 `v_place_colony_status` - Aggregates all estimates with weighted confidence
+
+## Cat Count Semantic Distinction (MIG_534)
+
+**IMPORTANT:** The field `estimated_cat_count` on requests has a specific meaning that differs from colony size.
+
+### Two Concepts, Two Fields
+
+| Field | Meaning | Purpose |
+|-------|---------|---------|
+| `estimated_cat_count` | Cats still needing TNR | Request progress tracking |
+| `total_cats_reported` | Total cats at location | Colony size for Beacon modeling |
+| `cat_count_semantic` | 'needs_tnr' or 'legacy_total' | Indicates field meaning |
+
+### Why This Matters
+
+**Example:** A request shows "3 cats"
+- **If semantic = 'needs_tnr':** 3 cats still need to be fixed (progress tracking)
+- **If semantic = 'legacy_total':** 3 cats total at location (colony estimate)
+
+Legacy requests (before MIG_534) have `cat_count_semantic = 'legacy_total'`. New requests use `'needs_tnr'`.
+
+### UI Labels
+
+Always use **"Cats Needing TNR"** (not "Estimated Cats" or "Cat Count") in:
+- Request detail pages
+- Handoff modal
+- Redirect modal
+- Intake forms
+
+Add helper text: "Still unfixed (not total)"
+
+### Colony Estimates
+
+For colony estimation (Beacon), use `total_cats_reported` for new requests. The function `add_colony_estimate_from_request()` handles this automatically based on `cat_count_semantic`.
+
+### Legacy Request Upgrade
+
+When upgrading legacy requests via LegacyUpgradeWizard, staff can clarify:
+- "This number is total cats" → Prompts for TNR count
+- "This number is cats needing TNR" → Keep as-is
 
 ## Place Context Tagging (MIG_464)
 

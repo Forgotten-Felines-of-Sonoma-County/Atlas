@@ -51,6 +51,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       summary,
       notes,
       estimated_cat_count,
+      // Kitten assessment fields
+      has_kittens,
+      kitten_count,
+      kitten_age_weeks,
+      kitten_assessment_status,
+      kitten_assessment_outcome,
     } = body;
 
     // Validate required fields
@@ -82,7 +88,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
            WHERE person_id = $1 AND id_type = 'email' LIMIT 1) as email,
           (SELECT id_value FROM trapper.person_identifiers
            WHERE person_id = $1 AND id_type = 'phone' LIMIT 1) as phone
-         FROM trapper.sot_people WHERE id = $1`,
+         FROM trapper.sot_people WHERE person_id = $1`,
         [existing_person_id]
       );
       if (existingPerson) {
@@ -118,7 +124,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         p_summary := $7,
         p_notes := $8,
         p_estimated_cat_count := $9,
-        p_created_by := $10
+        p_created_by := $10,
+        p_new_requester_person_id := $11,
+        p_has_kittens := $12,
+        p_kitten_count := $13,
+        p_kitten_age_weeks := $14,
+        p_kitten_assessment_status := $15,
+        p_kitten_assessment_outcome := $16
       )`,
       [
         requestId,
@@ -131,6 +143,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         notes || null,
         estimated_cat_count || null,
         `staff:${session.staff_id}`,
+        existing_person_id || null,
+        has_kittens || false,
+        kitten_count || null,
+        kitten_age_weeks || null,
+        kitten_assessment_status || null,
+        kitten_assessment_outcome || null,
       ]
     );
 

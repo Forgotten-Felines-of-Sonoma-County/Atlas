@@ -114,6 +114,7 @@ interface FormData {
   peak_count: string;
   eartip_count: string;
   feeding_situation: string;
+  cats_needing_tnr: string;  // How many still need spay/neuter (distinct from total)
 
   // Kitten-specific
   kitten_count: string;
@@ -163,6 +164,7 @@ const initialFormData: FormData = {
   peak_count: "",
   eartip_count: "",
   feeding_situation: "",
+  cats_needing_tnr: "",
   kitten_count: "",
   kitten_age: "",
   kitten_socialization: "",
@@ -670,6 +672,8 @@ function IntakeForm() {
           ownership_status: ownershipStatus,
           cat_count_estimate: parseInt(formData.cat_count) || 1,
           cat_count_text: formData.cat_count,
+          // Cats needing TNR - separate from total for colony calls
+          cats_needing_tnr: formData.cats_needing_tnr ? parseInt(formData.cats_needing_tnr) : undefined,
           peak_count: formData.peak_count ? parseInt(formData.peak_count) : undefined,
           eartip_count_observed: formData.eartip_count ? parseInt(formData.eartip_count) : undefined,
           fixed_status: formData.fixed_status || "unknown",
@@ -1465,16 +1469,40 @@ function IntakeForm() {
           {/* COLONY/TNR path */}
           {formData.call_type === "colony_tnr" && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
-                <div>
-                  <label>How many cats?</label>
-                  <input
-                    type="text"
-                    value={formData.cat_count}
-                    onChange={(e) => updateField("cat_count", e.target.value)}
-                    placeholder="e.g., 5 or 8-10"
-                  />
+              {/* Cat count questions - separate total vs TNR needed */}
+              <div style={{ background: "#f0f9ff", padding: "1rem", borderRadius: "8px", marginBottom: "1rem" }}>
+                <p style={{ fontSize: "0.9rem", color: "#0d6efd", fontWeight: 500, marginBottom: "1rem" }}>
+                  Colony Size & TNR Status
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                  <div>
+                    <label>How many cats total at this location?</label>
+                    <input
+                      type="text"
+                      value={formData.cat_count}
+                      onChange={(e) => updateField("cat_count", e.target.value)}
+                      placeholder="e.g., 8 or 10-12"
+                    />
+                    <p style={{ fontSize: "0.75rem", color: "#666", margin: "0.25rem 0 0" }}>
+                      Total cats they're aware of
+                    </p>
+                  </div>
+                  <div>
+                    <label>How many still need to be fixed?</label>
+                    <input
+                      type="text"
+                      value={formData.cats_needing_tnr}
+                      onChange={(e) => updateField("cats_needing_tnr", e.target.value)}
+                      placeholder="e.g., 5"
+                    />
+                    <p style={{ fontSize: "0.75rem", color: "#666", margin: "0.25rem 0 0" }}>
+                      Cats without ear tips
+                    </p>
+                  </div>
                 </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
                 <div>
                   <label>Most seen at once (last week)?</label>
                   <input
@@ -1484,19 +1512,14 @@ function IntakeForm() {
                     placeholder="Peak count"
                   />
                 </div>
-              </div>
-
-              <div style={{ marginBottom: "1rem" }}>
-                <label>How many are already ear-tipped?</label>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div>
+                  <label>How many are already ear-tipped?</label>
                   <input
                     type="number"
                     value={formData.eartip_count}
                     onChange={(e) => updateField("eartip_count", e.target.value)}
                     placeholder="0"
-                    style={{ maxWidth: "80px" }}
                   />
-                  <span style={{ color: "#666" }}>cats with ear tips</span>
                 </div>
               </div>
 
@@ -1873,7 +1896,8 @@ function IntakeForm() {
               {formData.cat_description && <p style={{ margin: 0 }}><strong>Description:</strong> {formData.cat_description}</p>}
               {formData.call_type === "colony_tnr" && (
                 <>
-                  <p style={{ margin: 0 }}><strong>Count:</strong> {formData.cat_count || "Unknown"}</p>
+                  <p style={{ margin: 0 }}><strong>Total cats:</strong> {formData.cat_count || "Unknown"}</p>
+                  {formData.cats_needing_tnr && <p style={{ margin: 0 }}><strong>Needing TNR:</strong> {formData.cats_needing_tnr}</p>}
                   {formData.peak_count && <p style={{ margin: 0 }}><strong>Peak seen:</strong> {formData.peak_count}</p>}
                   {formData.eartip_count && <p style={{ margin: 0 }}><strong>Ear-tipped:</strong> {formData.eartip_count}</p>}
                 </>

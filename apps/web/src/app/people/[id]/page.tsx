@@ -279,6 +279,12 @@ export default function PersonDetailPage() {
   const [savingIdentifiers, setSavingIdentifiers] = useState(false);
   const [identifierError, setIdentifierError] = useState<string | null>(null);
 
+  // Name edit state
+  const [editingName, setEditingName] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+
   // Edit history panel
   const [showHistory, setShowHistory] = useState(false);
 
@@ -449,6 +455,55 @@ export default function PersonDetailPage() {
     }
   };
 
+  const startEditingName = () => {
+    if (person) {
+      setEditDisplayName(person.display_name || "");
+      setNameError(null);
+      setEditingName(true);
+    }
+  };
+
+  const cancelEditingName = () => {
+    setEditingName(false);
+    setNameError(null);
+  };
+
+  const handleSaveName = async () => {
+    if (!editDisplayName.trim()) {
+      setNameError("Name cannot be empty");
+      return;
+    }
+
+    setSavingName(true);
+    setNameError(null);
+
+    try {
+      const response = await fetch(`/api/people/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          display_name: editDisplayName.trim(),
+          change_reason: "name_correction",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setNameError(result.error || "Failed to save name");
+        return;
+      }
+
+      // Refresh person data
+      await fetchPerson();
+      setEditingName(false);
+    } catch (err) {
+      setNameError("Network error while saving");
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading person details...</div>;
   }
@@ -478,10 +533,67 @@ export default function PersonDetailPage() {
       {/* Header */}
       <div className="detail-header" style={{ marginTop: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-          <h1 style={{ margin: 0 }}>{person.display_name}</h1>
-          {trapperInfo && <TrapperBadge trapperType={trapperInfo.trapper_type} />}
-          <EntityTypeBadge entityType={person.entity_type} />
-          <DataSourceBadge dataSource={person.data_source} />
+          {editingName ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1 }}>
+              <input
+                type="text"
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+                placeholder="Enter name"
+                style={{
+                  fontSize: "1.5rem",
+                  fontWeight: 700,
+                  padding: "0.25rem 0.5rem",
+                  width: "300px",
+                }}
+                autoFocus
+              />
+              <button
+                onClick={handleSaveName}
+                disabled={savingName}
+                style={{ padding: "0.25rem 0.75rem", fontSize: "0.875rem" }}
+              >
+                {savingName ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={cancelEditingName}
+                disabled={savingName}
+                style={{
+                  padding: "0.25rem 0.75rem",
+                  fontSize: "0.875rem",
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <>
+              <h1 style={{ margin: 0 }}>{person.display_name}</h1>
+              <button
+                onClick={startEditingName}
+                style={{
+                  padding: "0.125rem 0.5rem",
+                  fontSize: "0.75rem",
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+                title="Edit name"
+              >
+                Edit
+              </button>
+            </>
+          )}
+          {!editingName && (
+            <>
+              {trapperInfo && <TrapperBadge trapperType={trapperInfo.trapper_type} />}
+              <EntityTypeBadge entityType={person.entity_type} />
+              <DataSourceBadge dataSource={person.data_source} />
+            </>
+          )}
           <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
             <a
               href={`/people/${person.person_id}/print`}
@@ -515,6 +627,11 @@ export default function PersonDetailPage() {
             </button>
           </div>
         </div>
+        {nameError && (
+          <div style={{ color: "#dc3545", marginTop: "0.5rem", fontSize: "0.875rem" }}>
+            {nameError}
+          </div>
+        )}
         <p className="text-muted text-sm" style={{ marginTop: "0.25rem" }}>ID: {person.person_id}</p>
         {person.entity_type === "site" && (
           <p className="text-muted text-sm" style={{ marginTop: "0.25rem", color: "#dc3545" }}>

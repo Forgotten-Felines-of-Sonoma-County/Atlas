@@ -32,6 +32,7 @@ interface IntakeSubmission {
   ownership_status?: "unknown_stray" | "community_colony" | "newcomer" | "my_cat" | "neighbors_cat" | "unsure";
   cat_count_estimate?: number;
   cat_count_text?: string;
+  cats_needing_tnr?: number;  // Cats still needing spay/neuter (distinct from total count)
   peak_count?: number;
   eartip_count_observed?: number;
   fixed_status?: "none_fixed" | "some_fixed" | "most_fixed" | "all_fixed" | "unknown" | "yes_eartip" | "no";
@@ -132,7 +133,7 @@ export async function POST(request: NextRequest) {
         is_third_party_report, third_party_relationship,
         property_owner_name, property_owner_phone, property_owner_email,
         cats_address, cats_city, cats_zip, county,
-        ownership_status, cat_count_estimate, cat_count_text, peak_count,
+        ownership_status, cat_count_estimate, cat_count_text, cats_needing_tnr, peak_count,
         eartip_count_observed, fixed_status, handleability,
         observation_time_of_day, is_at_feeding_station, reporter_confidence,
         has_kittens, kitten_count, kitten_age_estimate, kitten_mixed_ages_description,
@@ -147,7 +148,7 @@ export async function POST(request: NextRequest) {
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
         $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34,
         $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50,
-        $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65
+        $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66
       )
       RETURNING submission_id, triage_category::TEXT, triage_score`,
       [
@@ -172,6 +173,7 @@ export async function POST(request: NextRequest) {
         body.ownership_status || "unknown_stray",
         body.cat_count_estimate || null,
         body.cat_count_text || null,
+        body.cats_needing_tnr || null,
         body.peak_count || null,
         body.eartip_count_observed || null,
         body.fixed_status || "unknown",

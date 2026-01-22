@@ -19,13 +19,16 @@ interface UpgradeFormData {
   traps_overnight_safe: boolean | null;
   access_without_contact: boolean | null;
   access_notes: string;
-  // Step 3: Colony info
+  // Step 3: Cat count clarification (semantic shift)
+  cat_count_clarification: "total" | "needs_tnr" | "unknown";
+  cats_still_needing_tnr: string;  // If clarification is "total", how many still need TNR
+  // Step 4: Colony info
   colony_duration: string;
   count_confidence: string;
   is_being_fed: boolean | null;
   feeding_schedule: string;
   best_times_seen: string;
-  // Step 4: Urgency
+  // Step 5: Urgency
   urgency_reasons: string[];
   urgency_notes: string;
   already_assessed: boolean;
@@ -47,6 +50,8 @@ export function LegacyUpgradeWizard({ request, onComplete, onCancel }: LegacyUpg
     traps_overnight_safe: null,
     access_without_contact: null,
     access_notes: "",
+    cat_count_clarification: "unknown",
+    cats_still_needing_tnr: "",
     colony_duration: "unknown",
     count_confidence: "unknown",
     is_being_fed: null,
@@ -57,7 +62,7 @@ export function LegacyUpgradeWizard({ request, onComplete, onCancel }: LegacyUpg
     already_assessed: false,
   });
 
-  const totalSteps = 5;
+  const totalSteps = 6;
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -72,6 +77,11 @@ export function LegacyUpgradeWizard({ request, onComplete, onCancel }: LegacyUpg
           access_notes: formData.access_notes || null,
           traps_overnight_safe: formData.traps_overnight_safe,
           access_without_contact: formData.access_without_contact,
+          // Cat count semantic clarification
+          cat_count_clarification: formData.cat_count_clarification,
+          cats_still_needing_tnr: formData.cat_count_clarification === "total" && formData.cats_still_needing_tnr
+            ? parseInt(formData.cats_still_needing_tnr)
+            : null,
           colony_duration: formData.colony_duration,
           count_confidence: formData.count_confidence,
           is_being_fed: formData.is_being_fed,
@@ -158,7 +168,7 @@ export function LegacyUpgradeWizard({ request, onComplete, onCancel }: LegacyUpg
 
         {/* Progress */}
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem" }}>
-          {[1, 2, 3, 4, 5].map((s) => (
+          {[1, 2, 3, 4, 5, 6].map((s) => (
             <div
               key={s}
               style={{
@@ -270,10 +280,138 @@ export function LegacyUpgradeWizard({ request, onComplete, onCancel }: LegacyUpg
           </div>
         )}
 
-        {/* Step 3: Colony Info */}
+        {/* Step 3: Cat Count Clarification */}
         {step === 3 && (
           <div>
-            <h3 style={{ marginTop: 0 }}>Step 3: Colony Information</h3>
+            <h3 style={{ marginTop: 0 }}>Step 3: Cat Count Clarification</h3>
+
+            {request.estimated_cat_count ? (
+              <>
+                <div style={{ padding: "1rem", background: "#e7f1ff", borderRadius: "8px", marginBottom: "1rem" }}>
+                  <p style={{ margin: 0 }}>
+                    The original request listed <strong>{request.estimated_cat_count} cats</strong>.
+                  </p>
+                </div>
+
+                <div style={{ marginBottom: "1rem" }}>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>
+                    What does this number represent?
+                  </label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "0.5rem",
+                        padding: "0.75rem",
+                        border: `2px solid ${formData.cat_count_clarification === "total" ? "#0d6efd" : "#dee2e6"}`,
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        background: formData.cat_count_clarification === "total" ? "#e7f1ff" : "white",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="cat_count_clarification"
+                        checked={formData.cat_count_clarification === "total"}
+                        onChange={() => updateForm({ cat_count_clarification: "total" })}
+                      />
+                      <span>
+                        <strong>Total cats at location</strong>
+                        <span style={{ display: "block", fontSize: "0.85rem", color: "#666" }}>
+                          This is the colony size estimate, some may already be fixed
+                        </span>
+                      </span>
+                    </label>
+
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "0.5rem",
+                        padding: "0.75rem",
+                        border: `2px solid ${formData.cat_count_clarification === "needs_tnr" ? "#0d6efd" : "#dee2e6"}`,
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        background: formData.cat_count_clarification === "needs_tnr" ? "#e7f1ff" : "white",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="cat_count_clarification"
+                        checked={formData.cat_count_clarification === "needs_tnr"}
+                        onChange={() => updateForm({ cat_count_clarification: "needs_tnr" })}
+                      />
+                      <span>
+                        <strong>Cats still needing TNR</strong>
+                        <span style={{ display: "block", fontSize: "0.85rem", color: "#666" }}>
+                          These are specifically unfixed cats that need spay/neuter
+                        </span>
+                      </span>
+                    </label>
+
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "0.5rem",
+                        padding: "0.75rem",
+                        border: `2px solid ${formData.cat_count_clarification === "unknown" ? "#0d6efd" : "#dee2e6"}`,
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        background: formData.cat_count_clarification === "unknown" ? "#e7f1ff" : "white",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="cat_count_clarification"
+                        checked={formData.cat_count_clarification === "unknown"}
+                        onChange={() => updateForm({ cat_count_clarification: "unknown" })}
+                      />
+                      <span>
+                        <strong>Unknown / Not sure</strong>
+                        <span style={{ display: "block", fontSize: "0.85rem", color: "#666" }}>
+                          We'll keep the original number as-is
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {formData.cat_count_clarification === "total" && (
+                  <div style={{ marginBottom: "1rem", padding: "1rem", background: "#f8f9fa", borderRadius: "8px" }}>
+                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>
+                      How many of those still need to be fixed?
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={request.estimated_cat_count}
+                      value={formData.cats_still_needing_tnr}
+                      onChange={(e) => updateForm({ cats_still_needing_tnr: e.target.value })}
+                      placeholder="Enter number"
+                      style={{ width: "120px" }}
+                    />
+                    <p style={{ margin: "0.5rem 0 0", fontSize: "0.8rem", color: "#666" }}>
+                      This becomes the TNR target for tracking progress
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ padding: "1rem", background: "#f8f9fa", borderRadius: "8px" }}>
+                <p style={{ margin: 0, color: "#666" }}>
+                  No cat count was recorded for this request. Skip to next step.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 4: Colony Info */}
+        {step === 4 && (
+          <div>
+            <h3 style={{ marginTop: 0 }}>Step 4: Colony Information</h3>
 
             <div style={{ marginBottom: "1rem" }}>
               <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}>How long has this colony been known?</label>
@@ -347,10 +485,10 @@ export function LegacyUpgradeWizard({ request, onComplete, onCancel }: LegacyUpg
           </div>
         )}
 
-        {/* Step 4: Urgency */}
-        {step === 4 && (
+        {/* Step 5: Urgency */}
+        {step === 5 && (
           <div>
-            <h3 style={{ marginTop: 0 }}>Step 4: Urgency Factors</h3>
+            <h3 style={{ marginTop: 0 }}>Step 5: Urgency Factors</h3>
 
             <div style={{ marginBottom: "1rem" }}>
               <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Select any urgency reasons:</label>
@@ -411,16 +549,24 @@ export function LegacyUpgradeWizard({ request, onComplete, onCancel }: LegacyUpg
           </div>
         )}
 
-        {/* Step 5: Confirmation */}
-        {step === 5 && (
+        {/* Step 6: Confirmation */}
+        {step === 6 && (
           <div>
-            <h3 style={{ marginTop: 0 }}>Step 5: Confirm Upgrade</h3>
+            <h3 style={{ marginTop: 0 }}>Step 6: Confirm Upgrade</h3>
 
             <div style={{ padding: "1rem", background: "#f8f9fa", borderRadius: "8px", marginBottom: "1rem" }}>
               <h4 style={{ margin: "0 0 0.75rem" }}>Summary</h4>
               <div style={{ display: "grid", gap: "0.5rem", fontSize: "0.875rem" }}>
                 <div><strong>Request:</strong> {request.summary || request.place_name || "TNR Request"}</div>
                 <div><strong>Permission:</strong> {formData.permission_status}</div>
+                {request.estimated_cat_count && formData.cat_count_clarification !== "unknown" && (
+                  <div>
+                    <strong>Cat Count ({request.estimated_cat_count}):</strong>{" "}
+                    {formData.cat_count_clarification === "total"
+                      ? `Total colony (${formData.cats_still_needing_tnr || "?"} still need TNR)`
+                      : "Cats needing TNR"}
+                  </div>
+                )}
                 <div><strong>Colony Duration:</strong> {formData.colony_duration.replace(/_/g, " ")}</div>
                 <div><strong>Count Confidence:</strong> {formData.count_confidence.replace(/_/g, " ")}</div>
                 {formData.is_being_fed !== null && (

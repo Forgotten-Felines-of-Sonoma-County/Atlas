@@ -6,6 +6,9 @@ interface UpgradeRequestBody {
   access_notes?: string | null;
   traps_overnight_safe?: boolean | null;
   access_without_contact?: boolean | null;
+  // Cat count semantic clarification (MIG_534)
+  cat_count_clarification?: "total" | "needs_tnr" | "unknown";
+  cats_still_needing_tnr?: number | null;
   colony_duration?: string;
   count_confidence?: string;
   is_being_fed?: boolean | null;
@@ -43,8 +46,9 @@ export async function POST(
       status: string;
       place_id: string | null;
       requester_person_id: string | null;
+      estimated_cat_count: number | null;
     }>(
-      `SELECT request_id, source_system, data_source, status, place_id, requester_person_id
+      `SELECT request_id, source_system, data_source, status, place_id, requester_person_id, estimated_cat_count
        FROM trapper.sot_requests WHERE request_id = $1`,
       [id]
     );
@@ -65,6 +69,27 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // Determine cat count updates based on clarification (MIG_534)
+    // If clarification is "total": original count becomes total_cats_reported, user's input becomes estimated_cat_count
+    // If clarification is "needs_tnr": keep estimated_cat_count as-is, just update semantic
+    // If clarification is "unknown": keep everything as legacy
+    let catCountUpdate = "";
+    const extraParams: (string | number | null)[] = [];
+    let nextParamIndex = 14;
+
+    if (body.cat_count_clarification === "total" && body.cats_still_needing_tnr !== undefined) {
+      catCountUpdate = `,
+        total_cats_reported = estimated_cat_count,
+        estimated_cat_count = $${nextParamIndex},
+        cat_count_semantic = 'needs_tnr'`;
+      extraParams.push(body.cats_still_needing_tnr);
+      nextParamIndex++;
+    } else if (body.cat_count_clarification === "needs_tnr") {
+      catCountUpdate = `,
+        cat_count_semantic = 'needs_tnr'`;
+    }
+    // If "unknown", keep cat_count_semantic as 'legacy_total' (no update needed)
 
     // Update the request with new Atlas schema fields
     const updateSql = `
@@ -88,6 +113,7 @@ export async function POST(
         has_kittens = CASE WHEN $13 THEN FALSE ELSE has_kittens END,
         -- Timestamps
         updated_at = NOW()
+        ${catCountUpdate}
       WHERE request_id = $1
       RETURNING request_id
     `;
@@ -106,6 +132,7 @@ export async function POST(
       body.urgency_reasons || null,
       body.urgency_notes || null,
       body.kittens_already_taken || false,
+      ...extraParams,
     ];
     console.log("[upgrade] Running update with params:", updateParams);
 

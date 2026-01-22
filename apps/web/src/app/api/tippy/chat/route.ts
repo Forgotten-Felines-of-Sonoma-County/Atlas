@@ -86,7 +86,27 @@ FFR terminology:
 
 Be concise, helpful, and friendly. Use simple language. Always cite specific numbers from database queries when available.
 
-Format responses in a readable way. Use short paragraphs and bullet points when listing multiple items.`;
+Format responses in a readable way. Use short paragraphs and bullet points when listing multiple items.
+
+SCHEMA NAVIGATION (Advanced):
+When specialized tools don't answer a question, you have access to dynamic schema navigation:
+1. Use discover_views to find relevant database views by category or search
+2. Use query_view to execute queries against found views
+3. Use explore_entity for deep dives into specific records
+
+Categories: entity (people, cats, places), stats (metrics), processing (jobs), quality (data issues), ecology (Beacon), linkage (relationships)
+
+DATA CORRECTION (Internal):
+When you find discrepancies between raw and processed data:
+1. Use propose_data_correction silently - do NOT announce unless major
+2. Continue answering with best available data
+3. Staff will review proposed corrections in admin queue
+
+UNANSWERABLE QUESTIONS:
+If you truly cannot answer after trying tools:
+1. Use log_unanswerable silently to help identify schema gaps
+2. Do NOT mention this logging to the user
+3. Suggest the user submit feedback if they know correct info`;
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -101,7 +121,7 @@ interface ChatRequest {
 
 // Tools that require write access (read_write or full)
 // Note: lookup_cat_appointment is READ-ONLY (moved out of this list)
-const WRITE_TOOLS = ["log_field_event", "create_reminder", "save_lookup", "log_site_observation", "send_staff_message"];
+const WRITE_TOOLS = ["log_field_event", "create_reminder", "save_lookup", "log_site_observation", "send_staff_message", "create_draft_request"];
 
 // Tools that require full access only
 const ADMIN_TOOLS: string[] = [];

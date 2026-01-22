@@ -244,6 +244,7 @@ export default function RequestDetailPage() {
     summary: "",
     notes: "",
     estimated_cat_count: "" as number | "",
+    kitten_count: "" as number | "",
     has_kittens: false,
     cats_are_friendly: null as boolean | null,
     assigned_to: "",
@@ -322,6 +323,7 @@ export default function RequestDetailPage() {
           summary: data.summary || "",
           notes: data.notes || "",
           estimated_cat_count: data.estimated_cat_count ?? "",
+          kitten_count: data.kitten_count ?? "",
           has_kittens: data.has_kittens,
           cats_are_friendly: data.cats_are_friendly,
           assigned_to: data.assigned_to || "",
@@ -384,6 +386,7 @@ export default function RequestDetailPage() {
           summary: editForm.summary || null,
           notes: editForm.notes || null,
           estimated_cat_count: editForm.estimated_cat_count || null,
+          kitten_count: editForm.kitten_count || null,
           has_kittens: editForm.has_kittens,
           cats_are_friendly: editForm.cats_are_friendly,
           assigned_to: editForm.assigned_to || null,
@@ -424,6 +427,7 @@ export default function RequestDetailPage() {
         summary: request.summary || "",
         notes: request.notes || "",
         estimated_cat_count: request.estimated_cat_count ?? "",
+        kitten_count: request.kitten_count ?? "",
         has_kittens: request.has_kittens,
         cats_are_friendly: request.cats_are_friendly,
         assigned_to: request.assigned_to || "",
@@ -1084,7 +1088,7 @@ export default function RequestDetailPage() {
               <strong style={{ display: "block", marginBottom: "0.5rem" }}>Original Request Details:</strong>
               <div style={{ background: "#f8f9fa", padding: "0.75rem", borderRadius: "6px" }}>
                 <p style={{ margin: "0 0 0.25rem 0" }}><strong>Request Title:</strong> {request.summary || "N/A"}</p>
-                <p style={{ margin: "0 0 0.25rem 0" }}><strong>Estimated Cats:</strong> {request.estimated_cat_count ?? "N/A"}</p>
+                <p style={{ margin: "0 0 0.25rem 0" }}><strong>Cats Needing TNR:</strong> {request.estimated_cat_count ?? "N/A"}</p>
                 <p style={{ margin: "0 0 0.25rem 0" }}><strong>Has Kittens:</strong> {request.has_kittens ? "Yes" : "No"}</p>
                 <p style={{ margin: 0 }}><strong>Original Notes:</strong> {request.notes || "N/A"}</p>
               </div>
@@ -1167,8 +1171,11 @@ export default function RequestDetailPage() {
 
             <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
               <div style={{ flex: "1 1 150px" }}>
-                <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}>
-                  Estimated Cats
+                <label
+                  style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}
+                  title="Adult cats still needing spay/neuter at this location (not kittens, not total colony)"
+                >
+                  Adult Cats Needing TNR
                 </label>
                 <input
                   type="number"
@@ -1177,6 +1184,32 @@ export default function RequestDetailPage() {
                   onChange={(e) => setEditForm({ ...editForm, estimated_cat_count: e.target.value ? parseInt(e.target.value) : "" })}
                   style={{ width: "100%" }}
                 />
+                <div style={{ fontSize: "0.7rem", color: "#666", marginTop: "4px" }}>
+                  Adults only - kittens tracked separately
+                </div>
+              </div>
+
+              <div style={{ flex: "1 1 150px" }}>
+                <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}>
+                  Kittens
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={editForm.kitten_count}
+                  onChange={(e) => {
+                    const count = e.target.value ? parseInt(e.target.value) : "";
+                    setEditForm({
+                      ...editForm,
+                      kitten_count: count,
+                      has_kittens: count !== "" && count > 0 ? true : editForm.has_kittens
+                    });
+                  }}
+                  style={{ width: "100%" }}
+                />
+                <div style={{ fontSize: "0.7rem", color: "#666", marginTop: "4px" }}>
+                  Under 8 weeks
+                </div>
               </div>
 
               <div style={{ flex: "1 1 150px" }}>
@@ -1557,14 +1590,20 @@ export default function RequestDetailPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
               <div>
-                <div className="text-muted text-sm">Estimated Cats</div>
+                <div className="text-muted text-sm" title="Adult cats still needing spay/neuter (kittens tracked separately)">Adult Cats Needing TNR</div>
                 <div style={{ fontWeight: 500 }}>
                   {request.estimated_cat_count ?? "Unknown"}
-                  {request.has_kittens && (
-                    <span style={{ marginLeft: "0.5rem", color: "#fd7e14" }}>+kittens</span>
-                  )}
                 </div>
               </div>
+
+              {request.has_kittens && (
+                <div>
+                  <div className="text-muted text-sm" title="Kittens (under 8 weeks) tracked separately">Kittens</div>
+                  <div style={{ fontWeight: 500, color: "#fd7e14" }}>
+                    {request.kitten_count ?? "Yes (count unknown)"}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <div className="text-muted text-sm">Cats Friendly</div>
