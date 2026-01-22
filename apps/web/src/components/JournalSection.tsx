@@ -42,6 +42,9 @@ interface JournalSectionProps {
   entityType: "cat" | "person" | "place" | "request";
   entityId: string;
   onEntryAdded: () => void;
+  /** Auto-fill staff from session - hides dropdown when provided */
+  currentStaffId?: string;
+  currentStaffName?: string;
 }
 
 // Get initials from a name
@@ -96,32 +99,49 @@ export default function JournalSection({
   entityType,
   entityId,
   onEntryAdded,
+  currentStaffId,
+  currentStaffName,
 }: JournalSectionProps) {
   const [newNote, setNewNote] = useState("");
-  const [selectedStaffId, setSelectedStaffId] = useState<string>("");
+  const [selectedStaffId, setSelectedStaffId] = useState<string>(currentStaffId || "");
   const [addingNote, setAddingNote] = useState(false);
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
 
-  // Fetch staff list on mount
+  // Auto-select current staff if provided
+  const isStaffAutoFilled = !!currentStaffId;
+
+  // Fetch staff list on mount (only needed if no auto-fill)
   useEffect(() => {
-    fetch("/api/staff")
-      .then((res) => res.json())
-      .then((data) => setStaffList(data.staff || []))
-      .catch((err) => console.error("Failed to fetch staff:", err));
-  }, []);
+    if (!isStaffAutoFilled) {
+      fetch("/api/staff")
+        .then((res) => res.json())
+        .then((data) => setStaffList(data.staff || []))
+        .catch((err) => console.error("Failed to fetch staff:", err));
+    }
+  }, [isStaffAutoFilled]);
+
+  // Keep selectedStaffId in sync if currentStaffId changes
+  useEffect(() => {
+    if (currentStaffId) {
+      setSelectedStaffId(currentStaffId);
+    }
+  }, [currentStaffId]);
 
   const handleAddNote = async () => {
     if (!newNote.trim() || !selectedStaffId) return;
 
-    const selectedStaff = staffList.find(s => s.staff_id === selectedStaffId);
+    // Use currentStaffName if auto-filled, otherwise look up from list
+    const displayName = isStaffAutoFilled
+      ? currentStaffName
+      : staffList.find(s => s.staff_id === selectedStaffId)?.display_name;
 
     setAddingNote(true);
     try {
       const body: Record<string, string> = {
         body: newNote,
         entry_kind: "note",
-        created_by: selectedStaff?.display_name || "Unknown",
+        created_by: displayName || "Unknown",
         created_by_staff_id: selectedStaffId,
       };
 
@@ -196,24 +216,36 @@ export default function JournalSection({
     <div>
       {/* Add new note */}
       <div style={{ marginBottom: "1rem" }}>
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
-          <select
-            value={selectedStaffId}
-            onChange={(e) => setSelectedStaffId(e.target.value)}
-            style={{
-              padding: "0.5rem",
+        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
+          {isStaffAutoFilled ? (
+            <span style={{
+              padding: "0.5rem 0.75rem",
+              background: "var(--accent-bg, #e3f2fd)",
               borderRadius: "4px",
-              border: "1px solid var(--border)",
-              minWidth: "160px"
-            }}
-          >
-            <option value="">Select staff...</option>
-            {staffList.map((s) => (
-              <option key={s.staff_id} value={s.staff_id}>
-                {s.display_name} ({s.role})
-              </option>
-            ))}
-          </select>
+              fontSize: "0.875rem",
+              color: "var(--foreground)",
+            }}>
+              Logged by: <strong>{currentStaffName || "You"}</strong>
+            </span>
+          ) : (
+            <select
+              value={selectedStaffId}
+              onChange={(e) => setSelectedStaffId(e.target.value)}
+              style={{
+                padding: "0.5rem",
+                borderRadius: "4px",
+                border: "1px solid var(--border)",
+                minWidth: "160px"
+              }}
+            >
+              <option value="">Select staff...</option>
+              {staffList.map((s) => (
+                <option key={s.staff_id} value={s.staff_id}>
+                  {s.display_name} ({s.role})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <textarea
           value={newNote}

@@ -364,6 +364,7 @@ interface UpdateRequestBody {
   scheduled_date?: string;
   scheduled_time_range?: string;
   resolution_notes?: string;
+  resolution_reason?: string;
   cats_trapped?: number;
   cats_returned?: number;
   // Hold management
@@ -389,6 +390,8 @@ interface UpdateRequestBody {
   observation_cats_seen?: number | null;
   observation_eartips_seen?: number | null;
   observation_notes?: string | null;
+  // Skip trip report check (for completion flow)
+  skip_trip_report_check?: boolean;
 }
 
 export async function PATCH(
@@ -416,29 +419,43 @@ export async function PATCH(
     }
 
     // Check for trip report requirement when completing a request
-    if (body.status === "completed") {
+    // Skip this check if the completion flow is providing observation data directly
+    // or if explicitly requested to skip (completion modal handles this)
+    if (body.status === "completed" && !body.skip_trip_report_check) {
       // Check if request requires a trip report
       const reportCheck = await queryOne<{
         report_required_before_complete: boolean;
         has_final_report: boolean;
+        has_site_observation: boolean;
       }>(
         `SELECT
           COALESCE(r.report_required_before_complete, TRUE) as report_required_before_complete,
           EXISTS (
             SELECT 1 FROM trapper.trapper_trip_reports tr
             WHERE tr.request_id = r.request_id AND tr.is_final_visit = TRUE
-          ) as has_final_report
+          ) as has_final_report,
+          EXISTS (
+            SELECT 1 FROM trapper.site_observations so
+            WHERE so.request_id = r.request_id AND so.is_final_visit = TRUE
+          ) as has_site_observation
         FROM trapper.sot_requests r
         WHERE r.request_id = $1`,
         [id]
       );
 
-      if (reportCheck?.report_required_before_complete && !reportCheck?.has_final_report) {
+      // Only block if no final report AND no final site observation AND not providing observation data now
+      const hasObservationData = body.observation_cats_seen !== undefined && body.observation_cats_seen !== null;
+      if (
+        reportCheck?.report_required_before_complete &&
+        !reportCheck?.has_final_report &&
+        !reportCheck?.has_site_observation &&
+        !hasObservationData
+      ) {
         return NextResponse.json(
           {
             error: "Trip report required before completion",
             requiresReport: true,
-            message: "Please submit a final trip report before marking this request as completed.",
+            message: "Please submit a final site visit observation or use the completion modal to complete this request.",
           },
           { status: 400 }
         );
@@ -624,6 +641,12 @@ export async function PATCH(
     if (body.resolution_notes !== undefined) {
       updates.push(`resolution_notes = $${paramIndex}`);
       values.push(body.resolution_notes || null);
+      paramIndex++;
+    }
+
+    if (body.resolution_reason !== undefined) {
+      updates.push(`resolution_reason = $${paramIndex}`);
+      values.push(body.resolution_reason || null);
       paramIndex++;
     }
 

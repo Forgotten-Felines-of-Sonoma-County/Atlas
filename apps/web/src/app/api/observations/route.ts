@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query, queryOne, queryRows } from "@/lib/db";
+import { queryOne, queryRows } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 
 interface SiteObservation {
@@ -9,6 +9,7 @@ interface SiteObservation {
   observer_person_id: string | null;
   observer_staff_id: string | null;
   observer_type: string | null;
+  observer_name: string | null;
   observation_date: string;
   observation_time: string | null;
   time_of_day: string | null;
@@ -27,10 +28,18 @@ interface SiteObservation {
   confidence: string;
   notes: string | null;
   created_at: string;
+  // Trip report fields (unified)
+  arrival_time: string | null;
+  departure_time: string | null;
+  traps_set: number;
+  traps_retrieved: number;
+  issues_encountered: string[];
+  issue_details: string | null;
+  is_final_visit: boolean;
+  equipment_used: string[] | null;
   // Joined fields
   place_name?: string;
   place_address?: string;
-  observer_name?: string;
 }
 
 /**
@@ -79,10 +88,41 @@ export async function GET(request: NextRequest) {
     const observations = await queryRows<SiteObservation>(
       `
       SELECT
-        o.*,
+        o.observation_id,
+        o.place_id,
+        o.request_id,
+        o.observer_person_id,
+        o.observer_staff_id,
+        o.observer_type,
+        COALESCE(o.observer_name, per.display_name, s.display_name) as observer_name,
+        o.observation_date,
+        o.observation_time,
+        o.time_of_day,
+        o.cats_seen_total,
+        o.cats_seen_is_estimate,
+        o.eartipped_seen,
+        o.eartipped_is_estimate,
+        o.cats_trapped,
+        o.cats_returned,
+        o.female_seen,
+        o.male_seen,
+        o.unknown_sex_seen,
+        o.sex_counts_are_estimates,
+        o.is_at_feeding_station,
+        o.weather_conditions,
+        o.confidence,
+        o.notes,
+        o.arrival_time,
+        o.departure_time,
+        o.traps_set,
+        o.traps_retrieved,
+        o.issues_encountered,
+        o.issue_details,
+        o.is_final_visit,
+        o.equipment_used,
+        o.created_at,
         p.display_name as place_name,
-        p.formatted_address as place_address,
-        COALESCE(per.display_name, s.display_name) as observer_name
+        p.formatted_address as place_address
       FROM trapper.site_observations o
       LEFT JOIN trapper.places p ON p.place_id = o.place_id
       LEFT JOIN trapper.sot_people per ON per.person_id = o.observer_person_id
@@ -113,7 +153,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/observations
- * Submit a new observation
+ * Submit a new observation (unified - supports both quick and full trip report modes)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -125,6 +165,7 @@ export async function POST(request: NextRequest) {
       place_id,
       request_id,
       observer_type,
+      observer_name: providedObserverName,
       observation_date,
       observation_time,
       time_of_day,
@@ -142,6 +183,15 @@ export async function POST(request: NextRequest) {
       weather_conditions,
       confidence,
       notes,
+      // Trip report fields (unified)
+      arrival_time,
+      departure_time,
+      traps_set,
+      traps_retrieved,
+      issues_encountered,
+      issue_details,
+      is_final_visit,
+      equipment_used,
     } = body;
 
     // Must have at least place_id or request_id
@@ -168,11 +218,16 @@ export async function POST(request: NextRequest) {
     let effectiveObserverType = observer_type || "admin_entry";
     let observerStaffId = null;
     let observerPersonId = null;
+    let observerName = providedObserverName || null;
 
     if (session) {
       observerStaffId = session.staff_id;
+      // Auto-fill observer name from session if not provided
+      if (!observerName) {
+        observerName = session.display_name || null;
+      }
       if (!observer_type) {
-        effectiveObserverType = "admin_entry";
+        effectiveObserverType = session.staff_id ? "trapper_field" : "admin_entry";
       }
     }
 
@@ -199,7 +254,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert observation
+    // Insert observation (includes unified trip report fields)
     const observation = await queryOne<{ observation_id: string; created_at: string }>(
       `
       INSERT INTO trapper.site_observations (
@@ -208,6 +263,7 @@ export async function POST(request: NextRequest) {
         observer_person_id,
         observer_staff_id,
         observer_type,
+        observer_name,
         observation_date,
         observation_time,
         time_of_day,
@@ -224,8 +280,17 @@ export async function POST(request: NextRequest) {
         is_at_feeding_station,
         weather_conditions,
         confidence,
-        notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+        notes,
+        arrival_time,
+        departure_time,
+        traps_set,
+        traps_retrieved,
+        issues_encountered,
+        issue_details,
+        is_final_visit,
+        equipment_used,
+        source_system
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, 'atlas_ui')
       RETURNING observation_id, created_at
       `,
       [
@@ -234,6 +299,7 @@ export async function POST(request: NextRequest) {
         observerPersonId,
         observerStaffId,
         effectiveObserverType,
+        observerName,
         observation_date || new Date().toISOString().split("T")[0],
         observation_time || null,
         time_of_day || null,
@@ -251,6 +317,14 @@ export async function POST(request: NextRequest) {
         weather_conditions || null,
         confidence || "medium",
         notes || null,
+        arrival_time || null,
+        departure_time || null,
+        traps_set ?? 0,
+        traps_retrieved ?? 0,
+        issues_encountered || [],
+        issue_details || null,
+        is_final_visit ?? false,
+        equipment_used || null,
       ]
     );
 
@@ -261,10 +335,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Calculate Chapman estimate if we have cats observed and a place
+    let chapmanEstimate = null;
+    if (effectivePlaceId && cats_seen_total !== null && cats_seen_total !== undefined) {
+      try {
+        const chapmanResult = await queryOne<{
+          estimated_population: number;
+          confidence_interval_low: number;
+          confidence_interval_high: number;
+          verified_altered: number;
+          observation_count: number;
+          recapture_count: number;
+        }>(
+          `SELECT * FROM trapper.calculate_chapman_estimate($1, $2, $3)`,
+          [effectivePlaceId, cats_seen_total, eartipped_seen ?? 0]
+        );
+
+        if (chapmanResult) {
+          chapmanEstimate = {
+            estimated_population: Math.round(Number(chapmanResult.estimated_population)),
+            confidence_interval: {
+              low: Math.round(Number(chapmanResult.confidence_interval_low)),
+              high: Math.round(Number(chapmanResult.confidence_interval_high)),
+            },
+            verified_altered: chapmanResult.verified_altered,
+            recapture_count: chapmanResult.recapture_count,
+          };
+        }
+      } catch (err) {
+        // Chapman calculation is optional - log but don't fail
+        console.warn("Chapman estimate calculation failed:", err);
+      }
+    }
+
+    // Get latest colony estimate for this place
+    let latestEstimate = null;
+    if (effectivePlaceId) {
+      const estimate = await queryOne<{
+        total_cats: number;
+        source_type: string;
+        observation_date: string;
+      }>(
+        `SELECT total_cats, source_type, observation_date
+         FROM trapper.place_colony_estimates
+         WHERE place_id = $1
+         ORDER BY observation_date DESC, created_at DESC
+         LIMIT 1`,
+        [effectivePlaceId]
+      );
+      if (estimate) {
+        latestEstimate = {
+          total_cats: estimate.total_cats,
+          source_type: estimate.source_type,
+          observation_date: estimate.observation_date,
+        };
+      }
+    }
+
     return NextResponse.json({
       success: true,
       observation_id: observation.observation_id,
       message: "Observation recorded successfully",
+      chapman_estimate: chapmanEstimate,
+      latest_estimate: latestEstimate,
     });
   } catch (error) {
     console.error("Observation create error:", error);

@@ -9,7 +9,8 @@ import { LegacyUpgradeWizard } from "@/components/LegacyUpgradeWizard";
 import { TrapperAssignments } from "@/components/TrapperAssignments";
 import JournalSection, { JournalEntry } from "@/components/JournalSection";
 import { LinkedCatsSection } from "@/components/LinkedCatsSection";
-import LogObservationModal from "@/components/LogObservationModal";
+import LogSiteVisitModal from "@/components/LogSiteVisitModal";
+import CompleteRequestModal from "@/components/CompleteRequestModal";
 import { ColonyEstimates } from "@/components/ColonyEstimates";
 import { MediaGallery } from "@/components/MediaGallery";
 import { RedirectRequestModal } from "@/components/RedirectRequestModal";
@@ -260,6 +261,12 @@ export default function RequestDetailPage() {
   const [pendingCompletion, setPendingCompletion] = useState(false); // Track if we're completing after observation
   const [showRedirectModal, setShowRedirectModal] = useState(false);
   const [showHandoffModal, setShowHandoffModal] = useState(false);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [completionTargetStatus, setCompletionTargetStatus] = useState<"completed" | "cancelled">("completed");
+
+  // Session/Staff info for auto-fill
+  const [currentStaffId, setCurrentStaffId] = useState<string | null>(null);
+  const [currentStaffName, setCurrentStaffName] = useState<string | null>(null);
 
   // Kitten assessment state
   const [editingKittens, setEditingKittens] = useState(false);
@@ -353,6 +360,21 @@ export default function RequestDetailPage() {
     fetchRequest();
     fetchJournalEntries();
   }, [requestId, fetchJournalEntries]);
+
+  // Fetch current session/staff info for auto-fill
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.authenticated && data.staff) {
+          setCurrentStaffId(data.staff.staff_id);
+          setCurrentStaffName(data.staff.display_name);
+        }
+      })
+      .catch(() => {
+        // Ignore errors - staff info is optional
+      });
+  }, []);
 
   // Fetch map when request has coordinates
   useEffect(() => {
@@ -572,10 +594,10 @@ export default function RequestDetailPage() {
   const handleQuickStatusChange = async (newStatus: string) => {
     if (!request) return;
 
-    // If completing a request with a place, show observation prompt first
-    if (newStatus === "completed" && request.place_id) {
-      setPendingCompletion(true);
-      setShowObservationModal(true);
+    // For completed or cancelled, show the CompleteRequestModal
+    if (newStatus === "completed" || newStatus === "cancelled") {
+      setCompletionTargetStatus(newStatus as "completed" | "cancelled");
+      setShowCompleteModal(true);
       return;
     }
 
@@ -2008,6 +2030,8 @@ export default function RequestDetailPage() {
               entityType="request"
               entityId={request.request_id}
               onEntryAdded={fetchJournalEntries}
+              currentStaffId={currentStaffId || undefined}
+              currentStaffName={currentStaffName || undefined}
             />
           </div>
 
@@ -2341,15 +2365,42 @@ export default function RequestDetailPage() {
 
       {/* Site Observation Modal */}
       {request?.place_id && (
-        <LogObservationModal
+        <LogSiteVisitModal
           isOpen={showObservationModal}
           onClose={handleObservationModalClose}
           placeId={request.place_id}
           placeName={request.place_name || request.place_address || 'This location'}
+          requestId={request.request_id}
+          staffId={currentStaffId || undefined}
+          staffName={currentStaffName || undefined}
           isCompletionFlow={pendingCompletion}
           onSkip={pendingCompletion ? handleObservationModalClose : undefined}
         />
       )}
+
+      {/* Complete Request Modal */}
+      <CompleteRequestModal
+        isOpen={showCompleteModal}
+        onClose={() => setShowCompleteModal(false)}
+        requestId={request.request_id}
+        placeId={request.place_id || undefined}
+        placeName={request.place_name || request.place_address || undefined}
+        staffId={currentStaffId || undefined}
+        staffName={currentStaffName || undefined}
+        targetStatus={completionTargetStatus}
+        onSuccess={() => {
+          setShowCompleteModal(false);
+          // Reload request data
+          fetch(`/api/requests/${requestId}`)
+            .then((res) => res.ok ? res.json() : null)
+            .then((data) => {
+              if (data) {
+                setRequest(data);
+                setEditForm(prev => ({ ...prev, status: data.status }));
+              }
+            });
+        }}
+      />
 
       {/* Redirect Request Modal */}
       <RedirectRequestModal
