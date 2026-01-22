@@ -113,6 +113,18 @@ interface RequestDetail {
   transfer_type: string | null;
   redirect_reason: string | null;
   redirect_at: string | null;
+  // MIG_534 cat count semantic fields
+  total_cats_reported: number | null;
+  cat_count_semantic: string | null;
+  // MIG_562 colony summary
+  colony_size_estimate: number | null;
+  colony_verified_altered: number | null;
+  colony_work_remaining: number | null;
+  colony_alteration_rate: number | null;
+  colony_estimation_method: string | null;
+  colony_has_override: boolean | null;
+  colony_override_note: string | null;
+  colony_verified_exceeds_reported: boolean | null;
 }
 
 const STATUS_OPTIONS = [
@@ -1621,6 +1633,40 @@ export default function RequestDetailPage() {
           {request.place_id && (
             <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
               <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Colony Status</h2>
+
+              {/* Reconciliation Notice when verified > reported (MIG_562) */}
+              {request.colony_verified_exceeds_reported && (
+                <div
+                  style={{
+                    padding: "0.75rem 1rem",
+                    marginBottom: "1rem",
+                    background: "var(--info-bg)",
+                    border: "1px solid var(--info-border)",
+                    borderRadius: "8px",
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: "0.25rem", color: "var(--info-text)" }}>
+                    Data Reconciled
+                  </div>
+                  <div style={{ color: "var(--text-secondary)" }}>
+                    <strong>{request.colony_verified_altered}</strong> cats have been altered at clinic,
+                    which exceeds the originally reported estimate of <strong>{request.total_cats_reported}</strong>.
+                    {request.cat_count_semantic === "needs_tnr" && request.estimated_cat_count !== null && (
+                      <>
+                        {" "}Staff indicated <strong>{request.estimated_cat_count}</strong> cat{request.estimated_cat_count === 1 ? "" : "s"} still need{request.estimated_cat_count === 1 ? "s" : ""} TNR.
+                      </>
+                    )}
+                    {request.colony_estimation_method === "Staff Override" && (
+                      <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", fontStyle: "italic" }}>
+                        Colony size has been auto-reconciled based on verified data.
+                        {request.colony_override_note && ` (${request.colony_override_note})`}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <ColonyEstimates placeId={request.place_id} />
             </div>
           )}

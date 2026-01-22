@@ -362,6 +362,14 @@ export async function POST(request: NextRequest) {
         "  - 'set a reminder', 'add to my reminders'\n" +
         "  Example: 'Remind me to follow up on 115 Magnolia' → create_reminder(title='Follow up on 115 Magnolia')\n" +
         "  Example: 'I need to check on the Main St colony next week' → create_reminder(title='Check on Main St colony')\n" +
+        "  **CONTACT INFO**: When the user mentions contact details (name, phone, email, address), ALWAYS extract and include them:\n" +
+        "    - contact_name: Full name of person to call/contact\n" +
+        "    - contact_phone: Phone number\n" +
+        "    - contact_email: Email address\n" +
+        "    - contact_address: Street address with city/zip\n" +
+        "    - contact_notes: Referral source, translator info, or other context\n" +
+        "  Example: 'Remind me to call Myrna Chavez at 707-206-1094, address 3328 Santa Rosa 95407'\n" +
+        "    → create_reminder(title='Call Myrna Chavez', contact_name='Myrna Chavez', contact_phone='707-206-1094', contact_address='3328 Santa Rosa, CA 95407')\n" +
         "  ALWAYS create the reminder FIRST, then query additional data if helpful.\n" +
         "- Save research: Use save_lookup when they say 'save this', 'add to my lookups', after gathering info they want to keep\n" +
         "- Log field events: Use log_field_event when they report observations like 'I saw 5 cats at Oak St today'\n" +

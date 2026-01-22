@@ -20,6 +20,9 @@ interface RequestDetailRow {
   notes: string | null;
   legacy_notes: string | null;
   estimated_cat_count: number | null;
+  // MIG_534 cat count semantic fields
+  total_cats_reported: number | null;
+  cat_count_semantic: string | null;
   has_kittens: boolean;
   cats_are_friendly: boolean | null;
   preferred_contact_method: string | null;
@@ -108,6 +111,15 @@ interface RequestDetailRow {
   // Computed scores
   readiness_score: number | null;
   urgency_score: number | null;
+  // Colony summary (MIG_562)
+  colony_size_estimate: number | null;
+  colony_verified_altered: number | null;
+  colony_work_remaining: number | null;
+  colony_alteration_rate: number | null;
+  colony_estimation_method: string | null;
+  colony_has_override: boolean | null;
+  colony_override_note: string | null;
+  colony_verified_exceeds_reported: boolean | null;
 }
 
 export async function GET(
@@ -133,6 +145,8 @@ export async function GET(
         r.summary,
         r.notes,
         r.estimated_cat_count,
+        r.total_cats_reported,
+        r.cat_count_semantic::TEXT,
         r.has_kittens,
         r.cats_are_friendly,
         r.preferred_contact_method,
@@ -243,11 +257,24 @@ export async function GET(
         (SELECT COUNT(*) FROM trapper.request_cat_links rcl WHERE rcl.request_id = r.request_id) AS linked_cat_count,
         -- Computed scores (handle if functions don't exist yet)
         COALESCE(trapper.compute_request_readiness(r), 0) AS readiness_score,
-        COALESCE(trapper.compute_request_urgency(r), 0) AS urgency_score
+        COALESCE(trapper.compute_request_urgency(r), 0) AS urgency_score,
+        -- Colony summary (MIG_562)
+        pcs.colony_size_estimate,
+        pcs.verified_altered_count AS colony_verified_altered,
+        pcs.estimated_work_remaining AS colony_work_remaining,
+        pcs.alteration_rate_pct AS colony_alteration_rate,
+        pcs.estimation_method AS colony_estimation_method,
+        pcs.has_override AS colony_has_override,
+        pcs.colony_override_note,
+        -- Flag when verified > reported (needs reconciliation)
+        CASE WHEN pcs.verified_altered_count > COALESCE(r.total_cats_reported, 0)
+             AND r.total_cats_reported IS NOT NULL
+        THEN TRUE ELSE FALSE END AS colony_verified_exceeds_reported
       FROM trapper.sot_requests r
       LEFT JOIN trapper.places p ON p.place_id = r.place_id
       LEFT JOIN trapper.sot_addresses sa ON sa.address_id = p.sot_address_id
       LEFT JOIN trapper.sot_people per ON per.person_id = r.requester_person_id
+      LEFT JOIN trapper.v_place_colony_status pcs ON pcs.place_id = r.place_id
       WHERE r.request_id = $1
     `;
 

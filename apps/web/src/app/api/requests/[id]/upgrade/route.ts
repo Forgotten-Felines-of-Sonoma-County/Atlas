@@ -164,10 +164,55 @@ export async function POST(
       console.error("Failed to log upgrade:", logErr);
     }
 
+    // Auto-reconcile colony estimates if staff provided clarified cat counts (MIG_562)
+    let reconcileResult = null;
+    if (
+      existingRequest.place_id &&
+      body.cat_count_clarification === "total" &&
+      body.cats_still_needing_tnr !== undefined
+    ) {
+      try {
+        // Get the original reported count (now stored as total_cats_reported after update)
+        const totalCatsReported = existingRequest.estimated_cat_count;
+
+        reconcileResult = await queryOne<{
+          reconciled: boolean;
+          new_colony_size: number | null;
+          verified_altered: number | null;
+          message: string;
+        }>(
+          `SELECT * FROM trapper.auto_reconcile_colony_on_upgrade($1, $2, $3, $4)`,
+          [id, totalCatsReported, body.cats_still_needing_tnr, "web_user"]
+        );
+
+        if (reconcileResult?.reconciled) {
+          console.log("[upgrade] Colony auto-reconciled:", reconcileResult.message);
+        }
+
+        // Also add a staff-verified estimate for the total_cats_reported
+        if (totalCatsReported && existingRequest.place_id) {
+          await queryOne(
+            `SELECT trapper.add_staff_verified_estimate($1, $2, $3, $4)`,
+            [
+              existingRequest.place_id,
+              totalCatsReported,
+              id,
+              `From request upgrade: ${totalCatsReported} total reported, ${body.cats_still_needing_tnr} still needing TNR`,
+            ]
+          );
+        }
+      } catch (reconcileErr) {
+        // Don't fail the upgrade if reconciliation fails
+        console.error("[upgrade] Colony reconciliation failed:", reconcileErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       new_request_id: result.request_id,
       message: "Request successfully upgraded to Atlas schema",
+      colony_reconciled: reconcileResult?.reconciled || false,
+      colony_message: reconcileResult?.message || null,
     });
   } catch (error) {
     console.error("Error upgrading request:", error);

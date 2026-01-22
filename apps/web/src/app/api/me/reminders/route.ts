@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { queryRows, queryOne } from "@/lib/db";
 
+interface ContactInfo {
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+}
+
 interface Reminder {
   reminder_id: string;
   title: string;
@@ -9,6 +17,7 @@ interface Reminder {
   entity_type: string | null;
   entity_id: string | null;
   entity_display: string | null;
+  contact_info: ContactInfo | null;
   due_at: string;
   remind_at: string;
   status: string;
@@ -49,6 +58,7 @@ export async function GET(request: NextRequest) {
         r.notes,
         r.entity_type,
         r.entity_id,
+        r.contact_info,
         r.due_at,
         r.remind_at,
         r.status,
@@ -107,7 +117,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, notes, due_at, entity_type, entity_id } = body;
+    const { title, notes, due_at, entity_type, entity_id, contact_info } = body;
 
     if (!title || !due_at) {
       return NextResponse.json(
@@ -119,10 +129,10 @@ export async function POST(request: NextRequest) {
     const result = await queryOne<{ reminder_id: string }>(
       `INSERT INTO trapper.staff_reminders (
         staff_id, title, notes, entity_type, entity_id,
-        due_at, remind_at, created_via
+        due_at, remind_at, created_via, contact_info
       ) VALUES (
         $1, $2, $3, $4, $5,
-        $6, $6, 'dashboard'
+        $6, $6, 'dashboard', $7
       )
       RETURNING reminder_id`,
       [
@@ -132,6 +142,7 @@ export async function POST(request: NextRequest) {
         entity_type || null,
         entity_id || null,
         due_at,
+        contact_info ? JSON.stringify(contact_info) : null,
       ]
     );
 

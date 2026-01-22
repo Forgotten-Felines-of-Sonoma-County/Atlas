@@ -3,6 +3,14 @@
 import { useState } from "react";
 import { SnoozePicker } from "./SnoozePicker";
 
+interface ContactInfo {
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+}
+
 interface Reminder {
   reminder_id: string;
   title: string;
@@ -10,6 +18,7 @@ interface Reminder {
   entity_type?: string | null;
   entity_display?: string | null;
   entity_id?: string | null;
+  contact_info?: ContactInfo | null;
   due_at: string;
   remind_at: string;
   status: string;
@@ -33,9 +42,16 @@ export function ReminderCard({
 }: ReminderCardProps) {
   const [loading, setLoading] = useState(false);
   const [showSnooze, setShowSnooze] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const isOverdue = new Date(reminder.due_at) < new Date();
   const isDueToday = new Date(reminder.due_at).toDateString() === new Date().toDateString();
+  const hasContactInfo = reminder.contact_info && (
+    reminder.contact_info.name ||
+    reminder.contact_info.phone ||
+    reminder.contact_info.email ||
+    reminder.contact_info.address
+  );
 
   const handleComplete = async () => {
     setLoading(true);
@@ -101,55 +117,113 @@ export function ReminderCard({
     return (
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
           padding: "0.5rem 0",
           borderBottom: "1px solid var(--border)",
           opacity: loading ? 0.6 : 1,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: 0 }}>
-          <span
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: hasContactInfo ? "pointer" : "default",
+          }}
+          onClick={() => hasContactInfo && setExpanded(!expanded)}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: 0 }}>
+            <span
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                background: isOverdue ? "#dc3545" : isDueToday ? "#f59e0b" : "#6c757d",
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "0.9rem",
+              }}
+            >
+              {reminder.title}
+              {hasContactInfo && (
+                <span style={{ marginLeft: "0.5rem", color: "var(--muted)", fontSize: "0.75rem" }}>
+                  {expanded ? "▼" : "▶"}
+                </span>
+              )}
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+            <span style={{ fontSize: "0.75rem", color: isOverdue ? "#dc3545" : "var(--muted)" }}>
+              {formatDueDate(reminder.due_at)}
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleComplete(); }}
+              disabled={loading}
+              style={{
+                padding: "0.25rem 0.5rem",
+                fontSize: "0.75rem",
+                background: "#198754",
+                color: "#fff",
+                border: "none",
+                borderRadius: "4px",
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+        {/* Expanded contact info */}
+        {expanded && hasContactInfo && reminder.contact_info && (
+          <div
             style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "50%",
-              background: isOverdue ? "#dc3545" : isDueToday ? "#f59e0b" : "#6c757d",
-              flexShrink: 0,
-            }}
-          />
-          <span
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontSize: "0.9rem",
+              marginTop: "0.5rem",
+              marginLeft: "1rem",
+              padding: "0.75rem",
+              background: "var(--section-bg)",
+              borderRadius: "6px",
+              fontSize: "0.85rem",
             }}
           >
-            {reminder.title}
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
-          <span style={{ fontSize: "0.75rem", color: isOverdue ? "#dc3545" : "var(--muted)" }}>
-            {formatDueDate(reminder.due_at)}
-          </span>
-          <button
-            onClick={handleComplete}
-            disabled={loading}
-            style={{
-              padding: "0.25rem 0.5rem",
-              fontSize: "0.75rem",
-              background: "#198754",
-              color: "#fff",
-              border: "none",
-              borderRadius: "4px",
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            Done
-          </button>
-        </div>
+            {reminder.contact_info.name && (
+              <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>
+                {reminder.contact_info.name}
+              </div>
+            )}
+            {reminder.contact_info.phone && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                <span style={{ color: "var(--text-secondary)" }}>Phone:</span>
+                <a href={`tel:${reminder.contact_info.phone}`} style={{ color: "#0d6efd" }}>
+                  {reminder.contact_info.phone}
+                </a>
+              </div>
+            )}
+            {reminder.contact_info.email && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                <span style={{ color: "var(--text-secondary)" }}>Email:</span>
+                <a href={`mailto:${reminder.contact_info.email}`} style={{ color: "#0d6efd" }}>
+                  {reminder.contact_info.email}
+                </a>
+              </div>
+            )}
+            {reminder.contact_info.address && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                <span style={{ color: "var(--text-secondary)" }}>Address:</span>
+                <span>{reminder.contact_info.address}</span>
+              </div>
+            )}
+            {reminder.contact_info.notes && (
+              <div style={{ marginTop: "0.5rem", color: "var(--text-secondary)", fontStyle: "italic" }}>
+                {reminder.contact_info.notes}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -183,6 +257,53 @@ export function ReminderCard({
             >
               {reminder.entity_display || `View ${reminder.entity_type}`}
             </a>
+          )}
+          {/* Contact info section */}
+          {hasContactInfo && reminder.contact_info && (
+            <div
+              style={{
+                marginTop: "0.75rem",
+                padding: "0.75rem",
+                background: "var(--section-bg)",
+                borderRadius: "6px",
+                fontSize: "0.85rem",
+              }}
+            >
+              {reminder.contact_info.name && (
+                <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>
+                  {reminder.contact_info.name}
+                </div>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
+                {reminder.contact_info.phone && (
+                  <div>
+                    <span style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>Phone: </span>
+                    <a href={`tel:${reminder.contact_info.phone}`} style={{ color: "#0d6efd" }}>
+                      {reminder.contact_info.phone}
+                    </a>
+                  </div>
+                )}
+                {reminder.contact_info.email && (
+                  <div>
+                    <span style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>Email: </span>
+                    <a href={`mailto:${reminder.contact_info.email}`} style={{ color: "#0d6efd" }}>
+                      {reminder.contact_info.email}
+                    </a>
+                  </div>
+                )}
+              </div>
+              {reminder.contact_info.address && (
+                <div style={{ marginTop: "0.25rem" }}>
+                  <span style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>Address: </span>
+                  <span>{reminder.contact_info.address}</span>
+                </div>
+              )}
+              {reminder.contact_info.notes && (
+                <div style={{ marginTop: "0.5rem", color: "var(--text-secondary)", fontStyle: "italic", fontSize: "0.8rem" }}>
+                  {reminder.contact_info.notes}
+                </div>
+              )}
+            </div>
           )}
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>

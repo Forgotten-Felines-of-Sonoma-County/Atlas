@@ -252,6 +252,26 @@ export const TIPPY_TOOLS = [
           type: "string",
           description: "Address, name, or ID to link to an entity (optional - Tippy will try to find the entity)",
         },
+        contact_name: {
+          type: "string",
+          description: "Name of person to contact (e.g., 'Myrna Chavez')",
+        },
+        contact_phone: {
+          type: "string",
+          description: "Phone number to call/text (e.g., '707-206-1094')",
+        },
+        contact_email: {
+          type: "string",
+          description: "Email address (e.g., 'gise0831@yahoo.com')",
+        },
+        contact_address: {
+          type: "string",
+          description: "Street address (e.g., '3328 Santa Rosa, CA 95407')",
+        },
+        contact_notes: {
+          type: "string",
+          description: "Additional context like referral source, translator info, etc.",
+        },
       },
       required: ["title", "due_time"],
     },
@@ -993,6 +1013,14 @@ export async function executeToolCall(
           toolInput.notes as string | undefined,
           toolInput.entity_type as string | undefined,
           toolInput.entity_identifier as string | undefined,
+          // Build contact info from tool input
+          (toolInput.contact_name || toolInput.contact_phone || toolInput.contact_email || toolInput.contact_address) ? {
+            name: toolInput.contact_name as string | undefined,
+            phone: toolInput.contact_phone as string | undefined,
+            email: toolInput.contact_email as string | undefined,
+            address: toolInput.contact_address as string | undefined,
+            notes: toolInput.contact_notes as string | undefined,
+          } : undefined,
           context
         );
 
@@ -2576,12 +2604,21 @@ function parseRelativeTime(timeStr: string): Date {
 /**
  * Create a personal reminder for the staff member
  */
+interface ContactInfo {
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+}
+
 async function createReminder(
   title: string,
   dueTime: string,
   notes?: string,
   entityType?: string,
   entityIdentifier?: string,
+  contactInfo?: ContactInfo,
   context?: ToolContext
 ): Promise<ToolResult> {
   if (!context?.staffId) {
@@ -2630,15 +2667,19 @@ async function createReminder(
     }
   }
 
+  // Build contact_info JSON if any contact details provided
+  const hasContactInfo = contactInfo && (contactInfo.name || contactInfo.phone || contactInfo.email || contactInfo.address);
+  const contactInfoJson = hasContactInfo ? JSON.stringify(contactInfo) : null;
+
   // Create the reminder
   try {
     const result = await queryOne<{ reminder_id: string; due_at: string }>(
       `INSERT INTO trapper.staff_reminders (
         staff_id, title, notes, entity_type, entity_id,
-        due_at, remind_at, created_via, tippy_conversation_id
+        due_at, remind_at, created_via, tippy_conversation_id, contact_info
       ) VALUES (
         $1, $2, $3, $4, $5,
-        $6, $6, 'tippy', $7
+        $6, $6, 'tippy', $7, $8
       )
       RETURNING reminder_id, due_at`,
       [
@@ -2649,6 +2690,7 @@ async function createReminder(
         entityId,
         dueAt.toISOString(),
         context.conversationId || null,
+        contactInfoJson,
       ]
     );
 
