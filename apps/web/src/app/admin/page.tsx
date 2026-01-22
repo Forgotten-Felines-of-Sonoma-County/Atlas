@@ -106,6 +106,13 @@ export default function AdminPage() {
                   icon="👥"
                   accent="#fef3c7"
                 />
+                <AdminCard
+                  href="/admin/trapper-reports"
+                  title="Trapper Reports"
+                  description="Ingest trapper field updates"
+                  icon="📧"
+                  accent="#eff6ff"
+                />
               </div>
             </section>
 

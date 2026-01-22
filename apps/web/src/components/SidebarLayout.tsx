@@ -255,6 +255,7 @@ export function AdminSidebar({ children }: { children: React.ReactNode }) {
     {
       title: "Data Management",
       items: [
+        { label: "Trapper Reports", href: "/admin/trapper-reports", icon: "📧" },
         { label: "Duplicates", href: "/admin/duplicates", icon: "🔍" },
         { label: "Import/Export", href: "/admin/import", icon: "📦" },
         { label: "Needs Review", href: "/admin/needs-review", icon: "⚠️" },
