@@ -262,39 +262,110 @@ async function main() {
       // Extract trapper info
       const info = extractTrapperInfo(fields);
 
-      // Skip if no identifying info
-      if (!info.email && !info.phone) {
-        if (options.verbose) console.log(`  Skip: No email/phone for "${info.displayName}"`);
-        skipped++;
-        continue;
+      let personId = null;
+      let linkMethod = null;
+
+      // PRIORITY 1: Check for existing authoritative external link
+      // Manual/override links take priority over identity resolution
+      const existingLinkResult = await client.query(`
+        SELECT person_id, link_type
+        FROM trapper.external_person_links
+        WHERE source_system = 'airtable'
+          AND source_table = 'trappers'
+          AND source_record_id = $1
+          AND unlinked_at IS NULL
+        ORDER BY CASE link_type
+          WHEN 'override' THEN 1
+          WHEN 'manual' THEN 2
+          WHEN 'migration' THEN 3
+          WHEN 'auto' THEN 4
+        END
+        LIMIT 1
+      `, [airtableRecordId]);
+
+      if (existingLinkResult.rows[0]) {
+        const existingLink = existingLinkResult.rows[0];
+        // For authoritative links (manual/override/migration), use directly
+        if (['manual', 'override', 'migration'].includes(existingLink.link_type)) {
+          personId = existingLink.person_id;
+          linkMethod = `external_${existingLink.link_type}`;
+          if (options.verbose) console.log(`  📎 ${info.displayName}: Using ${existingLink.link_type} external link`);
+        } else {
+          // Auto link exists - still use identity resolution but keep link
+          personId = existingLink.person_id;
+          linkMethod = 'external_auto';
+        }
       }
 
-      // Use find_or_create_person for proper identity linking
-      // This handles deduplication, phone blacklisting, name validation, etc.
-      const personResult = await client.query(`
-        SELECT trapper.find_or_create_person(
-          $1,  -- email
-          $2,  -- phone
-          $3,  -- first_name
-          $4,  -- last_name
-          $5,  -- address
-          $6   -- source_system
-        ) AS person_id
-      `, [
-        info.email || null,
-        info.phone || null,
-        info.firstName || null,
-        info.lastName || null,
-        info.address || null,
-        SOURCE_SYSTEM
-      ]);
-
-      const personId = personResult.rows[0]?.person_id;
-
+      // PRIORITY 2: Identity resolution (if no authoritative link found)
       if (!personId) {
-        if (options.verbose) console.log(`  Skip: Could not create/find person for "${info.displayName}" (failed validation)`);
-        skipped++;
-        continue;
+        // Check if we have identifying info
+        if (!info.email && !info.phone) {
+          // No identifiers - queue for manual linking
+          await client.query(`
+            SELECT trapper.queue_pending_trapper_link(
+              $1, $2, $3, $4, $5, $6, 'no_identifiers'
+            )
+          `, [
+            airtableRecordId,
+            info.displayName,
+            info.email || null,
+            info.phone || null,
+            info.address || null,
+            info.trapperType
+          ]);
+          if (options.verbose) console.log(`  ⏳ ${info.displayName}: Queued for manual linking (no email/phone)`);
+          skipped++;
+          continue;
+        }
+
+        // Run identity resolution
+        const personResult = await client.query(`
+          SELECT trapper.find_or_create_person(
+            $1,  -- email
+            $2,  -- phone
+            $3,  -- first_name
+            $4,  -- last_name
+            $5,  -- address
+            $6   -- source_system
+          ) AS person_id
+        `, [
+          info.email || null,
+          info.phone || null,
+          info.firstName || null,
+          info.lastName || null,
+          info.address || null,
+          SOURCE_SYSTEM
+        ]);
+
+        personId = personResult.rows[0]?.person_id;
+        linkMethod = 'identity_resolution';
+
+        if (!personId) {
+          // Identity resolution failed - queue for manual linking
+          await client.query(`
+            SELECT trapper.queue_pending_trapper_link(
+              $1, $2, $3, $4, $5, $6, 'identity_resolution_failed'
+            )
+          `, [
+            airtableRecordId,
+            info.displayName,
+            info.email || null,
+            info.phone || null,
+            info.address || null,
+            info.trapperType
+          ]);
+          if (options.verbose) console.log(`  ⏳ ${info.displayName}: Queued for manual linking (identity resolution failed)`);
+          skipped++;
+          continue;
+        }
+
+        // Create auto external link for successful identity resolution
+        await client.query(`
+          SELECT trapper.link_external_record_to_person(
+            'airtable', 'trappers', $1, $2, 'auto', 'trapper_sync'
+          )
+        `, [airtableRecordId, personId]);
       }
 
       // Check if this was an existing person or new

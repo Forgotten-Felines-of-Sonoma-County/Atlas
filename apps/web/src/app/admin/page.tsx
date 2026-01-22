@@ -182,6 +182,13 @@ export default function AdminPage() {
                   accent="#fef3c7"
                 />
                 <AdminCard
+                  href="/admin/trapper-linking"
+                  title="Trapper Linking"
+                  description="Link trappers to people"
+                  icon="🔗"
+                  accent="#fef3c7"
+                />
+                <AdminCard
                   href="/admin/test-mode"
                   title="Test Mode"
                   description="Temporary test changes"
