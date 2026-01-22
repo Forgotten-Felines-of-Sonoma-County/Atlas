@@ -1459,12 +1459,12 @@ function NewRequestForm() {
               style={{
                 marginBottom: "1rem",
                 padding: "1rem",
-                background: "#d4edda",
-                border: "2px solid #28a745",
+                background: "var(--success-bg, #d4edda)",
+                border: "2px solid var(--success, #28a745)",
                 borderRadius: "8px",
               }}
             >
-              <p style={{ margin: "0 0 0.75rem", fontWeight: 600, color: "#155724" }}>
+              <p style={{ margin: "0 0 0.75rem", fontWeight: 600, color: "var(--success, #155724)" }}>
                 📍 Quick fill from {selectedPerson.display_name}'s known addresses:
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -1478,17 +1478,18 @@ function NewRequestForm() {
                       justifyContent: "space-between",
                       alignItems: "center",
                       padding: "0.75rem",
-                      background: "#fff",
+                      background: "var(--card-bg, #fff)",
                       border: "1px solid var(--border)",
                       borderRadius: "6px",
                       cursor: "pointer",
                       textAlign: "left",
+                      color: "var(--foreground, #212529)",
                     }}
                   >
                     <span>
-                      <span style={{ display: "block" }}>{addr.formatted_address}</span>
+                      <span style={{ display: "block", color: "var(--foreground, #212529)" }}>{addr.formatted_address}</span>
                       {addr.role && (
-                        <span className="text-muted text-sm">({addr.role})</span>
+                        <span style={{ color: "var(--muted, #6c757d)", fontSize: "0.85rem" }}>({addr.role})</span>
                       )}
                     </span>
                     <span style={{ color: "var(--primary)", fontWeight: 500, fontSize: "0.85rem" }}>
@@ -1497,7 +1498,7 @@ function NewRequestForm() {
                   </button>
                 ))}
               </div>
-              <p className="text-muted text-sm" style={{ margin: "0.75rem 0 0" }}>
+              <p style={{ margin: "0.75rem 0 0", color: "var(--muted, #6c757d)", fontSize: "0.85rem" }}>
                 Or search for a different address below
               </p>
             </div>
