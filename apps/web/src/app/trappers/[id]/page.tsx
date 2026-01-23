@@ -17,6 +17,8 @@ interface TrapperStats {
   assessment_visits: number;
   first_visit_success_rate_pct: number | null;
   cats_from_visits: number;
+  cats_from_assignments: number;
+  cats_altered_from_assignments: number;
   manual_catches: number;
   total_cats_caught: number;
   total_clinic_cats: number;
