@@ -44,10 +44,12 @@ export default function LoginPage() {
       if (data.success) {
         // Check if password change is required
         if (data.password_change_required) {
-          router.push("/change-password");
+          // Use window.location for full page reload to clear any cached state
+          window.location.href = "/change-password";
         } else {
-          // Redirect to intended page or dashboard
-          router.push(redirect);
+          // Use window.location for full page reload to ensure auth state is fresh
+          // This fixes issues where cached/stale UI doesn't reflect logged-in state
+          window.location.href = redirect;
         }
       } else {
         setError(data.error || "Login failed");

@@ -297,9 +297,10 @@ export async function POST(request: NextRequest) {
 
     // Get user's session and AI access level
     const session = await getSession(request);
-    let aiAccessLevel: string | null = "read_only"; // Default to read_only
+    let aiAccessLevel: string | null = "none"; // Default to NONE for unauthenticated users
     let userName: string | null = null;
 
+    // SECURITY: Only authenticated users get AI access
     if (session?.staff_id) {
       const staffInfo = await queryOne<{
         ai_access_level: string | null;
@@ -308,12 +309,13 @@ export async function POST(request: NextRequest) {
         `SELECT ai_access_level, display_name FROM trapper.staff WHERE staff_id = $1`,
         [session.staff_id]
       );
+      // Default to read_only for authenticated staff without explicit level
       aiAccessLevel = staffInfo?.ai_access_level || "read_only";
       userName = staffInfo?.display_name || null;
     }
 
     // Check if user has any AI access
-    if (aiAccessLevel === "none") {
+    if (!session || aiAccessLevel === "none") {
       return NextResponse.json({
         message:
           "I'm sorry, but your account doesn't have access to Tippy. Please contact an administrator if you need AI assistance.",

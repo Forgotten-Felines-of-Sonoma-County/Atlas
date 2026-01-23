@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
-import PasswordGate from "@/components/PasswordGate";
 import { TippyChat } from "@/components/TippyChat";
 
 export const metadata: Metadata = {
@@ -22,10 +21,9 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body>
-        <PasswordGate>
-          <AppShell>{children}</AppShell>
-          <TippyChat />
-        </PasswordGate>
+        {/* Auth is now handled by middleware + /login page */}
+        <AppShell>{children}</AppShell>
+        <TippyChat />
       </body>
     </html>
   );
