@@ -2471,39 +2471,27 @@ function IntakeQueueContent() {
               </div>
             )}
 
-            {/* Review Notes */}
-            <div style={{ background: "var(--card-bg, rgba(0,0,0,0.05))", borderRadius: "8px", padding: "1rem", marginBottom: "1rem" }}>
-              <h3 style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "1rem" }}>Review Notes (Internal)</h3>
-              <p style={{ margin: "0 0 0.5rem", fontSize: "0.8rem", color: "var(--muted)" }}>
-                Internal staff notes about the <em>submission itself</em> - triage decisions, concerns, or follow-up needed.
-                Not for contact attempts (use Communication Log below).
-              </p>
-              {editingStatus ? (
-                <textarea
-                  value={statusEdits.legacy_notes}
-                  onChange={(e) => setStatusEdits({ ...statusEdits, legacy_notes: e.target.value })}
-                  rows={3}
-                  style={{ width: "100%", padding: "0.5rem", resize: "vertical" }}
-                  placeholder="Add internal notes about this submission..."
-                />
-              ) : (
+            {/* Legacy Review Notes - only shown if record has existing notes */}
+            {selectedSubmission.legacy_notes && (
+              <div style={{ background: "var(--card-bg, rgba(0,0,0,0.05))", borderRadius: "8px", padding: "1rem", marginBottom: "1rem" }}>
+                <h3 style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "1rem", color: "var(--muted)" }}>
+                  Legacy Notes
+                </h3>
+                <p style={{ margin: "0 0 0.5rem", fontSize: "0.8rem", color: "var(--muted)" }}>
+                  Historical notes from before the Communication Log. New notes should be added using &quot;+ Note&quot; below.
+                </p>
                 <div style={{
                   padding: "0.75rem",
                   background: "var(--background)",
                   borderRadius: "6px",
                   border: "1px solid var(--border)",
-                  minHeight: "60px",
                   whiteSpace: "pre-wrap",
                   fontSize: "0.9rem"
                 }}>
-                  {selectedSubmission.legacy_notes || (
-                    <span style={{ color: "var(--muted)", fontStyle: "italic" }}>
-                      No notes yet. Click "Edit" in Status & Tracking to add notes.
-                    </span>
-                  )}
+                  {selectedSubmission.legacy_notes}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Edit History - collapsible section to see and undo changes */}
             <div style={{ background: "var(--card-bg, rgba(0,0,0,0.05))", borderRadius: "8px", padding: "1rem", marginBottom: "1rem" }}>
