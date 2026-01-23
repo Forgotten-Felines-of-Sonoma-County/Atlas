@@ -11,6 +11,7 @@ interface PendingReview {
   incoming_address: string | null;
   top_candidate_person_id: string | null;
   top_candidate_name: string | null;
+  candidate_was_merged?: boolean;
   top_candidate_score: number | null;
   score_breakdown: {
     email_score?: number;
@@ -124,6 +125,19 @@ export default function DataEngineReviewPage() {
         </div>
       </div>
 
+      {/* Guidance */}
+      <div className="card" style={{ padding: "1rem", marginBottom: "1.5rem", background: "#f0f9ff", border: "1px solid #bae6fd" }}>
+        <div style={{ fontWeight: 600, marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+          How to interpret matches:
+        </div>
+        <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.8125rem", color: "#334155" }}>
+          <li><strong>Same name, ~58%</strong>: Different people with matching names. Usually <strong>Keep Separate</strong>.</li>
+          <li><strong>Different names, 70%+</strong>: Shared email/phone (household or organization). Usually <strong>Keep Separate</strong> unless you know they&apos;re the same person.</li>
+          <li><strong>Similar names, 80%+</strong>: Likely the same person (e.g., &quot;Mike Foley&quot; → &quot;Michael Foley&quot;). Consider <strong>Merge</strong>.</li>
+          <li><strong>Business names doubled</strong> (e.g., &quot;Lowes Cotati Lowes Cotati&quot;): Data entry issue. <strong>Keep Separate</strong> - we&apos;ll clean up display later.</li>
+        </ul>
+      </div>
+
       {/* Review List */}
       {reviews.length === 0 ? (
         <div className="card" style={{ padding: "3rem", textAlign: "center" }}>
@@ -146,6 +160,42 @@ export default function DataEngineReviewPage() {
   );
 }
 
+function getRecommendation(review: PendingReview): { action: string; reason: string; color: string } | null {
+  const score = review.top_candidate_score || 0;
+  const breakdown = review.score_breakdown || {};
+  const nameScore = breakdown.name_score || 0;
+  const emailScore = breakdown.email_score || 0;
+
+  // Same name but low overall score - probably different people
+  if (nameScore >= 0.2 && score < 0.7 && emailScore === 0) {
+    return {
+      action: "Keep Separate",
+      reason: "Same name but different contact info - likely different people",
+      color: "#3b82f6"
+    };
+  }
+
+  // Different names but shared email - household/org
+  if (nameScore < 0.1 && emailScore >= 0.35) {
+    return {
+      action: "Keep Separate",
+      reason: "Different names sharing email - likely household members or org",
+      color: "#3b82f6"
+    };
+  }
+
+  // High score with similar names - likely same person
+  if (score >= 0.8 && nameScore >= 0.1) {
+    return {
+      action: "Consider Merge",
+      reason: "High match score with similar names - possibly same person",
+      color: "#10b981"
+    };
+  }
+
+  return null;
+}
+
 function ReviewCard({
   review,
   onAction,
@@ -156,6 +206,7 @@ function ReviewCard({
   loading: boolean;
 }) {
   const scoreBreakdown = review.score_breakdown || {};
+  const recommendation = getRecommendation(review);
 
   return (
     <div className="card" style={{ padding: "1.25rem" }}>
@@ -231,10 +282,21 @@ function ReviewCard({
         {/* Candidate */}
         <div style={{ padding: "1rem", background: "var(--card-border)", borderRadius: "8px" }}>
           <div style={{ fontWeight: 600, marginBottom: "0.5rem", fontSize: "0.875rem" }}>
-            Best Candidate
+            Existing Person Found
           </div>
           {review.top_candidate_person_id ? (
             <>
+              {review.candidate_was_merged && (
+                <div style={{
+                  padding: "0.25rem 0.5rem",
+                  background: "#fef3c7",
+                  borderRadius: "4px",
+                  fontSize: "0.75rem",
+                  marginBottom: "0.5rem"
+                }}>
+                  ⚠️ Original candidate was merged - showing canonical record
+                </div>
+              )}
               <div style={{ marginBottom: "0.25rem" }}>
                 <span className="text-muted">Name:</span>{" "}
                 <a href={`/people/${review.top_candidate_person_id}`}>
@@ -242,7 +304,7 @@ function ReviewCard({
                 </a>
               </div>
               <div style={{ marginTop: "0.75rem" }}>
-                <div className="text-muted text-sm" style={{ marginBottom: "0.25rem" }}>Score Breakdown:</div>
+                <div className="text-muted text-sm" style={{ marginBottom: "0.25rem" }}>Why it matched:</div>
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", fontSize: "0.75rem" }}>
                   {scoreBreakdown.email_score !== undefined && (
                     <ScorePill label="Email" score={scoreBreakdown.email_score} />
@@ -260,10 +322,28 @@ function ReviewCard({
               </div>
             </>
           ) : (
-            <div className="text-muted">No candidate found</div>
+            <div className="text-muted">No similar person found in database</div>
           )}
         </div>
       </div>
+
+      {/* Recommendation */}
+      {recommendation && (
+        <div style={{
+          padding: "0.75rem 1rem",
+          borderRadius: "6px",
+          background: `${recommendation.color}15`,
+          border: `1px solid ${recommendation.color}40`,
+          marginBottom: "1rem",
+        }}>
+          <div style={{ fontWeight: 600, color: recommendation.color, marginBottom: "0.25rem" }}>
+            Suggested: {recommendation.action}
+          </div>
+          <div style={{ fontSize: "0.8125rem", color: "#475569" }}>
+            {recommendation.reason}
+          </div>
+        </div>
+      )}
 
       {/* Reason */}
       {review.decision_reason && (

@@ -17,6 +17,7 @@ interface ReviewItem {
   candidates_evaluated: number;
   top_candidate_person_id: string | null;
   top_candidate_name: string | null;
+  candidate_was_merged: boolean;
   top_candidate_score: number;
   decision_type: string;
   decision_reason: string | null;
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get review items
+    // Handle merged persons: if candidate was merged, show the canonical person
     const reviews = await queryRows<ReviewItem>(`
       SELECT
         d.decision_id::text,
@@ -44,8 +46,10 @@ export async function GET(request: NextRequest) {
         d.incoming_name,
         d.incoming_address,
         d.candidates_evaluated,
-        d.top_candidate_person_id::text,
-        top_p.display_name as top_candidate_name,
+        -- Use canonical person if candidate was merged
+        COALESCE(top_p.merged_into_person_id, d.top_candidate_person_id)::text as top_candidate_person_id,
+        COALESCE(canonical_p.display_name, top_p.display_name) as top_candidate_name,
+        top_p.merged_into_person_id IS NOT NULL as candidate_was_merged,
         COALESCE(d.top_candidate_score, 0)::numeric as top_candidate_score,
         d.decision_type,
         d.decision_reason,
@@ -56,6 +60,7 @@ export async function GET(request: NextRequest) {
         d.review_status
       FROM trapper.data_engine_match_decisions d
       LEFT JOIN trapper.sot_people top_p ON top_p.person_id = d.top_candidate_person_id
+      LEFT JOIN trapper.sot_people canonical_p ON canonical_p.person_id = top_p.merged_into_person_id
       LEFT JOIN trapper.sot_people res_p ON res_p.person_id = d.resulting_person_id
       WHERE d.review_status = $1
       ORDER BY d.processed_at DESC
