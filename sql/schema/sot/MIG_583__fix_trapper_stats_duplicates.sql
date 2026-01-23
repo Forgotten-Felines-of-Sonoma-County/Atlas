@@ -36,17 +36,17 @@
 -- Find trappers with duplicate sot_people records (sharing identifiers)
 \echo 'Trappers sharing email addresses:'
 SELECT
-    pi.id_value AS shared_email,
+    pi.id_value_norm AS shared_email,
     COUNT(DISTINCT p.person_id) AS person_count,
-    ARRAY_AGG(DISTINCT p.display_name ORDER BY p.display_name) AS names,
-    ARRAY_AGG(DISTINCT p.person_id ORDER BY p.display_name) AS person_ids
+    ARRAY_AGG(DISTINCT p.display_name) AS names,
+    ARRAY_AGG(DISTINCT p.person_id) AS person_ids
 FROM trapper.person_identifiers pi
 JOIN trapper.sot_people p ON p.person_id = pi.person_id
 JOIN trapper.person_roles pr ON pr.person_id = p.person_id
 WHERE pi.id_type = 'email'
   AND pr.role = 'trapper'
   AND p.merged_into_person_id IS NULL
-GROUP BY pi.id_value
+GROUP BY pi.id_value_norm
 HAVING COUNT(DISTINCT p.person_id) > 1
 ORDER BY COUNT(DISTINCT p.person_id) DESC
 LIMIT 20;
@@ -54,17 +54,17 @@ LIMIT 20;
 \echo ''
 \echo 'Trappers sharing phone numbers:'
 SELECT
-    pi.id_value AS shared_phone,
+    pi.id_value_norm AS shared_phone,
     COUNT(DISTINCT p.person_id) AS person_count,
-    ARRAY_AGG(DISTINCT p.display_name ORDER BY p.display_name) AS names,
-    ARRAY_AGG(DISTINCT p.person_id ORDER BY p.display_name) AS person_ids
+    ARRAY_AGG(DISTINCT p.display_name) AS names,
+    ARRAY_AGG(DISTINCT p.person_id) AS person_ids
 FROM trapper.person_identifiers pi
 JOIN trapper.sot_people p ON p.person_id = pi.person_id
 JOIN trapper.person_roles pr ON pr.person_id = p.person_id
 WHERE pi.id_type = 'phone'
   AND pr.role = 'trapper'
   AND p.merged_into_person_id IS NULL
-GROUP BY pi.id_value
+GROUP BY pi.id_value_norm
 HAVING COUNT(DISTINCT p.person_id) > 1
 ORDER BY COUNT(DISTINCT p.person_id) DESC
 LIMIT 20;
@@ -87,7 +87,6 @@ RETURNS TABLE(
 ) AS $$
 DECLARE
     v_dup RECORD;
-    v_target_id UUID;
     v_source_id UUID;
     v_result JSONB;
 BEGIN
@@ -97,8 +96,8 @@ BEGIN
             SELECT
                 pi.id_value_norm,
                 pi.id_type,
-                ARRAY_AGG(DISTINCT p.person_id ORDER BY p.created_at) AS person_ids,
-                ARRAY_AGG(DISTINCT p.display_name ORDER BY p.created_at) AS names
+                ARRAY_AGG(p.person_id ORDER BY p.created_at) AS person_ids,
+                ARRAY_AGG(p.display_name ORDER BY p.created_at) AS names
             FROM trapper.person_identifiers pi
             JOIN trapper.sot_people p ON p.person_id = pi.person_id
             JOIN trapper.person_roles pr ON pr.person_id = p.person_id
@@ -109,14 +108,14 @@ BEGIN
             HAVING COUNT(DISTINCT p.person_id) > 1
         )
         SELECT
-            person_ids[1] AS target_id,  -- First (oldest) becomes canonical
-            person_ids[2:] AS source_ids,  -- Rest get merged
+            person_ids[1] AS target_id,
+            person_ids[2:] AS source_ids,
             names[1] AS target_name,
             names[2:] AS source_names,
             id_value_norm AS shared_id,
             id_type
         FROM shared_identifiers
-        LIMIT 50  -- Process in batches to avoid timeout
+        LIMIT 50
     LOOP
         -- Merge each duplicate into the canonical record
         FOREACH v_source_id IN ARRAY v_dup.source_ids
@@ -133,16 +132,15 @@ BEGIN
                 merged_into_id := v_dup.target_id;
                 merged_name := (SELECT display_name FROM trapper.sot_people WHERE person_id = v_source_id);
                 canonical_name := v_dup.target_name;
-                shared_identifier := v_dup.id_type || ': ' || v_dup.shared_id;
+                shared_identifier := v_dup.id_type::TEXT || ': ' || v_dup.shared_id;
                 merge_result := v_result;
                 RETURN NEXT;
             EXCEPTION WHEN OTHERS THEN
-                -- Log error but continue
                 merged_from_id := v_source_id;
                 merged_into_id := v_dup.target_id;
                 merged_name := NULL;
                 canonical_name := v_dup.target_name;
-                shared_identifier := v_dup.id_type || ': ' || v_dup.shared_id;
+                shared_identifier := v_dup.id_type::TEXT || ': ' || v_dup.shared_id;
                 merge_result := jsonb_build_object('error', SQLERRM);
                 RETURN NEXT;
             END;
@@ -157,8 +155,15 @@ Uses merge_people() internally. Run this to fix duplicate trappers.
 Returns list of merges performed.';
 
 -- ============================================================
--- 2. Create helper view for deduplicated trapper roles
+-- 3. Drop and recreate views (required to change column order)
 -- ============================================================
+
+\echo 'Dropping existing views to recreate with correct columns...'
+
+DROP VIEW IF EXISTS trapper.v_trapper_aggregate_stats CASCADE;
+DROP VIEW IF EXISTS trapper.v_trapper_full_stats CASCADE;
+DROP VIEW IF EXISTS trapper.v_trapper_appointment_stats CASCADE;
+DROP VIEW IF EXISTS trapper.v_trapper_roles_deduped CASCADE;
 
 \echo 'Creating v_trapper_roles_deduped view...'
 
@@ -169,7 +174,6 @@ SELECT DISTINCT ON (p.person_id)
     pr.trapper_type,
     pr.role_status,
     pr.started_at,
-    pr.is_active,
     CASE
         WHEN pr.trapper_type IN ('coordinator', 'head_trapper', 'ffsc_trapper') THEN TRUE
         ELSE FALSE
@@ -177,19 +181,19 @@ SELECT DISTINCT ON (p.person_id)
 FROM trapper.sot_people p
 JOIN trapper.person_roles pr ON pr.person_id = p.person_id
 WHERE pr.role = 'trapper'
+  AND p.merged_into_person_id IS NULL
 ORDER BY
     p.person_id,
-    -- Prefer active roles
     CASE WHEN pr.role_status = 'active' THEN 0 ELSE 1 END,
-    -- Then most recent
     pr.started_at DESC NULLS LAST;
 
 COMMENT ON VIEW trapper.v_trapper_roles_deduped IS
 'Deduplicated trapper roles. When a person has multiple trapper role records,
-takes the active one (or most recent if no active). Prevents duplicate rows in stats.';
+takes the active one (or most recent if no active). Prevents duplicate rows in stats.
+Excludes merged people.';
 
 -- ============================================================
--- 3. Fix v_trapper_appointment_stats to use deduplicated roles
+-- 4. Fix v_trapper_appointment_stats to use deduplicated roles
 -- ============================================================
 
 \echo 'Fixing v_trapper_appointment_stats view...'
@@ -201,21 +205,17 @@ SELECT
     tr.trapper_type,
     tr.role_status,
     tr.is_ffsc_trapper,
-    -- Appointment-based stats (direct link)
     COUNT(DISTINCT a.appointment_id) AS total_appointments,
     COUNT(DISTINCT a.cat_id) AS total_cats_brought,
     COUNT(DISTINCT a.appointment_date) AS unique_clinic_days,
-    -- Alteration counts
     COUNT(DISTINCT CASE WHEN a.is_spay THEN a.cat_id END) AS spayed_count,
     COUNT(DISTINCT CASE WHEN a.is_neuter THEN a.cat_id END) AS neutered_count,
     COUNT(DISTINCT CASE WHEN a.is_spay OR a.is_neuter THEN a.cat_id END) AS total_altered,
-    -- Average cats per day
     CASE
         WHEN COUNT(DISTINCT a.appointment_date) > 0
         THEN ROUND(COUNT(DISTINCT a.cat_id)::NUMERIC / COUNT(DISTINCT a.appointment_date), 1)
         ELSE 0
     END AS avg_cats_per_day,
-    -- Date range
     MIN(a.appointment_date) AS first_clinic_date,
     MAX(a.appointment_date) AS last_clinic_date
 FROM trapper.v_trapper_roles_deduped tr
@@ -228,7 +228,7 @@ Uses v_trapper_roles_deduped to prevent duplicate rows.
 Includes role_status for filtering.';
 
 -- ============================================================
--- 4. Fix v_trapper_full_stats to include role_status
+-- 5. Fix v_trapper_full_stats to include role_status
 -- ============================================================
 
 \echo 'Fixing v_trapper_full_stats view...'
@@ -271,14 +271,12 @@ SELECT
     tas.person_id,
     tas.display_name,
     tas.trapper_type,
-    tas.role_status,  -- NOW INCLUDED
+    tas.role_status,
     tas.is_ffsc_trapper,
 
-    -- Assignment stats
     COALESCE(acs.active_assignments, 0) AS active_assignments,
     COALESCE(acs.completed_assignments, 0) AS completed_assignments,
 
-    -- Site visit stats
     COALESCE(sv.total_site_visits, 0) AS total_site_visits,
     COALESCE(sv.assessment_visits, 0) AS assessment_visits,
     CASE
@@ -287,19 +285,16 @@ SELECT
         ELSE NULL
     END AS first_visit_success_rate_pct,
 
-    -- Cats from various sources
     COALESCE(sv.cats_from_visits, 0) AS cats_from_visits,
     COALESCE(mc.manual_catches, 0) AS manual_catches,
     COALESCE(acs.cats_from_assignments, 0) AS cats_from_assignments,
 
-    -- Total cats caught = best source + manual catches
     GREATEST(
         COALESCE(sv.cats_from_visits, 0),
         COALESCE(acs.cats_from_assignments, 0),
         COALESCE(tas.total_cats_brought, 0)
     ) + COALESCE(mc.manual_catches, 0) AS total_cats_caught,
 
-    -- Clinic stats from direct appointment links
     COALESCE(tas.total_cats_brought, 0) AS total_clinic_cats,
     COALESCE(tas.unique_clinic_days, 0) AS unique_clinic_days,
     COALESCE(tas.avg_cats_per_day, 0) AS avg_cats_per_day,
@@ -307,7 +302,6 @@ SELECT
     COALESCE(tas.neutered_count, 0) AS neutered_count,
     COALESCE(tas.total_altered, 0) AS total_altered,
 
-    -- FeLV stats (placeholder - would need linking to test results)
     0 AS felv_tested_count,
     0 AS felv_positive_count,
     NULL::NUMERIC AS felv_positive_rate_pct,
@@ -315,7 +309,6 @@ SELECT
     tas.first_clinic_date,
     tas.last_clinic_date,
 
-    -- Overall activity dates
     LEAST(tas.first_clinic_date,
           (SELECT MIN(visit_date) FROM trapper.trapper_site_visits WHERE trapper_person_id = tas.person_id),
           acs.first_assignment_date
@@ -335,7 +328,7 @@ COMMENT ON VIEW trapper.v_trapper_full_stats IS
 deduplicated roles to prevent duplicate rows.';
 
 -- ============================================================
--- 5. Update aggregate stats view
+-- 6. Update aggregate stats view
 -- ============================================================
 
 \echo 'Updating v_trapper_aggregate_stats view...'
@@ -345,14 +338,12 @@ SELECT
     COUNT(*) AS total_active_trappers,
     COUNT(*) FILTER (WHERE is_ffsc_trapper) AS ffsc_trappers,
     COUNT(*) FILTER (WHERE NOT is_ffsc_trapper) AS community_trappers,
-    COUNT(*) FILTER (WHERE role_status != 'active') AS inactive_trappers,
+    COUNT(*) FILTER (WHERE role_status <> 'active') AS inactive_trappers,
 
-    -- Aggregate clinic stats
     SUM(total_clinic_cats) AS all_clinic_cats,
     SUM(unique_clinic_days) AS all_clinic_days,
     ROUND(AVG(avg_cats_per_day) FILTER (WHERE unique_clinic_days > 0), 1) AS avg_cats_per_day_all,
 
-    -- FeLV aggregate
     SUM(felv_tested_count) AS all_felv_tested,
     SUM(felv_positive_count) AS all_felv_positive,
     CASE
@@ -361,7 +352,6 @@ SELECT
         ELSE NULL
     END AS felv_positive_rate_pct_all,
 
-    -- Site visit aggregate
     SUM(total_site_visits) AS all_site_visits,
     CASE
         WHEN SUM(assessment_visits) > 0
@@ -373,13 +363,12 @@ SELECT
         ELSE NULL
     END AS first_visit_success_rate_pct_all,
 
-    -- Total cats
     SUM(total_cats_caught) AS all_cats_caught
 FROM trapper.v_trapper_full_stats
 WHERE role_status = 'active';
 
 -- ============================================================
--- 6. Function to merge duplicate trapper roles
+-- 7. Function to cleanup duplicate trapper roles
 -- ============================================================
 
 \echo 'Creating function to cleanup duplicate trapper roles...'
@@ -394,7 +383,6 @@ DECLARE
     v_person RECORD;
     v_removed INT := 0;
 BEGIN
-    -- Find people with multiple trapper roles
     FOR v_person IN
         SELECT p.person_id, p.display_name, COUNT(*) as cnt
         FROM trapper.sot_people p
@@ -403,7 +391,6 @@ BEGIN
         GROUP BY p.person_id, p.display_name
         HAVING COUNT(*) > 1
     LOOP
-        -- Keep the active one (or most recent), delete others
         WITH to_keep AS (
             SELECT pr.role_id
             FROM trapper.person_roles pr
@@ -436,7 +423,7 @@ COMMENT ON FUNCTION trapper.cleanup_duplicate_trapper_roles IS
 Run this to fix data quality issues where trappers appear multiple times.';
 
 -- ============================================================
--- 7. Function to find potential duplicate people (by name)
+-- 8. Function to find potential duplicate people (by name)
 -- ============================================================
 
 \echo 'Creating function to find potential duplicate trappers...'
@@ -456,26 +443,27 @@ BEGIN
             p.person_id,
             p.display_name,
             LOWER(REGEXP_REPLACE(p.display_name, '[^a-zA-Z]', '', 'g')) AS normalized_name,
-            ARRAY_AGG(DISTINCT pi.id_value) FILTER (WHERE pi.id_type = 'email') AS emails,
-            ARRAY_AGG(DISTINCT pi.id_value) FILTER (WHERE pi.id_type = 'phone') AS phones
+            ARRAY_AGG(DISTINCT pi.id_value_norm) FILTER (WHERE pi.id_type = 'email') AS emails,
+            ARRAY_AGG(DISTINCT pi.id_value_norm) FILTER (WHERE pi.id_type = 'phone') AS phones
         FROM trapper.sot_people p
         JOIN trapper.person_roles pr ON pr.person_id = p.person_id
         LEFT JOIN trapper.person_identifiers pi ON pi.person_id = p.person_id
         WHERE pr.role = 'trapper'
+          AND p.merged_into_person_id IS NULL
         GROUP BY p.person_id, p.display_name
     ),
     grouped AS (
         SELECT
-            normalized_name,
-            ARRAY_AGG(person_id ORDER BY display_name) AS person_ids,
-            ARRAY_AGG(display_name ORDER BY display_name) AS display_names,
+            tp.normalized_name,
+            ARRAY_AGG(tp.person_id ORDER BY tp.display_name) AS person_ids,
+            ARRAY_AGG(tp.display_name ORDER BY tp.display_name) AS display_names,
             ARRAY_AGG(DISTINCT e) FILTER (WHERE e IS NOT NULL) AS all_emails,
             ARRAY_AGG(DISTINCT ph) FILTER (WHERE ph IS NOT NULL) AS all_phones
-        FROM trapper_people,
-             LATERAL unnest(COALESCE(emails, ARRAY[NULL::TEXT])) AS e,
-             LATERAL unnest(COALESCE(phones, ARRAY[NULL::TEXT])) AS ph
-        GROUP BY normalized_name
-        HAVING COUNT(DISTINCT person_id) > 1
+        FROM trapper_people tp,
+             LATERAL unnest(COALESCE(tp.emails, ARRAY[NULL::TEXT])) AS e,
+             LATERAL unnest(COALESCE(tp.phones, ARRAY[NULL::TEXT])) AS ph
+        GROUP BY tp.normalized_name
+        HAVING COUNT(DISTINCT tp.person_id) > 1
     )
     SELECT
         g.normalized_name AS name_group,
@@ -494,7 +482,7 @@ Returns groups of person_ids with similar names for manual review.
 Examples: "Barb Gray" and "Barbara Gray" would be flagged.';
 
 -- ============================================================
--- 8. EXECUTE THE FIXES - Merge duplicates and link appointments
+-- 9. EXECUTE THE FIXES - Merge duplicates and link appointments
 -- ============================================================
 
 \echo ''
@@ -502,26 +490,20 @@ Examples: "Barb Gray" and "Barbara Gray" would be flagged.';
 \echo 'EXECUTING FIXES...'
 \echo '=============================================='
 
--- Step 1: Merge duplicate trappers that share identifiers
 \echo ''
 \echo 'Step 1: Merging duplicate trappers...'
-
 SELECT * FROM trapper.merge_duplicate_trappers();
 
--- Step 2: Clean up any duplicate role records
 \echo ''
 \echo 'Step 2: Cleaning up duplicate role records...'
-
 SELECT * FROM trapper.cleanup_duplicate_trapper_roles();
 
--- Step 3: Re-run appointment-to-trapper linking
 \echo ''
 \echo 'Step 3: Linking appointments to trappers...'
-
 SELECT * FROM trapper.link_appointments_to_trappers();
 
 -- ============================================================
--- 9. Verification
+-- 10. Verification
 -- ============================================================
 
 \echo ''

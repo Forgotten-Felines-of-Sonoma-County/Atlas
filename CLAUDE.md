@@ -91,6 +91,50 @@ Atlas manages two distinct data tracks with different enrichment rules:
 | Uncertainty | Preserve it | Model it |
 | Source | Must be explicit | Can be "ai_parsed" |
 
+## Clinic Data Processing Rules
+
+**Clinic data flows directly to Cats, Places, and Appointments - NOT necessarily to People.**
+
+See `docs/CLINIC_DATA_STRUCTURE.md` for full documentation.
+
+### Key Rules
+
+1. **Cats are booked under locations, not trappers**
+   - Trappers bring cats from various locations
+   - The cat's link is to the PLACE, not the trapper
+   - If someone books using a trapper's email, the cat still links to the address
+
+2. **Never create People from names alone**
+   - Email OR phone required to create/match a person
+   - Names are too unreliable (misspellings, duplicates)
+   - `data_engine_resolve_identity()` returns NULL without identifiers
+
+3. **Places are the anchor**
+   - Appointments ALWAYS link to a place (via owner address)
+   - Cats link to places via appointments
+   - Requests link to places
+   - This is what Beacon uses for visualization
+
+### Data Engine Behavior
+
+```sql
+-- With email/phone: Find or create person
+data_engine_resolve_identity(email, phone, name, address)
+→ Returns person_id, links to place
+
+-- Without email/phone: No person created
+data_engine_resolve_identity(NULL, NULL, name, address)
+→ Returns NULL, decision_type = 'no_identifiers'
+→ Cat links directly to place, not to a person
+```
+
+### Processing Flow
+
+| Has Email/Phone? | Person Created? | Cat Links To |
+|------------------|-----------------|--------------|
+| ✅ Yes | ✅ Yes | Place (via person) |
+| ❌ No | ❌ No | Place (directly) |
+
 ## Beacon / Ground Truth Principle
 
 **FFSC is the ONLY dedicated spay/neuter clinic for community cats in Sonoma County.**
@@ -322,6 +366,17 @@ When setting `status = 'completed'` or `'cancelled'`, also set `resolved_at = NO
 /docs/              - Documentation
 ```
 
+### Key Documentation Files
+
+| File | Purpose |
+|------|---------|
+| `docs/DATA_FLOW_ARCHITECTURE.md` | Complete data flow from external sources to Beacon |
+| `docs/CENTRALIZED_FUNCTIONS.md` | Mandatory entity creation functions reference |
+| `docs/ATLAS_MISSION_CONTRACT.md` | Core mission and entity principles |
+| `docs/INGEST_GUIDELINES.md` | Data ingestion rules and patterns |
+| `docs/TIPPY_VIEWS_AND_SCHEMA.md` | Tippy schema navigation documentation |
+| `docs/TIPPY_DATA_QUALITY_REFERENCE.md` | Data quality fixes for Tippy context |
+
 ## AI Enrichment Scripts (`scripts/jobs/`)
 
 These scripts use Claude AI to extract quantitative data from informal notes:
@@ -393,6 +448,11 @@ See `docs/TIPPY_VIEWS_AND_SCHEMA.md` for full documentation.
 | `v_tippy_view_popularity` | Which views Tippy queries most |
 | `v_tippy_pending_corrections` | Data corrections awaiting review |
 | `v_tippy_gaps_review` | Unanswerable questions for gap analysis |
+| `v_data_flow_status` | Unified data flow monitoring across all sources |
+| `v_data_engine_coverage` | Summary statistics of Data Engine coverage |
+| `v_people_without_data_engine` | People missing Data Engine audit trail |
+| `v_potential_duplicate_people` | Possible duplicate people records |
+| `v_potential_duplicate_places` | Possible duplicate place records |
 
 ## Key Tables
 
