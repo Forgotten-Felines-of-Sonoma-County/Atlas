@@ -1004,7 +1004,7 @@ export default function TrapperReportsPage() {
                 <option value="email">Email</option>
                 <option value="form">Form Submission</option>
                 <option value="sms">SMS/Text</option>
-                <option value="notes">Notes</option>
+                <option value="note">Notes</option>
               </select>
             </div>
 

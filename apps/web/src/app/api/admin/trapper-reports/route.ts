@@ -153,8 +153,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate content_type
-    const validTypes = ["email", "form", "sms", "notes"];
+    // Validate content_type - must match CHECK constraint in MIG_566
+    const validTypes = ["email", "form", "sms", "note"];
     if (!validTypes.includes(content_type)) {
       return NextResponse.json(
         { error: `Invalid content_type. Must be one of: ${validTypes.join(", ")}` },
