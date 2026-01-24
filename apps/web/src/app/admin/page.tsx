@@ -128,6 +128,13 @@ export default function AdminPage() {
                   accent="#ecfdf5"
                 />
                 <AdminCard
+                  href="/admin/colony-estimation"
+                  title="Colony Estimation"
+                  description="Source confidence & supersession"
+                  icon="📈"
+                  accent="#ecfdf5"
+                />
+                <AdminCard
                   href="/admin/intake-fields"
                   title="Intake Fields"
                   description="Custom questions + Airtable"
