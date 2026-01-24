@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
 
   const type = searchParams.get("type"); // ffsc, community, or all
   const active = searchParams.get("active"); // true to only show active trappers
+  const search = searchParams.get("search"); // search by name
   const sortBy = searchParams.get("sort") || "total_clinic_cats";
   const limit = parseInt(searchParams.get("limit") || "50", 10);
   const offset = parseInt(searchParams.get("offset") || "0", 10);
@@ -52,6 +53,10 @@ export async function GET(request: NextRequest) {
     // Active filter: show trappers with any activity
     if (active === "true") {
       conditions.push("(active_assignments > 0 OR total_clinic_cats > 0 OR total_cats_caught > 0)");
+    }
+    // Search filter: match by display_name (case-insensitive)
+    if (search && search.trim().length > 0) {
+      conditions.push(`LOWER(display_name) LIKE LOWER('%' || $3 || '%')`);
     }
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
@@ -70,6 +75,11 @@ export async function GET(request: NextRequest) {
     const orderColumn = validSortColumns.includes(sortBy)
       ? sortBy
       : "total_clinic_cats";
+
+    // Build query params based on whether search is provided
+    const queryParams = search && search.trim().length > 0
+      ? [limit, offset, search.trim()]
+      : [limit, offset];
 
     // Try full stats view first, fallback to basic trapper list
     let trappers: TrapperRow[] = [];
@@ -96,7 +106,7 @@ export async function GET(request: NextRequest) {
           CASE WHEN role_status = 'active' THEN 0 ELSE 1 END,
           ${orderColumn} DESC NULLS LAST
         LIMIT $1 OFFSET $2`,
-        [limit, offset]
+        queryParams
       );
     } catch (viewError) {
       // Fallback: query person_roles directly if views aren't available
@@ -107,6 +117,10 @@ export async function GET(request: NextRequest) {
         basicConditions.push("pr.trapper_type IN ('coordinator', 'head_trapper', 'ffsc_trapper')");
       } else if (type === "community") {
         basicConditions.push("pr.trapper_type = 'community_trapper'");
+      }
+      // Add search filter for fallback query
+      if (search && search.trim().length > 0) {
+        basicConditions.push(`LOWER(p.display_name) LIKE LOWER('%' || $3 || '%')`);
       }
       const basicWhere = `WHERE ${basicConditions.join(" AND ")}`;
 
@@ -133,7 +147,7 @@ export async function GET(request: NextRequest) {
           CASE WHEN pr.role_status = 'active' THEN 0 ELSE 1 END,
           p.display_name ASC
         LIMIT $1 OFFSET $2`,
-        [limit, offset]
+        queryParams
       );
     }
 

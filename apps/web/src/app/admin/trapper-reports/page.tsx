@@ -156,6 +156,25 @@ export default function TrapperReportsPage() {
   const [newContent, setNewContent] = useState("");
   const [newContentType, setNewContentType] = useState("email");
 
+  // Structured entry state
+  const [showStructuredEntry, setShowStructuredEntry] = useState(false);
+  // Reporter search
+  const [reporterMode, setReporterMode] = useState<"trappers" | "all">("trappers");
+  const [reporterSearch, setReporterSearch] = useState("");
+  const [reporterResults, setReporterResults] = useState<{ id: string; name: string; type?: string }[]>([]);
+  const [selectedReporter, setSelectedReporter] = useState<{ id: string; name: string } | null>(null);
+  const [searchingReporter, setSearchingReporter] = useState(false);
+  // Request search
+  const [requestSearch, setRequestSearch] = useState("");
+  const [requestResults, setRequestResults] = useState<{ id: string; address: string; requester?: string; status?: string }[]>([]);
+  const [selectedRequest, setSelectedRequest] = useState<{ id: string; address: string; requester?: string } | null>(null);
+  const [searchingRequest, setSearchingRequest] = useState(false);
+  // Structured numbers
+  const [catsTrapped, setCatsTrapped] = useState<number | "">("");
+  const [catsRemaining, setCatsRemaining] = useState<number | "">("");
+  const [statusUpdate, setStatusUpdate] = useState<"none" | "in_progress" | "on_hold" | "completed">("none");
+  const [holdReason, setHoldReason] = useState("");
+
   const fetchSubmissions = useCallback(async () => {
     setLoading(true);
     try {
@@ -186,6 +205,125 @@ export default function TrapperReportsPage() {
     }
   };
 
+  // Search for trappers
+  const searchTrappers = async (query: string) => {
+    if (query.length < 2) {
+      setReporterResults([]);
+      return;
+    }
+    setSearchingReporter(true);
+    try {
+      const res = await fetch(`/api/trappers?search=${encodeURIComponent(query)}&limit=10`);
+      if (res.ok) {
+        const data = await res.json();
+        setReporterResults(
+          (data.trappers || []).map((t: { person_id: string; display_name: string; trapper_type: string }) => ({
+            id: t.person_id,
+            name: t.display_name,
+            type: t.trapper_type,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to search trappers:", err);
+    } finally {
+      setSearchingReporter(false);
+    }
+  };
+
+  // Search for all people
+  const searchPeople = async (query: string) => {
+    if (query.length < 2) {
+      setReporterResults([]);
+      return;
+    }
+    setSearchingReporter(true);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=person&limit=10`);
+      if (res.ok) {
+        const data = await res.json();
+        setReporterResults(
+          (data.results || []).map((p: { entity_id: string; display_name: string }) => ({
+            id: p.entity_id,
+            name: p.display_name,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to search people:", err);
+    } finally {
+      setSearchingReporter(false);
+    }
+  };
+
+  // Search for requests
+  const searchRequests = async (query: string) => {
+    if (query.length < 2) {
+      setRequestResults([]);
+      return;
+    }
+    setSearchingRequest(true);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&type=request&limit=10`);
+      if (res.ok) {
+        const data = await res.json();
+        setRequestResults(
+          (data.requests || []).map((r: { request_id: string; place_address: string; requester_name: string; status: string }) => ({
+            id: r.request_id,
+            address: r.place_address || "No address",
+            requester: r.requester_name,
+            status: r.status,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to search requests:", err);
+    } finally {
+      setSearchingRequest(false);
+    }
+  };
+
+  // Debounced search handlers
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (reporterSearch) {
+        if (reporterMode === "trappers") {
+          searchTrappers(reporterSearch);
+        } else {
+          searchPeople(reporterSearch);
+        }
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [reporterSearch, reporterMode]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (requestSearch) {
+        searchRequests(requestSearch);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [requestSearch]);
+
+  const resetFormState = () => {
+    setNewReporterEmail("");
+    setNewContent("");
+    setNewContentType("email");
+    setShowStructuredEntry(false);
+    setReporterMode("trappers");
+    setReporterSearch("");
+    setReporterResults([]);
+    setSelectedReporter(null);
+    setRequestSearch("");
+    setRequestResults([]);
+    setSelectedRequest(null);
+    setCatsTrapped("");
+    setCatsRemaining("");
+    setStatusUpdate("none");
+    setHoldReason("");
+  };
+
   const submitNewReport = async () => {
     if (!newContent.trim()) {
       setError("Content is required");
@@ -194,11 +332,25 @@ export default function TrapperReportsPage() {
 
     setUpdating(true);
     try {
+      // Build structured data if any fields are filled
+      const hasStructuredData = selectedReporter || selectedRequest ||
+        catsTrapped !== "" || catsRemaining !== "" || statusUpdate !== "none";
+
+      const structuredData = hasStructuredData ? {
+        cats_trapped: catsTrapped !== "" ? Number(catsTrapped) : null,
+        cats_remaining: catsRemaining !== "" ? Number(catsRemaining) : null,
+        status_update: statusUpdate !== "none" ? statusUpdate : null,
+        hold_reason: statusUpdate === "on_hold" ? holdReason || null : null,
+      } : null;
+
       const res = await fetch("/api/admin/trapper-reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reporter_email: newReporterEmail || null,
+          reporter_email: selectedReporter ? null : newReporterEmail || null,
+          reporter_person_id: selectedReporter?.id || null,
+          request_id: selectedRequest?.id || null,
+          structured_data: structuredData,
           content: newContent,
           content_type: newContentType,
         }),
@@ -210,8 +362,7 @@ export default function TrapperReportsPage() {
       }
 
       setShowNewForm(false);
-      setNewReporterEmail("");
-      setNewContent("");
+      resetFormState();
       fetchSubmissions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
@@ -476,24 +627,364 @@ export default function TrapperReportsPage() {
           >
             <h2 style={{ marginBottom: "16px" }}>Submit Trapper Report</h2>
 
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "14px", fontWeight: 500, marginBottom: "6px" }}>
-                Reporter Email (optional)
-              </label>
-              <input
-                type="email"
-                value={newReporterEmail}
-                onChange={(e) => setNewReporterEmail(e.target.value)}
-                placeholder="trapper@example.com"
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                  background: "var(--background)",
-                }}
-              />
-            </div>
+            {/* Structured Entry Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowStructuredEntry(!showStructuredEntry)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 12px",
+                marginBottom: "16px",
+                background: showStructuredEntry ? "var(--info-bg)" : "var(--section-bg)",
+                border: "1px solid var(--border)",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontSize: "13px",
+                fontWeight: 500,
+                color: "var(--foreground)",
+                width: "100%",
+                justifyContent: "center",
+              }}
+            >
+              <span>{showStructuredEntry ? "▼" : "▶"}</span>
+              {showStructuredEntry ? "Hide Structured Entry" : "Add Details (Higher Confidence)"}
+            </button>
+
+            {/* Structured Entry Section */}
+            {showStructuredEntry && (
+              <div style={{
+                padding: "16px",
+                marginBottom: "16px",
+                background: "var(--section-bg)",
+                borderRadius: "8px",
+                border: "1px solid var(--border)",
+              }}>
+                <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "12px" }}>
+                  Fill in what you know. More detail = higher confidence, less AI guessing.
+                </p>
+
+                {/* Reporter Search */}
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}>
+                    Reporter (who submitted this?)
+                  </label>
+                  {selectedReporter ? (
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 10px",
+                      background: "var(--success-bg)",
+                      borderRadius: "6px",
+                    }}>
+                      <span style={{ flex: 1, fontWeight: 500 }}>{selectedReporter.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReporter(null)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", gap: "8px", marginBottom: "6px" }}>
+                        <button
+                          type="button"
+                          onClick={() => { setReporterMode("trappers"); setReporterResults([]); }}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: "4px",
+                            border: "none",
+                            background: reporterMode === "trappers" ? "var(--primary)" : "var(--background)",
+                            color: reporterMode === "trappers" ? "white" : "inherit",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                          }}
+                        >
+                          Trappers
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setReporterMode("all"); setReporterResults([]); }}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: "4px",
+                            border: "none",
+                            background: reporterMode === "all" ? "var(--primary)" : "var(--background)",
+                            color: reporterMode === "all" ? "white" : "inherit",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                          }}
+                        >
+                          All People
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={reporterSearch}
+                        onChange={(e) => setReporterSearch(e.target.value)}
+                        placeholder={reporterMode === "trappers" ? "Search trappers by name..." : "Search all people..."}
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          borderRadius: "6px",
+                          border: "1px solid var(--border)",
+                          background: "var(--background)",
+                          fontSize: "13px",
+                        }}
+                      />
+                      {searchingReporter && <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "4px" }}>Searching...</div>}
+                      {reporterResults.length > 0 && (
+                        <div style={{
+                          marginTop: "4px",
+                          maxHeight: "150px",
+                          overflowY: "auto",
+                          border: "1px solid var(--border)",
+                          borderRadius: "6px",
+                          background: "var(--background)",
+                        }}>
+                          {reporterResults.map((r) => (
+                            <div
+                              key={r.id}
+                              onClick={() => {
+                                setSelectedReporter({ id: r.id, name: r.name });
+                                setReporterSearch("");
+                                setReporterResults([]);
+                              }}
+                              style={{
+                                padding: "8px 10px",
+                                cursor: "pointer",
+                                borderBottom: "1px solid var(--border)",
+                                fontSize: "13px",
+                              }}
+                            >
+                              <span style={{ fontWeight: 500 }}>{r.name}</span>
+                              {r.type && (
+                                <span style={{
+                                  marginLeft: "8px",
+                                  padding: "2px 6px",
+                                  background: r.type === "community_trapper" ? "var(--warning-bg)" : "var(--success-bg)",
+                                  borderRadius: "3px",
+                                  fontSize: "11px",
+                                }}>
+                                  {r.type.replace("_", " ")}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Request Search */}
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}>
+                    Request (what site is this about?)
+                  </label>
+                  {selectedRequest ? (
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 10px",
+                      background: "var(--success-bg)",
+                      borderRadius: "6px",
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: "13px" }}>{selectedRequest.address}</div>
+                        {selectedRequest.requester && (
+                          <div style={{ fontSize: "12px", color: "var(--muted)" }}>{selectedRequest.requester}</div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRequest(null)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        value={requestSearch}
+                        onChange={(e) => setRequestSearch(e.target.value)}
+                        placeholder="Search by address or requester name..."
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          borderRadius: "6px",
+                          border: "1px solid var(--border)",
+                          background: "var(--background)",
+                          fontSize: "13px",
+                        }}
+                      />
+                      {searchingRequest && <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "4px" }}>Searching...</div>}
+                      {requestResults.length > 0 && (
+                        <div style={{
+                          marginTop: "4px",
+                          maxHeight: "150px",
+                          overflowY: "auto",
+                          border: "1px solid var(--border)",
+                          borderRadius: "6px",
+                          background: "var(--background)",
+                        }}>
+                          {requestResults.map((r) => (
+                            <div
+                              key={r.id}
+                              onClick={() => {
+                                setSelectedRequest({ id: r.id, address: r.address, requester: r.requester });
+                                setRequestSearch("");
+                                setRequestResults([]);
+                              }}
+                              style={{
+                                padding: "8px 10px",
+                                cursor: "pointer",
+                                borderBottom: "1px solid var(--border)",
+                                fontSize: "13px",
+                              }}
+                            >
+                              <div style={{ fontWeight: 500 }}>{r.address}</div>
+                              <div style={{ fontSize: "12px", color: "var(--muted)" }}>
+                                {r.requester && <span>{r.requester} • </span>}
+                                <span style={{ textTransform: "capitalize" }}>{r.status}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Numbers */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}>
+                      Cats Trapped
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={catsTrapped}
+                      onChange={(e) => setCatsTrapped(e.target.value === "" ? "" : parseInt(e.target.value))}
+                      placeholder="0"
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border)",
+                        background: "var(--background)",
+                        fontSize: "13px",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}>
+                      Cats Remaining
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={catsRemaining}
+                      onChange={(e) => setCatsRemaining(e.target.value === "" ? "" : parseInt(e.target.value))}
+                      placeholder="0"
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border)",
+                        background: "var(--background)",
+                        fontSize: "13px",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Status Update */}
+                <div>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}>
+                    Status Update
+                  </label>
+                  <select
+                    value={statusUpdate}
+                    onChange={(e) => setStatusUpdate(e.target.value as typeof statusUpdate)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      background: "var(--background)",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <option value="none">No status change</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="on_hold">On Hold</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                  {statusUpdate === "on_hold" && (
+                    <input
+                      type="text"
+                      value={holdReason}
+                      onChange={(e) => setHoldReason(e.target.value)}
+                      placeholder="Hold reason..."
+                      style={{
+                        width: "100%",
+                        marginTop: "6px",
+                        padding: "8px 10px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border)",
+                        background: "var(--background)",
+                        fontSize: "13px",
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Reporter Email (if not using structured entry or no reporter selected) */}
+            {(!showStructuredEntry || !selectedReporter) && (
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontSize: "14px", fontWeight: 500, marginBottom: "6px" }}>
+                  {showStructuredEntry ? "Or enter email manually" : "Reporter Email (optional)"}
+                </label>
+                <input
+                  type="email"
+                  value={newReporterEmail}
+                  onChange={(e) => setNewReporterEmail(e.target.value)}
+                  placeholder="trapper@example.com"
+                  disabled={!!selectedReporter}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border)",
+                    background: selectedReporter ? "var(--section-bg)" : "var(--background)",
+                    opacity: selectedReporter ? 0.5 : 1,
+                  }}
+                />
+              </div>
+            )}
 
             <div style={{ marginBottom: "16px" }}>
               <label style={{ display: "block", fontSize: "14px", fontWeight: 500, marginBottom: "6px" }}>
@@ -527,7 +1018,7 @@ export default function TrapperReportsPage() {
                 placeholder="Paste the trapper's report here..."
                 style={{
                   width: "100%",
-                  minHeight: "200px",
+                  minHeight: "150px",
                   padding: "10px",
                   borderRadius: "6px",
                   border: "1px solid var(--border)",
@@ -538,9 +1029,32 @@ export default function TrapperReportsPage() {
               />
             </div>
 
+            {/* Confidence Indicator */}
+            {showStructuredEntry && (selectedReporter || selectedRequest || catsTrapped !== "" || catsRemaining !== "" || statusUpdate !== "none") && (
+              <div style={{
+                padding: "10px 12px",
+                marginBottom: "16px",
+                background: "var(--success-bg)",
+                borderRadius: "6px",
+                fontSize: "13px",
+              }}>
+                <strong>Pre-filled data will be saved with 100% confidence</strong>
+                <ul style={{ margin: "6px 0 0 0", paddingLeft: "18px", fontSize: "12px", color: "var(--muted)" }}>
+                  {selectedReporter && <li>Reporter: {selectedReporter.name}</li>}
+                  {selectedRequest && <li>Request: {selectedRequest.address}</li>}
+                  {catsTrapped !== "" && <li>Cats trapped: {catsTrapped}</li>}
+                  {catsRemaining !== "" && <li>Cats remaining: {catsRemaining}</li>}
+                  {statusUpdate !== "none" && <li>Status: {statusUpdate.replace("_", " ")}</li>}
+                </ul>
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
               <button
-                onClick={() => setShowNewForm(false)}
+                onClick={() => {
+                  setShowNewForm(false);
+                  resetFormState();
+                }}
                 style={{
                   padding: "10px 16px",
                   borderRadius: "6px",
@@ -562,6 +1076,7 @@ export default function TrapperReportsPage() {
                   color: "white",
                   cursor: "pointer",
                   fontWeight: 500,
+                  opacity: updating || !newContent.trim() ? 0.5 : 1,
                 }}
               >
                 {updating ? "Submitting..." : "Submit Report"}

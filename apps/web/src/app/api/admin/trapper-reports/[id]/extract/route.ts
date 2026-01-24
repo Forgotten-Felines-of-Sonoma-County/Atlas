@@ -183,14 +183,16 @@ export async function POST(
   }
 
   try {
-    // Get submission
+    // Get submission with pre-filled data
     const submission = await queryOne<{
       submission_id: string;
       reporter_email: string | null;
+      reporter_person_id: string | null;
       raw_content: string;
       extraction_status: string;
+      ai_extraction: { manual?: { cats_trapped?: number; cats_remaining?: number; status_update?: string } } | null;
     }>(
-      `SELECT submission_id::text, reporter_email, raw_content, extraction_status
+      `SELECT submission_id::text, reporter_email, reporter_person_id::text, raw_content, extraction_status, ai_extraction
        FROM trapper.trapper_report_submissions WHERE submission_id = $1`,
       [id]
     );
@@ -198,6 +200,11 @@ export async function POST(
     if (!submission) {
       return NextResponse.json({ error: "Submission not found" }, { status: 404 });
     }
+
+    // Check for pre-filled manual data
+    const manualData = submission.ai_extraction?.manual;
+    const hasManualNumbers = manualData?.cats_trapped !== undefined || manualData?.cats_remaining !== undefined;
+    const hasManualStatus = manualData?.status_update !== undefined;
 
     // Mark as extracting
     await execute(
@@ -227,19 +234,41 @@ export async function POST(
       );
     }
 
-    // Match reporter
-    const reporterCandidates = await queryRows<{
-      person_id: string;
-      display_name: string;
-      match_score: number;
-      matched_signals: string[];
-      context_notes: string;
-    }>(
-      `SELECT person_id::text, display_name, match_score, matched_signals, context_notes
-       FROM trapper.match_person_from_report($1, $2)`,
-      [null, submission.reporter_email]
-    );
-    const topReporter = reporterCandidates[0];
+    // Match reporter ONLY if not already pre-selected
+    let topReporter: { person_id: string; display_name: string; match_score: number; matched_signals: string[]; context_notes: string } | undefined;
+    let reporterCandidates: typeof topReporter[] = [];
+
+    if (submission.reporter_person_id) {
+      // Reporter was pre-selected, get their info for context
+      const preSelectedReporter = await queryOne<{ person_id: string; display_name: string }>(
+        `SELECT person_id::text, display_name FROM trapper.sot_people WHERE person_id = $1`,
+        [submission.reporter_person_id]
+      );
+      if (preSelectedReporter) {
+        topReporter = {
+          person_id: preSelectedReporter.person_id,
+          display_name: preSelectedReporter.display_name,
+          match_score: 1.0,
+          matched_signals: ['pre_selected'],
+          context_notes: 'Pre-selected by admin at submission',
+        };
+        reporterCandidates = [topReporter];
+      }
+    } else {
+      // Run AI reporter matching
+      reporterCandidates = await queryRows<{
+        person_id: string;
+        display_name: string;
+        match_score: number;
+        matched_signals: string[];
+        context_notes: string;
+      }>(
+        `SELECT person_id::text, display_name, match_score, matched_signals, context_notes
+         FROM trapper.match_person_from_report($1, $2)`,
+        [null, submission.reporter_email]
+      );
+      topReporter = reporterCandidates[0];
+    }
 
     let itemsCreated = 0;
 
@@ -277,8 +306,8 @@ export async function POST(
       }
 
       // Create items for review
-      // Status update item
-      if (site.status_recommendation && requestCandidates[0]) {
+      // Status update item - skip if manual status was already provided
+      if (site.status_recommendation && requestCandidates[0] && !hasManualStatus) {
         await execute(
           `INSERT INTO trapper.trapper_report_items (
             submission_id, item_type,
@@ -297,14 +326,15 @@ export async function POST(
               status: site.status_recommendation,
               hold_reason: site.hold_reason,
               note: site.qualitative_notes,
+              source: 'ai_parsed',
             }),
           ]
         );
         itemsCreated++;
       }
 
-      // Colony estimate item
-      if (site.cats_remaining || site.cats_trapped) {
+      // Colony estimate item - skip if manual numbers were already provided
+      if ((site.cats_remaining || site.cats_trapped) && !hasManualNumbers) {
         await execute(
           `INSERT INTO trapper.trapper_report_items (
             submission_id, item_type,
@@ -324,6 +354,7 @@ export async function POST(
               cats_remaining: site.cats_remaining,
               observation_date: new Date().toISOString().split("T")[0],
               notes: site.qualitative_notes,
+              source: 'ai_parsed',
             }),
           ]
         );
@@ -396,31 +427,57 @@ export async function POST(
       itemsCreated++;
     }
 
+    // Merge AI extraction with existing manual data
+    const mergedExtraction = {
+      ...(manualData ? { manual: manualData } : {}),
+      ai_parsed: extraction,
+    };
+
     // Update submission as extracted
-    await execute(
-      `UPDATE trapper.trapper_report_submissions
-       SET
-         extraction_status = 'extracted',
-         extracted_at = NOW(),
-         ai_extraction = $2,
-         reporter_person_id = $3,
-         reporter_match_confidence = $4,
-         reporter_match_candidates = $5
-       WHERE submission_id = $1`,
-      [
-        id,
-        JSON.stringify(extraction),
-        topReporter?.person_id || null,
-        topReporter?.match_score || null,
-        JSON.stringify(reporterCandidates),
-      ]
-    );
+    // Only update reporter if not already pre-selected
+    if (submission.reporter_person_id) {
+      // Preserve pre-selected reporter, just update extraction data
+      await execute(
+        `UPDATE trapper.trapper_report_submissions
+         SET
+           extraction_status = 'extracted',
+           extracted_at = NOW(),
+           ai_extraction = $2
+         WHERE submission_id = $1`,
+        [
+          id,
+          JSON.stringify(mergedExtraction),
+        ]
+      );
+    } else {
+      // Update with AI-matched reporter
+      await execute(
+        `UPDATE trapper.trapper_report_submissions
+         SET
+           extraction_status = 'extracted',
+           extracted_at = NOW(),
+           ai_extraction = $2,
+           reporter_person_id = $3,
+           reporter_match_confidence = $4,
+           reporter_match_candidates = $5
+         WHERE submission_id = $1`,
+        [
+          id,
+          JSON.stringify(mergedExtraction),
+          topReporter?.person_id || null,
+          topReporter?.match_score || null,
+          JSON.stringify(reporterCandidates),
+        ]
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      extraction,
+      extraction: mergedExtraction,
       items_created: itemsCreated,
       reporter_matched: !!topReporter,
+      reporter_pre_selected: !!submission.reporter_person_id,
+      manual_data_preserved: !!manualData,
       sites_processed: extraction.site_updates?.length || 0,
     });
   } catch (error) {
