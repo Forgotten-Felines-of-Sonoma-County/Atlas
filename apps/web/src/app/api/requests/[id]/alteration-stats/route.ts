@@ -138,8 +138,9 @@ export async function GET(
     });
   } catch (error) {
     console.error("Error fetching alteration stats:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Failed to fetch alteration stats" },
+      { error: "Failed to fetch alteration stats", details: errorMessage },
       { status: 500 }
     );
   }

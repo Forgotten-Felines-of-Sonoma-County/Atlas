@@ -334,7 +334,7 @@ export function ColonySourcesBreakdown({ placeId }: ColonySourcesBreakdownProps)
                         )}
                         {source.is_firsthand && (
                           <span style={{ color: "var(--success-text)", marginLeft: "0.25rem" }}>
-                            +{(source.firsthand_boost * 100).toFixed(0)}% firsthand
+                            +{(Number(source.firsthand_boost) * 100).toFixed(0)}% firsthand
                           </span>
                         )}
                       </div>
@@ -345,16 +345,16 @@ export function ColonySourcesBreakdown({ placeId }: ColonySourcesBreakdownProps)
                   {source.total_cats}
                 </td>
                 <td style={{ textAlign: "right", padding: "0.5rem", color: "var(--text-secondary)" }}>
-                  {(source.base_confidence * 100).toFixed(0)}%
+                  {(Number(source.base_confidence) * 100).toFixed(0)}%
                 </td>
                 <td
                   style={{
                     textAlign: "right",
                     padding: "0.5rem",
-                    color: source.recency_factor < 0.5 ? "var(--danger-text)" : "var(--text-secondary)",
+                    color: Number(source.recency_factor) < 0.5 ? "var(--danger-text)" : "var(--text-secondary)",
                   }}
                 >
-                  ×{source.recency_factor.toFixed(2)}
+                  ×{Number(source.recency_factor).toFixed(2)}
                 </td>
                 <td
                   style={{
@@ -362,14 +362,14 @@ export function ColonySourcesBreakdown({ placeId }: ColonySourcesBreakdownProps)
                     padding: "0.5rem",
                     fontWeight: 600,
                     color:
-                      source.final_confidence >= 0.7
+                      Number(source.final_confidence) >= 0.7
                         ? "var(--success-text)"
-                        : source.final_confidence >= 0.4
+                        : Number(source.final_confidence) >= 0.4
                           ? "var(--warning-text)"
                           : "var(--danger-text)",
                   }}
                 >
-                  {(source.final_confidence * 100).toFixed(0)}%
+                  {(Number(source.final_confidence) * 100).toFixed(0)}%
                 </td>
                 <td style={{ textAlign: "right", padding: "0.5rem", fontWeight: 600, color: "var(--primary)" }}>
                   {source.weighted_contribution}%

@@ -204,8 +204,9 @@ export async function GET(
     });
   } catch (error) {
     console.error("Error fetching colony estimates:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Failed to fetch colony estimates" },
+      { error: "Failed to fetch colony estimates", details: errorMessage },
       { status: 500 }
     );
   }

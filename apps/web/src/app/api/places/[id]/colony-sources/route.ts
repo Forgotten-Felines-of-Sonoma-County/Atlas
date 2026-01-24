@@ -163,21 +163,8 @@ export async function GET(
       days_ago: number;
     }>(sourcesSql, [id]);
 
-    // Get summary from the colony status view
-    const summarySql = `
-      SELECT
-        colony_size_estimate,
-        final_confidence,
-        is_multi_source_confirmed,
-        estimate_count,
-        primary_source,
-        verified_cat_count,
-        verified_altered_count
-      FROM trapper.v_place_colony_status
-      WHERE place_id = $1
-    `;
-
-    const summaryRow = await queryOne<{
+    // Get summary from the colony status view - wrapped for resilience
+    let summaryRow: {
       colony_size_estimate: number;
       final_confidence: number | null;
       is_multi_source_confirmed: boolean;
@@ -185,27 +172,46 @@ export async function GET(
       primary_source: string | null;
       verified_cat_count: number;
       verified_altered_count: number;
-    }>(summarySql, [id]);
+    } | null = null;
+
+    try {
+      const summarySql = `
+        SELECT
+          colony_size_estimate,
+          final_confidence,
+          is_multi_source_confirmed,
+          estimate_count,
+          primary_source,
+          verified_cat_count,
+          verified_altered_count
+        FROM trapper.v_place_colony_status
+        WHERE place_id = $1
+      `;
+      summaryRow = await queryOne<typeof summaryRow>(summarySql, [id]);
+    } catch (summaryError) {
+      console.warn("Could not fetch colony status (view may not exist or have errors):", summaryError);
+      // Continue without colony status - we can still return source breakdown
+    }
 
     // Check for clinic verification (post_clinic_survey or verified_cats)
     const hasClinicVerification = sources.some(
       (s) => s.source_type === "post_clinic_survey" || s.source_type === "verified_cats"
     );
 
-    // Build source breakdown with labels
+    // Build source breakdown with labels - ensure numeric types are properly converted
     const formattedSources: SourceBreakdown[] = sources.map((s) => ({
       estimate_id: s.estimate_id,
       source_type: s.source_type,
       source_label: SOURCE_LABELS[s.source_type] || s.source_type,
-      total_cats: s.total_cats,
-      base_confidence: s.base_confidence,
-      recency_factor: s.recency_factor,
-      firsthand_boost: s.firsthand_boost,
-      final_confidence: s.final_confidence,
-      weighted_contribution: s.weighted_contribution,
+      total_cats: Number(s.total_cats) || 0,
+      base_confidence: Number(s.base_confidence) || 0,
+      recency_factor: Number(s.recency_factor) || 0,
+      firsthand_boost: Number(s.firsthand_boost) || 0,
+      final_confidence: Number(s.final_confidence) || 0,
+      weighted_contribution: Number(s.weighted_contribution) || 0,
       observation_date: s.observation_date,
       reported_at: s.reported_at,
-      days_ago: s.days_ago,
+      days_ago: Number(s.days_ago) || 0,
       is_firsthand: s.is_firsthand,
       reporter_name: s.reporter_name,
       notes: s.notes,
@@ -279,8 +285,9 @@ export async function GET(
     });
   } catch (error) {
     console.error("Error fetching colony sources:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Failed to fetch colony sources" },
+      { error: "Failed to fetch colony sources", details: errorMessage },
       { status: 500 }
     );
   }

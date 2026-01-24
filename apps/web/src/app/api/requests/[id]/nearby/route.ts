@@ -237,8 +237,9 @@ export async function GET(
     });
   } catch (error) {
     console.error("Error fetching nearby entities:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Failed to fetch nearby entities" },
+      { error: "Failed to fetch nearby entities", details: errorMessage },
       { status: 500 }
     );
   }
