@@ -107,9 +107,9 @@ export function SidebarLayout({ children, sections, title, backLink }: SidebarLa
                   gap: "0.5rem",
                   padding: "0.5rem 1rem",
                   fontSize: "0.875rem",
-                  color: isActive(item.href) ? "#3b82f6" : "var(--text-primary)",
-                  background: isActive(item.href) ? "#eff6ff" : "transparent",
-                  borderLeft: isActive(item.href) ? "3px solid #3b82f6" : "3px solid transparent",
+                  color: isActive(item.href) ? "var(--primary)" : "var(--text-primary)",
+                  background: isActive(item.href) ? "var(--info-bg)" : "transparent",
+                  borderLeft: isActive(item.href) ? "3px solid var(--primary)" : "3px solid transparent",
                   textDecoration: "none",
                 }}
               >
