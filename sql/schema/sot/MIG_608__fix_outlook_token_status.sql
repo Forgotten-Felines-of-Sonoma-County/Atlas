@@ -5,7 +5,10 @@
 -- This is NORMAL - the system auto-refreshes using the refresh token when sending
 -- Only show "needs reconnection" when there's an actual connection_error
 
-CREATE OR REPLACE VIEW trapper.v_connected_outlook_accounts AS
+-- Drop and recreate to allow column renaming
+DROP VIEW IF EXISTS trapper.v_connected_outlook_accounts;
+
+CREATE VIEW trapper.v_connected_outlook_accounts AS
 SELECT
   oa.account_id,
   oa.email,

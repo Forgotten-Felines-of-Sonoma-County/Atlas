@@ -111,7 +111,7 @@ SELECT
   se.error_message,
   se.sent_at,
   se.created_at,
-  se.sent_by,
+  se.created_by,
   s.display_name AS sent_by_name,
   oa.email AS from_email,
   se.person_id,
@@ -119,7 +119,7 @@ SELECT
   se.submission_id
 FROM trapper.sent_emails se
 LEFT JOIN trapper.email_templates et ON et.template_key = se.template_key
-LEFT JOIN trapper.staff s ON s.staff_id = se.sent_by
+LEFT JOIN trapper.staff s ON s.staff_id::text = se.created_by
 LEFT JOIN trapper.outlook_email_accounts oa ON oa.account_id = se.outlook_account_id
 ORDER BY se.created_at DESC;
 
@@ -175,7 +175,7 @@ SELECT
   s.display_name AS sent_by_name
 FROM trapper.sent_emails se
 LEFT JOIN trapper.email_templates et ON et.template_key = se.template_key
-LEFT JOIN trapper.staff s ON s.staff_id = se.sent_by
+LEFT JOIN trapper.staff s ON s.staff_id::text = se.created_by
 ORDER BY se.created_at DESC
 LIMIT 20;
 
