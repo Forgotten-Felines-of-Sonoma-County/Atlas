@@ -220,10 +220,10 @@ export default function JournalSection({
           {isStaffAutoFilled ? (
             <span style={{
               padding: "0.5rem 0.75rem",
-              background: "var(--accent-bg, #e3f2fd)",
+              background: "var(--info-bg)",
               borderRadius: "4px",
               fontSize: "0.875rem",
-              color: "var(--foreground)",
+              color: "var(--info-text)",
             }}>
               Logged by: <strong>{currentStaffName || "You"}</strong>
             </span>
