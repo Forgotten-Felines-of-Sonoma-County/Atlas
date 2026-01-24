@@ -762,4 +762,42 @@ button:disabled {
     background: var(--info-bg) !important;
     color: var(--foreground) !important;
   }
+
+  /* Additional stat box colors for GeocodingControls and DataEngineControls */
+  [style*="background: #e2e3e5"],
+  [style*="background:#e2e3e5"],
+  [style*="background: #e9ecef"],
+  [style*="background:#e9ecef"] {
+    background: var(--section-bg) !important;
+    color: var(--foreground) !important;
+  }
+
+  [style*="color: #383d41"],
+  [style*="color:#383d41"],
+  [style*="color: #495057"],
+  [style*="color:#495057"] {
+    color: var(--foreground) !important;
+  }
+
+  [style*="background: #d1ecf1"],
+  [style*="background:#d1ecf1"] {
+    background: var(--info-bg) !important;
+    color: var(--info-text) !important;
+  }
+
+  [style*="color: #0c5460"],
+  [style*="color:#0c5460"] {
+    color: var(--info-text) !important;
+  }
+
+  [style*="background: #cfe2ff"],
+  [style*="background:#cfe2ff"] {
+    background: var(--info-bg) !important;
+    color: var(--info-text) !important;
+  }
+
+  [style*="color: #084298"],
+  [style*="color:#084298"] {
+    color: var(--info-text) !important;
+  }
 }
