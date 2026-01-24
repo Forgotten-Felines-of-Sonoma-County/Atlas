@@ -232,9 +232,10 @@ function ConditionCheck({
       gap: "0.5rem",
       padding: "0.5rem 0.75rem",
       marginBottom: "0.25rem",
-      background: isBad ? "#fff5f5" : isGood ? "#f0fff4" : "#f8f9fa",
+      background: isBad ? "var(--danger-bg)" : isGood ? "var(--success-bg)" : "var(--section-bg)",
       borderRadius: "6px",
-      border: `1px solid ${isBad ? "#f5c6cb" : isGood ? "#c3e6cb" : "#dee2e6"}`,
+      border: `1px solid ${isBad ? "var(--danger-border)" : isGood ? "var(--success-border)" : "var(--border)"}`,
+      color: isBad ? "var(--danger-text)" : isGood ? "var(--success-text)" : "var(--foreground)",
     }}>
       <span style={{
         width: "28px",
@@ -245,13 +246,13 @@ function ConditionCheck({
         justifyContent: "center",
         fontSize: "14px",
         fontWeight: "bold",
-        background: isBad ? "#dc3545" : isGood ? "#198754" : "#adb5bd",
+        background: isBad ? "#dc3545" : isGood ? "#198754" : "var(--muted)",
         color: "#fff",
         flexShrink: 0,
       }}>
         {isBad ? "✗" : isGood ? "✓" : "?"}
       </span>
-      <span style={{ flex: 1, fontWeight: 500, color: "#212529" }}>{label}</span>
+      <span style={{ flex: 1, fontWeight: 500 }}>{label}</span>
       {severity && (
         <span className="badge" style={{
           background: severity === "severe" ? "#dc3545" : severity === "moderate" ? "#fd7e14" : "#ffc107",
@@ -261,7 +262,7 @@ function ConditionCheck({
           {severity}
         </span>
       )}
-      {date && <span style={{ fontSize: "0.75rem", color: "#6c757d" }}>{date}</span>}
+      {date && <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{date}</span>}
     </div>
   );
 }
@@ -272,9 +273,9 @@ function PhotoSection({ photoUrl, catName }: { photoUrl: string | null; catName:
     <div style={{
       width: "150px",
       height: "150px",
-      background: "#e9ecef",
+      background: "var(--section-bg)",
       borderRadius: "8px",
-      border: "2px dashed #adb5bd",
+      border: "2px dashed var(--border)",
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
@@ -287,7 +288,7 @@ function PhotoSection({ photoUrl, catName }: { photoUrl: string | null; catName:
       ) : (
         <>
           <span style={{ fontSize: "2.5rem" }}>🐱</span>
-          <span style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "#495057" }}>Add Photo</span>
+          <span style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "var(--muted)" }}>Add Photo</span>
         </>
       )}
     </div>
@@ -611,6 +612,9 @@ export default function CatDetailPage() {
 
   const getLatestVital = () => cat.vitals?.[0] || null;
   const latestVital = getLatestVital();
+  // Find latest vital WITH weight (may be different record than temperature)
+  const latestWeight = cat.vitals?.find(v => v.weight_lbs != null) || null;
+  const latestTemp = cat.vitals?.find(v => v.temperature_f != null) || null;
 
   // Has spay/neuter procedure
   const hasSpayNeuter = cat.procedures?.some(p => p.is_spay || p.is_neuter);
@@ -622,10 +626,10 @@ export default function CatDetailPage() {
       {/* Medical Chart Header */}
       <div style={{
         marginTop: "1rem",
-        background: "#f8f9fa",
+        background: "var(--section-bg)",
         borderRadius: "12px",
         padding: "1.5rem",
-        border: "1px solid #dee2e6",
+        border: "1px solid var(--border)",
       }}>
         <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
           {/* Photo Gallery */}
@@ -643,7 +647,7 @@ export default function CatDetailPage() {
           {/* Patient Info */}
           <div style={{ flex: 1, minWidth: "200px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-              <h1 style={{ margin: 0, fontSize: "1.75rem", color: cat.is_deceased ? "#6c757d" : "#212529" }}>{cat.display_name}</h1>
+              <h1 style={{ margin: 0, fontSize: "1.75rem", color: cat.is_deceased ? "var(--muted)" : "inherit" }}>{cat.display_name}</h1>
               {cat.is_deceased && (
                 <span
                   className="badge"
@@ -802,15 +806,15 @@ export default function CatDetailPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginTop: "1rem" }}>
                 <div>
                   <div className="text-muted text-sm">Microchip</div>
-                  <div style={{ fontFamily: "monospace", fontWeight: 500, color: "#212529" }}>{cat.microchip || "—"}</div>
+                  <div style={{ fontFamily: "monospace", fontWeight: 500 }}>{cat.microchip || "—"}</div>
                 </div>
                 <div>
                   <div className="text-muted text-sm">Sex</div>
-                  <div style={{ fontWeight: 500, color: "#212529" }}>{cat.sex || "Unknown"}</div>
+                  <div style={{ fontWeight: 500 }}>{cat.sex || "Unknown"}</div>
                 </div>
                 <div>
                   <div className="text-muted text-sm">Altered</div>
-                  <div style={{ fontWeight: 500, color: "#212529" }}>
+                  <div style={{ fontWeight: 500 }}>
                     {cat.altered_status === "Yes" ? (
                       <span style={{ color: "#198754" }}>Yes {cat.altered_by_clinic ? "(by clinic)" : ""}</span>
                     ) : cat.altered_status === "No" ? (
@@ -820,19 +824,19 @@ export default function CatDetailPage() {
                 </div>
                 <div>
                   <div className="text-muted text-sm">Breed</div>
-                  <div style={{ fontWeight: 500, color: "#212529" }}>{cat.breed || "Unknown"}</div>
+                  <div style={{ fontWeight: 500 }}>{cat.breed || "Unknown"}</div>
                 </div>
                 <div>
                   <div className="text-muted text-sm">Color</div>
-                  <div style={{ fontWeight: 500, color: "#212529" }}>{cat.color || "Unknown"} {cat.coat_pattern && `(${cat.coat_pattern})`}</div>
+                  <div style={{ fontWeight: 500 }}>{cat.color || "Unknown"} {cat.coat_pattern && `(${cat.coat_pattern})`}</div>
                 </div>
                 <div>
                   <div className="text-muted text-sm">Weight</div>
-                  <div style={{ fontWeight: 500, color: "#212529" }}>
-                    {latestVital?.weight_lbs ? `${latestVital.weight_lbs} lbs` : "—"}
-                    {latestVital?.recorded_at && (
+                  <div style={{ fontWeight: 500 }}>
+                    {latestWeight?.weight_lbs ? `${latestWeight.weight_lbs} lbs` : "—"}
+                    {latestWeight?.recorded_at && (
                       <span className="text-muted text-sm" style={{ marginLeft: "0.25rem" }}>
-                        ({formatDateLocal(latestVital.recorded_at)})
+                        ({formatDateLocal(latestWeight.recorded_at)})
                       </span>
                     )}
                   </div>
@@ -843,14 +847,14 @@ export default function CatDetailPage() {
 
           {/* Quick Status - FeLV/FIV prominent */}
           <div style={{
-            background: "#e9ecef",
+            background: "var(--section-bg)",
             borderRadius: "8px",
             padding: "1rem",
-            border: "1px solid #adb5bd",
+            border: "1px solid var(--border)",
             minWidth: "140px",
             textAlign: "center",
           }}>
-            <div style={{ marginBottom: "0.5rem", fontSize: "0.875rem", color: "#495057" }}>FeLV/FIV</div>
+            <div style={{ marginBottom: "0.5rem", fontSize: "0.875rem", color: "var(--muted)" }}>FeLV/FIV</div>
             {cat.tests?.find(t => t.test_type === "felv_fiv") ? (
               <div style={{
                 fontSize: "1.5rem",
@@ -860,10 +864,10 @@ export default function CatDetailPage() {
                 {getTestResult("felv_fiv") === "negative" ? "NEG" : "POS"}
               </div>
             ) : (
-              <div style={{ fontSize: "1.25rem", color: "#495057" }}>Not Tested</div>
+              <div style={{ fontSize: "1.25rem", color: "var(--muted)" }}>Not Tested</div>
             )}
             {cat.tests?.find(t => t.test_type === "felv_fiv") && (
-              <div style={{ fontSize: "0.875rem", color: "#495057" }}>
+              <div style={{ fontSize: "0.875rem", color: "var(--muted)" }}>
                 {formatDateLocal(cat.tests.find(t => t.test_type === "felv_fiv")!.test_date)}
               </div>
             )}
@@ -969,11 +973,12 @@ export default function CatDetailPage() {
                       alignItems: "center",
                       gap: "0.5rem",
                       padding: "0.5rem 0.75rem",
-                      background: "#f0fff4",
+                      background: "var(--success-bg)",
                       borderRadius: "6px",
-                      border: "1px solid #c3e6cb",
+                      border: "1px solid var(--success-border)",
+                      color: "var(--success-text)",
                     }}>
-                      <span style={{ color: "#198754", fontWeight: "bold" }}>+</span>
+                      <span style={{ fontWeight: "bold" }}>+</span>
                       <span>{vaccine}</span>
                     </div>
                   ))}
@@ -1001,11 +1006,12 @@ export default function CatDetailPage() {
                       alignItems: "center",
                       gap: "0.5rem",
                       padding: "0.5rem 0.75rem",
-                      background: "#e7f1ff",
+                      background: "var(--info-bg)",
                       borderRadius: "6px",
-                      border: "1px solid #b6d4fe",
+                      border: "1px solid var(--info-border)",
+                      color: "var(--info-text)",
                     }}>
-                      <span style={{ color: "#0d6efd", fontWeight: "bold" }}>+</span>
+                      <span style={{ fontWeight: "bold" }}>+</span>
                       <span>{treatment}</span>
                     </div>
                   ))}
@@ -1346,24 +1352,24 @@ export default function CatDetailPage() {
       )}
 
       {/* Latest Vitals */}
-      {latestVital && (
+      {(latestTemp || latestWeight) && (
         <Section title="Latest Vitals">
           <div className="detail-grid">
-            {latestVital.temperature_f && (
+            {latestTemp?.temperature_f && (
               <div className="detail-item">
                 <span className="detail-label">Temperature</span>
-                <span className="detail-value">{latestVital.temperature_f}°F</span>
+                <span className="detail-value">{latestTemp.temperature_f}°F</span>
               </div>
             )}
-            {latestVital.weight_lbs && (
+            {latestWeight?.weight_lbs && (
               <div className="detail-item">
                 <span className="detail-label">Weight</span>
-                <span className="detail-value">{latestVital.weight_lbs} lbs</span>
+                <span className="detail-value">{latestWeight.weight_lbs} lbs</span>
               </div>
             )}
             <div className="detail-item">
               <span className="detail-label">Recorded</span>
-              <span className="detail-value">{formatDateLocal(latestVital.recorded_at)}</span>
+              <span className="detail-value">{formatDateLocal((latestTemp || latestWeight)?.recorded_at || "")}</span>
             </div>
           </div>
         </Section>

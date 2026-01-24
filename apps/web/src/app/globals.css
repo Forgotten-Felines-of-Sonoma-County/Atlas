@@ -800,4 +800,101 @@ button:disabled {
   [style*="color:#084298"] {
     color: var(--info-text) !important;
   }
+
+  /* Dark text colors that need to become light in dark mode */
+  [style*="color: #212529"],
+  [style*="color:#212529"] {
+    color: var(--foreground) !important;
+  }
+
+  [style*="color: #334155"],
+  [style*="color:#334155"] {
+    color: var(--text-secondary) !important;
+  }
+
+  [style*="color: #475569"],
+  [style*="color:#475569"] {
+    color: var(--text-secondary) !important;
+  }
+
+  /* Mint/light green backgrounds (vaccines, success states) */
+  [style*="background: #f0fff4"],
+  [style*="background:#f0fff4"] {
+    background: var(--success-bg) !important;
+    color: var(--success-text) !important;
+  }
+
+  /* Additional gray backgrounds */
+  [style*="background: #dee2e6"],
+  [style*="background:#dee2e6"] {
+    background: var(--section-bg) !important;
+    color: var(--foreground) !important;
+  }
+
+  /* Gray muted text colors */
+  [style*="color: #6c757d"],
+  [style*="color:#6c757d"] {
+    color: var(--muted) !important;
+  }
+
+  /* Fix borders with light colors */
+  [style*="border: 1px solid #c3e6cb"] {
+    border-color: var(--success-border) !important;
+  }
+
+  [style*="border: 1px solid #b6d4fe"] {
+    border-color: var(--info-border) !important;
+  }
+
+  [style*="border: 1px solid #dee2e6"],
+  [style*="border: 1px solid #adb5bd"] {
+    border-color: var(--border) !important;
+  }
+
+  /* Light yellow/warning backgrounds */
+  [style*="background: #fffbe6"],
+  [style*="background:#fffbe6"],
+  [style*="background: #fff8e6"],
+  [style*="background:#fff8e6"] {
+    background: var(--warning-bg) !important;
+    color: var(--warning-text) !important;
+  }
+
+  /* Light red/danger backgrounds */
+  [style*="background: #fff5f5"],
+  [style*="background:#fff5f5"],
+  [style*="background: #fef2f2"],
+  [style*="background:#fef2f2"] {
+    background: var(--danger-bg) !important;
+    color: var(--danger-text) !important;
+  }
+
+  /* Pink/purple reproduction status backgrounds */
+  [style*="background: #fdf2f8"],
+  [style*="background:#fdf2f8"] {
+    background: #4a1d3d !important;
+    color: #f9a8d4 !important;
+  }
+
+  [style*="background: #f5f3ff"],
+  [style*="background:#f5f3ff"] {
+    background: #3d1d4a !important;
+    color: #c4b5fd !important;
+  }
+
+  /* Fix pink/purple text colors */
+  [style*="color: #ec4899"],
+  [style*="color:#ec4899"] {
+    color: #f9a8d4 !important;
+  }
+
+  [style*="color: #8b5cf6"],
+  [style*="color:#8b5cf6"] {
+    color: #c4b5fd !important;
+  }
+
+  [style*="color: #f97316"],
+  [style*="color:#f97316"] {
+    color: #fdba74 !important;
+  }
 }
