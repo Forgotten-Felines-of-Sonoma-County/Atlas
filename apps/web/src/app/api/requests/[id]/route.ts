@@ -191,8 +191,7 @@ export async function GET(
         r.kitten_foster_readiness,
         r.kitten_urgency_factors,
         r.kitten_assessment_notes,
-        -- MIG_610: not_assessing_reason - returns NULL until migration is run
-        NULL::TEXT AS not_assessing_reason,
+        r.not_assessing_reason,
         r.kitten_assessed_by,
         r.kitten_assessed_at,
         r.is_being_fed,
@@ -810,13 +809,12 @@ export async function PATCH(
       paramIndex++;
     }
 
-    // MIG_610: not_assessing_reason - disabled until migration is run
-    // Uncomment after running MIG_610:
-    // if (body.not_assessing_reason !== undefined) {
-    //   updates.push(`not_assessing_reason = $${paramIndex}`);
-    //   values.push(body.not_assessing_reason);
-    //   paramIndex++;
-    // }
+    // MIG_610: not_assessing_reason
+    if (body.not_assessing_reason !== undefined) {
+      updates.push(`not_assessing_reason = $${paramIndex}`);
+      values.push(body.not_assessing_reason);
+      paramIndex++;
+    }
 
     // Email batching (MIG_605)
     if (body.ready_to_email !== undefined) {
