@@ -723,4 +723,43 @@ button:disabled {
   [style*="border:1px solid #d1d5db"] {
     border-color: var(--border-light) !important;
   }
+
+  /* Admin card accent colors - convert to dark mode equivalents */
+  [style*="background: #fef3c7"],
+  [style*="background:#fef3c7"] {
+    background: var(--warning-bg) !important;
+    color: var(--foreground) !important;
+  }
+
+  [style*="background: #eff6ff"],
+  [style*="background:#eff6ff"] {
+    background: var(--info-bg) !important;
+    color: var(--foreground) !important;
+  }
+
+  [style*="background: #ecfdf5"],
+  [style*="background:#ecfdf5"],
+  [style*="background: #f0fdf4"],
+  [style*="background:#f0fdf4"] {
+    background: var(--success-bg) !important;
+    color: var(--foreground) !important;
+  }
+
+  [style*="background: #fdf4ff"],
+  [style*="background:#fdf4ff"] {
+    background: #4a1d6a !important;
+    color: var(--foreground) !important;
+  }
+
+  [style*="background: #fff7ed"],
+  [style*="background:#fff7ed"] {
+    background: #4a2c1d !important;
+    color: var(--foreground) !important;
+  }
+
+  [style*="background: #f0f9ff"],
+  [style*="background:#f0f9ff"] {
+    background: var(--info-bg) !important;
+    color: var(--foreground) !important;
+  }
 }
