@@ -242,10 +242,20 @@ export function AdminSidebar({ children }: { children: React.ReactNode }) {
       ],
     },
     {
+      title: "Email",
+      items: [
+        { label: "Email Hub", href: "/admin/email", icon: "📧" },
+        { label: "Templates", href: "/admin/email-templates", icon: "📝" },
+        { label: "Job Queue", href: "/admin/email-jobs", icon: "📤" },
+        { label: "Batches", href: "/admin/email-batches", icon: "📨" },
+        { label: "Audit Log", href: "/admin/email/audit", icon: "🔍" },
+        { label: "Settings", href: "/admin/email-settings", icon: "⚙️" },
+      ],
+    },
+    {
       title: "Configuration",
       items: [
         { label: "Intake Fields", href: "/admin/intake-fields", icon: "📝" },
-        { label: "Email Templates", href: "/admin/email-templates", icon: "✉️" },
         { label: "Training Materials", href: "/admin/education-materials", icon: "📚" },
         { label: "Automations", href: "/admin/automations", icon: "⚡" },
         { label: "Staff", href: "/admin/staff", icon: "👥" },

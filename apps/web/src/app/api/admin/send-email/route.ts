@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
       placeholders,
       submissionId,
       personId,
+      requestId,
     } = body;
 
     // Validate required fields
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
           placeholders: placeholders || {},
           submissionId,
           personId,
+          requestId,
           sentBy: staff.staff_id,
         });
 
@@ -163,6 +165,7 @@ export async function POST(request: NextRequest) {
           placeholders: placeholders || {},
           submissionId,
           personId,
+          requestId,
           sentBy: staff.staff_id,
         });
 

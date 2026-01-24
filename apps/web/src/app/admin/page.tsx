@@ -162,17 +162,10 @@ export default function AdminPage() {
                   accent="#f0f9ff"
                 />
                 <AdminCard
-                  href="/admin/email-settings"
-                  title="Email Settings"
-                  description="Connect Outlook accounts"
+                  href="/admin/email"
+                  title="Email Hub"
+                  description="Send, templates, and history"
                   icon="📧"
-                  accent="#fef3c7"
-                />
-                <AdminCard
-                  href="/admin/email-templates"
-                  title="Email Templates"
-                  description="Manage email content"
-                  icon="✉️"
                   accent="#fef3c7"
                 />
               </div>

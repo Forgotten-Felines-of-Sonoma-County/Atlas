@@ -25,6 +25,7 @@ interface SendEmailModalProps {
   // Context for logging
   submissionId?: string;
   personId?: string;
+  requestId?: string;
   // Pre-select template
   defaultTemplate?: string;
   // Custom placeholders
@@ -39,6 +40,7 @@ export function SendEmailModal({
   defaultToName = "",
   submissionId,
   personId,
+  requestId,
   defaultTemplate = "",
   placeholders: defaultPlaceholders = {},
 }: SendEmailModalProps) {
@@ -133,6 +135,7 @@ export function SendEmailModal({
           placeholders: defaultPlaceholders,
           submissionId,
           personId,
+          requestId,
         }),
       });
 

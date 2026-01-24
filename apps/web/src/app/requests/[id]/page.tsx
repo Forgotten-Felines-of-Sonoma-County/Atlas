@@ -18,6 +18,7 @@ import { RedirectRequestModal } from "@/components/RedirectRequestModal";
 import { HandoffRequestModal } from "@/components/HandoffRequestModal";
 import { NearbyEntities } from "@/components/NearbyEntities";
 import { QuickActions, useRequestQuickActionState } from "@/components/QuickActions";
+import { SendEmailModal } from "@/components/SendEmailModal";
 
 interface RequestDetail {
   request_id: string;
@@ -125,6 +126,10 @@ interface RequestDetail {
   colony_has_override: boolean | null;
   colony_override_note: string | null;
   colony_verified_exceeds_reported: boolean | null;
+  // Email batching (MIG_605)
+  ready_to_email: boolean;
+  email_summary: string | null;
+  email_batch_id: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -279,6 +284,7 @@ export default function RequestDetailPage() {
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [completionTargetStatus, setCompletionTargetStatus] = useState<"completed" | "cancelled">("completed");
   const [showHoldModal, setShowHoldModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   // Session/Staff info for auto-fill
   const [currentStaffId, setCurrentStaffId] = useState<string | null>(null);
@@ -313,6 +319,11 @@ export default function RequestDetailPage() {
   // Map state
   const [mapUrl, setMapUrl] = useState<string | null>(null);
   const [mapNearbyCount, setMapNearbyCount] = useState<number>(0);
+
+  // Ready to Email state (MIG_605)
+  const [editingEmailSummary, setEditingEmailSummary] = useState(false);
+  const [emailSummaryDraft, setEmailSummaryDraft] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
 
   const fetchJournalEntries = useCallback(async () => {
     try {
@@ -605,6 +616,86 @@ export default function RequestDetailPage() {
         ? prev.kitten_urgency_factors.filter(f => f !== factor)
         : [...prev.kitten_urgency_factors, factor]
     }));
+  };
+
+  // Ready-to-Email handlers (MIG_605)
+  const handleToggleReadyToEmail = async () => {
+    if (!request) return;
+    setSavingEmail(true);
+    setError(null);
+
+    const newValue = !request.ready_to_email;
+
+    try {
+      const response = await fetch(`/api/requests/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ready_to_email: newValue,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || "Failed to update ready to email");
+        return;
+      }
+
+      // Reload the request data
+      const refreshResponse = await fetch(`/api/requests/${requestId}`);
+      if (refreshResponse.ok) {
+        const data = await refreshResponse.json();
+        setRequest(data);
+      }
+    } catch {
+      setError("Failed to update ready to email");
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const handleStartEditEmailSummary = () => {
+    setEmailSummaryDraft(request?.email_summary || "");
+    setEditingEmailSummary(true);
+  };
+
+  const handleSaveEmailSummary = async () => {
+    setSavingEmail(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/requests/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email_summary: emailSummaryDraft,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || "Failed to save email summary");
+        return;
+      }
+
+      // Reload the request data
+      const refreshResponse = await fetch(`/api/requests/${requestId}`);
+      if (refreshResponse.ok) {
+        const data = await refreshResponse.json();
+        setRequest(data);
+      }
+
+      setEditingEmailSummary(false);
+    } catch {
+      setError("Failed to save email summary");
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const handleCancelEmailSummary = () => {
+    setEmailSummaryDraft(request?.email_summary || "");
+    setEditingEmailSummary(false);
   };
 
   if (loading) {
@@ -1673,7 +1764,19 @@ export default function RequestDetailPage() {
 
           {/* Requester Card */}
           <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
-            <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Requester</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+              <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Requester</h2>
+              {request.requester_email && (
+                <button
+                  onClick={() => setShowEmailModal(true)}
+                  className="btn btn-secondary"
+                  style={{ padding: "0.375rem 0.75rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.375rem" }}
+                >
+                  <span>✉️</span>
+                  Email Requester
+                </button>
+              )}
+            </div>
             {request.requester_person_id ? (
               <div>
                 <a href={`/people/${request.requester_person_id}`} style={{ fontWeight: 500, fontSize: "1.1rem" }}>
@@ -1703,6 +1806,146 @@ export default function RequestDetailPage() {
           <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
             <h2 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>Assigned Trappers</h2>
             <TrapperAssignments requestId={request.request_id} />
+          </div>
+
+          {/* Ready to Email Card (MIG_605) */}
+          <div className="card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Email Batch</h2>
+              {request.email_batch_id && (
+                <a
+                  href="/admin/email-batches"
+                  style={{
+                    fontSize: "0.85rem",
+                    color: "#6366f1",
+                  }}
+                >
+                  View Batch →
+                </a>
+              )}
+            </div>
+
+            {/* Ready to Email Toggle */}
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={request.ready_to_email || false}
+                  onChange={handleToggleReadyToEmail}
+                  disabled={savingEmail || !!request.email_batch_id}
+                  style={{ width: "18px", height: "18px" }}
+                />
+                <span style={{ fontWeight: 500 }}>Ready to Email</span>
+              </label>
+              {request.email_batch_id && (
+                <span
+                  style={{
+                    padding: "0.25rem 0.5rem",
+                    background: "#dbeafe",
+                    color: "#1e40af",
+                    fontSize: "0.75rem",
+                    borderRadius: "4px",
+                  }}
+                >
+                  Added to batch
+                </span>
+              )}
+              {savingEmail && <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>Saving...</span>}
+            </div>
+
+            {/* Email Summary */}
+            {(request.ready_to_email || request.email_summary) && (
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                  <span className="text-muted text-sm">Summary for Trapper Email</span>
+                  {!editingEmailSummary && (
+                    <button
+                      onClick={handleStartEditEmailSummary}
+                      style={{
+                        padding: "0.25rem 0.5rem",
+                        fontSize: "0.75rem",
+                        background: "transparent",
+                        border: "1px solid var(--border)",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {editingEmailSummary ? (
+                  <div>
+                    <textarea
+                      value={emailSummaryDraft}
+                      onChange={(e) => setEmailSummaryDraft(e.target.value)}
+                      rows={4}
+                      placeholder="Brief summary of this assignment for the trapper (appears in batch emails)..."
+                      style={{
+                        width: "100%",
+                        padding: "0.5rem",
+                        border: "1px solid var(--border)",
+                        borderRadius: "6px",
+                        resize: "vertical",
+                        fontSize: "0.9rem",
+                      }}
+                    />
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                      <button
+                        onClick={handleSaveEmailSummary}
+                        disabled={savingEmail}
+                        style={{
+                          padding: "0.35rem 0.75rem",
+                          fontSize: "0.85rem",
+                          background: "#3b82f6",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "4px",
+                          cursor: savingEmail ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {savingEmail ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        onClick={handleCancelEmailSummary}
+                        style={{
+                          padding: "0.35rem 0.75rem",
+                          fontSize: "0.85rem",
+                          background: "transparent",
+                          color: "inherit",
+                          border: "1px solid var(--border)",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: "0.75rem",
+                      background: "var(--surface)",
+                      borderRadius: "6px",
+                      fontSize: "0.9rem",
+                      whiteSpace: "pre-wrap",
+                      minHeight: "60px",
+                      color: request.email_summary ? "inherit" : "var(--muted)",
+                    }}
+                  >
+                    {request.email_summary || "No summary written yet. Click Edit to add one."}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!request.ready_to_email && !request.email_summary && (
+              <p style={{ fontSize: "0.9rem", color: "var(--muted)", margin: 0 }}>
+                Check &quot;Ready to Email&quot; to include this request in a trapper batch email.
+              </p>
+            )}
           </div>
 
           {/* Details Card */}
@@ -2544,6 +2787,20 @@ export default function RequestDetailPage() {
         originalRequesterName={request.requester_name || null}
         onSuccess={(newRequestId) => {
           router.push(`/requests/${newRequestId}`);
+        }}
+      />
+
+      {/* Email Requester Modal */}
+      <SendEmailModal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        defaultTo={request.requester_email || ""}
+        defaultToName={request.requester_name || ""}
+        personId={request.requester_person_id || undefined}
+        requestId={request.request_id}
+        placeholders={{
+          first_name: request.requester_name?.split(" ")[0] || "",
+          address: request.place_address || "",
         }}
       />
     </div>

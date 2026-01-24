@@ -26,6 +26,7 @@ export interface SendEmailParams {
   placeholders?: Record<string, string>;
   submissionId?: string;
   personId?: string;
+  requestId?: string;
   sentBy?: string;
 }
 
@@ -69,7 +70,7 @@ export async function getEmailTemplate(
 export async function sendTemplateEmail(
   params: SendEmailParams
 ): Promise<SendEmailResult> {
-  const { templateKey, to, toName, placeholders = {}, submissionId, personId, sentBy } = params;
+  const { templateKey, to, toName, placeholders = {}, submissionId, personId, requestId, sentBy } = params;
 
   // Check if Resend is configured
   if (!resend) {
@@ -119,6 +120,7 @@ export async function sendTemplateEmail(
         errorMessage: error.message,
         submissionId,
         personId,
+        requestId,
         createdBy: sentBy,
       });
 
@@ -140,6 +142,7 @@ export async function sendTemplateEmail(
       externalId: data?.id,
       submissionId,
       personId,
+      requestId,
       createdBy: sentBy,
     });
 
@@ -171,6 +174,7 @@ interface LogEmailParams {
   externalId?: string;
   submissionId?: string;
   personId?: string;
+  requestId?: string;
   createdBy?: string;
 }
 
@@ -192,12 +196,13 @@ async function logSentEmail(params: LogEmailParams): Promise<string | undefined>
         external_id,
         submission_id,
         person_id,
+        request_id,
         sent_at,
-        created_by
+        sent_by
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
         CASE WHEN $7 = 'sent' THEN NOW() ELSE NULL END,
-        $12
+        $13
       )
       RETURNING email_id
     `, [
@@ -212,6 +217,7 @@ async function logSentEmail(params: LogEmailParams): Promise<string | undefined>
       params.externalId || null,
       params.submissionId || null,
       params.personId || null,
+      params.requestId || null,
       params.createdBy || "system",
     ]);
 

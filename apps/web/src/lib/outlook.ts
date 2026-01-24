@@ -433,9 +433,10 @@ export async function sendTemplatedOutlookEmail(params: {
   placeholders?: Record<string, string>;
   submissionId?: string;
   personId?: string;
+  requestId?: string;
   sentBy?: string;
 }): Promise<{ success: boolean; emailId?: string; error?: string }> {
-  const { accountId, templateKey, to, toName, placeholders = {}, submissionId, personId, sentBy } = params;
+  const { accountId, templateKey, to, toName, placeholders = {}, submissionId, personId, requestId, sentBy } = params;
 
   // Get template
   const template = await queryOne<{
@@ -492,6 +493,7 @@ export async function sendTemplatedOutlookEmail(params: {
     fromEmail: account?.email,
     submissionId,
     personId,
+    requestId,
     sentBy,
   });
 
@@ -518,6 +520,7 @@ async function logSentEmail(params: {
   fromEmail?: string;
   submissionId?: string;
   personId?: string;
+  requestId?: string;
   sentBy?: string;
 }): Promise<string | undefined> {
   try {
@@ -534,12 +537,13 @@ async function logSentEmail(params: {
         outlook_account_id,
         submission_id,
         person_id,
+        request_id,
         sent_at,
-        created_by
+        sent_by
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
         CASE WHEN $7 = 'sent' THEN NOW() ELSE NULL END,
-        $12
+        $13
       )
       RETURNING email_id
     `, [
@@ -554,6 +558,7 @@ async function logSentEmail(params: {
       params.outlookAccountId || null,
       params.submissionId || null,
       params.personId || null,
+      params.requestId || null,
       params.sentBy || "system",
     ]);
 

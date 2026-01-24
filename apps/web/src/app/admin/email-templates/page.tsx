@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import DOMPurify from "dompurify";
 
 interface EmailTemplate {
@@ -13,6 +14,10 @@ interface EmailTemplate {
   body_text: string | null;
   placeholders: string[] | null;
   is_active: boolean;
+  edit_restricted: boolean;
+  last_edited_by: string | null;
+  last_edited_at: string | null;
+  last_edited_by_name: string | null;
   send_count: number;
   last_sent: string | null;
   created_at: string;
@@ -48,6 +53,13 @@ export default function EmailTemplatesAdminPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string>("staff");
+  const [pendingSuggestions, setPendingSuggestions] = useState(0);
+
+  // Suggest modal state
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+  const [suggestingTemplate, setSuggestingTemplate] = useState<EmailTemplate | null>(null);
+  const [suggestionNotes, setSuggestionNotes] = useState("");
 
   // Form state
   const [form, setForm] = useState({
@@ -66,10 +78,83 @@ export default function EmailTemplatesAdminPage() {
       const response = await fetch("/api/admin/email-templates");
       const data = await response.json();
       setTemplates(data.templates || []);
+      setUserRole(data.userRole || "staff");
+      setPendingSuggestions(data.pendingSuggestions || 0);
     } catch (err) {
       console.error("Failed to fetch templates:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const isAdmin = userRole === "admin";
+
+  const openSuggestModal = (template: EmailTemplate) => {
+    setSuggestingTemplate(template);
+    setForm({
+      template_key: template.template_key,
+      name: template.name,
+      description: template.description || "",
+      subject: template.subject,
+      body_html: template.body_html,
+      body_text: template.body_text || "",
+      placeholders: template.placeholders || [],
+    });
+    setSuggestionNotes("");
+    setShowSuggestModal(true);
+  };
+
+  const closeSuggestModal = () => {
+    setShowSuggestModal(false);
+    setSuggestingTemplate(null);
+    setSuggestionNotes("");
+    resetForm();
+  };
+
+  const submitSuggestion = async () => {
+    if (!suggestingTemplate) return;
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      // Determine what changed
+      const changes: Record<string, string> = {};
+      if (form.name !== suggestingTemplate.name) changes.suggested_name = form.name;
+      if (form.subject !== suggestingTemplate.subject) changes.suggested_subject = form.subject;
+      if (form.body_html !== suggestingTemplate.body_html) changes.suggested_body_html = form.body_html;
+      if (form.body_text !== suggestingTemplate.body_text) changes.suggested_body_text = form.body_text;
+
+      if (Object.keys(changes).length === 0) {
+        setMessage({ type: "error", text: "No changes made" });
+        setSaving(false);
+        return;
+      }
+
+      const response = await fetch("/api/admin/email-templates/suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_id: suggestingTemplate.template_id,
+          ...changes,
+          suggestion_notes: suggestionNotes,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setMessage({ type: "success", text: "Suggestion submitted for review!" });
+        setTimeout(() => {
+          closeSuggestModal();
+          setMessage(null);
+        }, 1500);
+      } else {
+        setMessage({ type: "error", text: data.error || "Failed to submit suggestion" });
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: "Failed to submit suggestion" });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -184,27 +269,51 @@ export default function EmailTemplatesAdminPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
         <div>
           <h1 style={{ margin: 0 }}>Email Templates</h1>
           <p style={{ color: "#666", margin: "0.25rem 0 0" }}>
-            Configure automated email content without code changes
+            {isAdmin ? "Create and manage email templates" : "View templates and suggest edits"}
           </p>
         </div>
-        <button
-          onClick={openAddModal}
-          style={{
-            padding: "0.5rem 1rem",
-            background: "#0d6efd",
-            color: "#fff",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer",
-            fontWeight: 500,
-          }}
-        >
-          + New Template
-        </button>
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          {isAdmin && pendingSuggestions > 0 && (
+            <Link
+              href="/admin/email-templates/suggestions"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                padding: "0.5rem 1rem",
+                background: "#fef3c7",
+                borderRadius: "6px",
+                textDecoration: "none",
+                color: "#92400e",
+                fontWeight: 500,
+                fontSize: "0.875rem",
+              }}
+            >
+              <span>💡</span>
+              {pendingSuggestions} Suggestion{pendingSuggestions > 1 ? "s" : ""}
+            </Link>
+          )}
+          {isAdmin && (
+            <button
+              onClick={openAddModal}
+              style={{
+                padding: "0.5rem 1rem",
+                background: "#0d6efd",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontWeight: 500,
+              }}
+            >
+              + New Template
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -224,7 +333,7 @@ export default function EmailTemplatesAdminPage() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                     <h3 style={{ margin: 0, fontSize: "1rem" }}>{template.name}</h3>
                     <code
                       style={{
@@ -236,6 +345,21 @@ export default function EmailTemplatesAdminPage() {
                     >
                       {template.template_key}
                     </code>
+                    {template.edit_restricted && (
+                      <span
+                        style={{
+                          background: "#dbeafe",
+                          color: "#1e40af",
+                          padding: "0.125rem 0.5rem",
+                          borderRadius: "4px",
+                          fontSize: "0.7rem",
+                          fontWeight: 600,
+                        }}
+                        title="Only admins can edit this template directly"
+                      >
+                        🔒 RESTRICTED
+                      </span>
+                    )}
                     {!template.is_active && (
                       <span
                         style={{
@@ -282,32 +406,51 @@ export default function EmailTemplatesAdminPage() {
                   )}
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button
-                    onClick={() => openEditModal(template)}
-                    style={{
-                      padding: "0.375rem 0.75rem",
-                      background: "#f8f9fa",
-                      border: "1px solid #ddd",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => toggleActive(template)}
-                    style={{
-                      padding: "0.375rem 0.75rem",
-                      background: template.is_active ? "#fff3cd" : "#d1fae5",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    {template.is_active ? "Disable" : "Enable"}
-                  </button>
+                  {isAdmin || !template.edit_restricted ? (
+                    <button
+                      onClick={() => openEditModal(template)}
+                      style={{
+                        padding: "0.375rem 0.75rem",
+                        background: "#f8f9fa",
+                        border: "1px solid #ddd",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        fontSize: "0.875rem",
+                      }}
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => openSuggestModal(template)}
+                      style={{
+                        padding: "0.375rem 0.75rem",
+                        background: "#fef3c7",
+                        border: "1px solid #fcd34d",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        fontSize: "0.875rem",
+                        color: "#92400e",
+                      }}
+                    >
+                      💡 Suggest Edit
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      onClick={() => toggleActive(template)}
+                      style={{
+                        padding: "0.375rem 0.75rem",
+                        background: template.is_active ? "#fff3cd" : "#d1fae5",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        fontSize: "0.875rem",
+                      }}
+                    >
+                      {template.is_active ? "Disable" : "Enable"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -561,6 +704,185 @@ export default function EmailTemplatesAdminPage() {
                 }}
               >
                 {saving ? "Saving..." : "Save Template"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Suggest Edit Modal */}
+      {showSuggestModal && suggestingTemplate && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeSuggestModal();
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "8px",
+              width: "90%",
+              maxWidth: "800px",
+              maxHeight: "90vh",
+              overflow: "auto",
+            }}
+          >
+            <div style={{ padding: "1.5rem", borderBottom: "1px solid #ddd" }}>
+              <h2 style={{ margin: 0 }}>Suggest Edit</h2>
+              <p style={{ margin: "0.25rem 0 0", color: "#666", fontSize: "0.875rem" }}>
+                Template: <strong>{suggestingTemplate.name}</strong>
+              </p>
+            </div>
+
+            <div style={{ padding: "1.5rem", display: "grid", gap: "1rem" }}>
+              {message && (
+                <div
+                  style={{
+                    padding: "0.75rem",
+                    borderRadius: "6px",
+                    background: message.type === "success" ? "#d1fae5" : "#fee2e2",
+                    color: message.type === "success" ? "#065f46" : "#dc2626",
+                  }}
+                >
+                  {message.text}
+                </div>
+              )}
+
+              <div style={{ background: "#eff6ff", padding: "0.75rem", borderRadius: "6px", fontSize: "0.875rem" }}>
+                💡 Make your changes below. An admin will review and approve your suggestion.
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}>
+                  Subject Line
+                </label>
+                <input
+                  type="text"
+                  value={form.subject}
+                  onChange={(e) => setForm({ ...form, subject: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "0.5rem",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                  }}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                  <label style={{ fontWeight: 500 }}>
+                    Email Body (HTML)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={showPreview}
+                    style={{
+                      padding: "0.25rem 0.5rem",
+                      background: "#e0f2fe",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "0.75rem",
+                    }}
+                  >
+                    Preview
+                  </button>
+                </div>
+                <textarea
+                  value={form.body_html}
+                  onChange={(e) => setForm({ ...form, body_html: e.target.value })}
+                  rows={10}
+                  style={{
+                    width: "100%",
+                    padding: "0.5rem",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    fontFamily: "monospace",
+                    fontSize: "0.875rem",
+                  }}
+                />
+              </div>
+
+              {previewHtml && (
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}>
+                    Preview
+                  </label>
+                  <div
+                    style={{
+                      padding: "1rem",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      background: "#fafafa",
+                    }}
+                    dangerouslySetInnerHTML={{ __html: previewHtml }}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}>
+                  Reason for Changes
+                </label>
+                <textarea
+                  value={suggestionNotes}
+                  onChange={(e) => setSuggestionNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Explain why you're suggesting these changes..."
+                  style={{
+                    width: "100%",
+                    padding: "0.5rem",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: "1rem 1.5rem",
+                borderTop: "1px solid #ddd",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.75rem",
+              }}
+            >
+              <button
+                onClick={closeSuggestModal}
+                style={{
+                  padding: "0.5rem 1rem",
+                  background: "#f8f9fa",
+                  border: "1px solid #ddd",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitSuggestion}
+                disabled={saving}
+                style={{
+                  padding: "0.5rem 1rem",
+                  background: saving ? "#6c757d" : "#f59e0b",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: saving ? "not-allowed" : "pointer",
+                }}
+              >
+                {saving ? "Submitting..." : "Submit Suggestion"}
               </button>
             </div>
           </div>

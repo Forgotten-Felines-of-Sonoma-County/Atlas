@@ -12,6 +12,10 @@ interface EmailTemplate {
   body_text: string | null;
   placeholders: string[] | null;
   is_active: boolean;
+  edit_restricted: boolean;
+  last_edited_by: string | null;
+  last_edited_at: string | null;
+  last_edited_by_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -19,23 +23,28 @@ interface EmailTemplate {
 // GET /api/admin/email-templates - List all templates
 export async function GET(request: NextRequest) {
   try {
-    // Require admin role
-    await requireRole(request, ["admin"]);
+    // Both admin and staff can view templates (staff need them for sending)
+    const session = await requireRole(request, ["admin", "staff"]);
     const templates = await queryRows<EmailTemplate>(`
       SELECT
-        template_id,
-        template_key,
-        name,
-        description,
-        subject,
-        body_html,
-        body_text,
-        placeholders,
-        is_active,
-        created_at::TEXT,
-        updated_at::TEXT
-      FROM trapper.email_templates
-      ORDER BY name
+        et.template_id,
+        et.template_key,
+        et.name,
+        et.description,
+        et.subject,
+        et.body_html,
+        et.body_text,
+        et.placeholders,
+        et.is_active,
+        COALESCE(et.edit_restricted, TRUE) AS edit_restricted,
+        et.last_edited_by,
+        et.last_edited_at::TEXT,
+        s.display_name AS last_edited_by_name,
+        et.created_at::TEXT,
+        et.updated_at::TEXT
+      FROM trapper.email_templates et
+      LEFT JOIN trapper.staff s ON s.staff_id = et.last_edited_by
+      ORDER BY et.name
     `);
 
     // Get send stats for each template
@@ -57,7 +66,22 @@ export async function GET(request: NextRequest) {
       last_sent: statsMap.get(t.template_key)?.last_sent || null,
     }));
 
-    return NextResponse.json({ templates: templatesWithStats });
+    // Get pending suggestions count for admins
+    let pendingSuggestions = 0;
+    if (session.auth_role === "admin") {
+      const countResult = await queryOne<{ count: number }>(`
+        SELECT COUNT(*)::INT AS count
+        FROM trapper.email_template_suggestions
+        WHERE status = 'pending'
+      `);
+      pendingSuggestions = countResult?.count || 0;
+    }
+
+    return NextResponse.json({
+      templates: templatesWithStats,
+      userRole: session.auth_role,
+      pendingSuggestions,
+    });
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json(
@@ -147,8 +171,8 @@ export async function POST(request: NextRequest) {
 // PATCH /api/admin/email-templates - Update template
 export async function PATCH(request: NextRequest) {
   try {
-    // Require admin role
-    await requireRole(request, ["admin"]);
+    // Both admin and staff can update, with restrictions
+    const session = await requireRole(request, ["admin", "staff"]);
 
     const body = await request.json();
     const { template_id, ...updates } = body;
@@ -157,6 +181,28 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         { error: "template_id is required" },
         { status: 400 }
+      );
+    }
+
+    // Check if template exists and get restriction status
+    const template = await queryOne<{ edit_restricted: boolean }>(`
+      SELECT COALESCE(edit_restricted, TRUE) AS edit_restricted
+      FROM trapper.email_templates
+      WHERE template_id = $1
+    `, [template_id]);
+
+    if (!template) {
+      return NextResponse.json(
+        { error: "Template not found" },
+        { status: 404 }
+      );
+    }
+
+    // Staff can only edit unrestricted templates
+    if (session.auth_role !== "admin" && template.edit_restricted) {
+      return NextResponse.json(
+        { error: "This template is restricted. Please submit a suggestion instead." },
+        { status: 403 }
       );
     }
 
@@ -169,6 +215,11 @@ export async function PATCH(request: NextRequest) {
       "placeholders",
       "is_active",
     ];
+
+    // Only admins can change edit_restricted
+    if (session.auth_role === "admin") {
+      allowedFields.push("edit_restricted");
+    }
 
     const setClause: string[] = [];
     const values: unknown[] = [];
@@ -193,6 +244,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Track who edited and when
+    setClause.push(`last_edited_by = $${paramIndex++}`);
+    values.push(session.staff_id);
+    setClause.push(`last_edited_at = NOW()`);
     setClause.push(`updated_at = NOW()`);
     values.push(template_id);
 

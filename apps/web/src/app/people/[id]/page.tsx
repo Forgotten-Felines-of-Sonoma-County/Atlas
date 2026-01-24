@@ -14,6 +14,7 @@ import { VerificationBadge, LastVerified } from "@/components/VerificationBadge"
 import { PersonPlaceGoogleContext } from "@/components/GoogleMapContextCard";
 import { QuickActions, usePersonQuickActionState } from "@/components/QuickActions";
 import { formatDateLocal } from "@/lib/formatters";
+import { SendEmailModal } from "@/components/SendEmailModal";
 
 interface Cat {
   cat_id: string;
@@ -288,6 +289,7 @@ export default function PersonDetailPage() {
 
   // Edit history panel
   const [showHistory, setShowHistory] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   const fetchPerson = useCallback(async () => {
     try {
@@ -596,6 +598,26 @@ export default function PersonDetailPage() {
             </>
           )}
           <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
+            {person.identifiers?.some(i => i.id_type === "email") && (
+              <button
+                onClick={() => setShowEmailModal(true)}
+                style={{
+                  padding: "0.25rem 0.75rem",
+                  fontSize: "0.875rem",
+                  background: "transparent",
+                  color: "inherit",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.375rem",
+                  cursor: "pointer",
+                }}
+              >
+                <span>✉️</span>
+                Email
+              </button>
+            )}
             <a
               href={`/people/${person.person_id}/print`}
               target="_blank"
@@ -1044,6 +1066,18 @@ export default function PersonDetailPage() {
           />
         </div>
       )}
+
+      {/* Email Modal */}
+      <SendEmailModal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        defaultTo={person.identifiers?.find(i => i.id_type === "email")?.id_value || ""}
+        defaultToName={person.display_name}
+        personId={person.person_id}
+        placeholders={{
+          first_name: person.display_name?.split(" ")[0] || "",
+        }}
+      />
     </div>
   );
 }
