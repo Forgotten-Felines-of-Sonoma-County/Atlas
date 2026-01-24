@@ -11,7 +11,8 @@ interface OutlookAccount {
   is_active: boolean;
   last_used_at: string | null;
   connection_error: string | null;
-  token_expired: boolean;
+  needs_reconnection: boolean;
+  token_expired: boolean; // For debugging only
   created_at: string;
   connected_by: string | null;
   emails_sent: number;
@@ -259,7 +260,7 @@ function EmailSettingsContent() {
                     </div>
                   </td>
                   <td style={{ padding: "0.75rem 1rem" }}>
-                    {account.token_expired ? (
+                    {account.needs_reconnection ? (
                       <span
                         style={{
                           display: "inline-block",
@@ -270,23 +271,9 @@ function EmailSettingsContent() {
                           background: "#fef2f2",
                           color: "#dc2626",
                         }}
+                        title={account.connection_error || "Reconnection needed"}
                       >
-                        Token Expired
-                      </span>
-                    ) : account.connection_error ? (
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "0.25rem 0.5rem",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          fontWeight: 500,
-                          background: "#fef2f2",
-                          color: "#dc2626",
-                        }}
-                        title={account.connection_error}
-                      >
-                        Error
+                        Needs Reconnection
                       </span>
                     ) : (
                       <span
@@ -314,23 +301,42 @@ function EmailSettingsContent() {
                     {account.connected_by || "-"}
                   </td>
                   <td style={{ padding: "0.75rem 1.5rem", textAlign: "right" }}>
-                    <button
-                      onClick={() => disconnectAccount(account.account_id, account.email)}
-                      disabled={disconnecting === account.account_id}
-                      style={{
-                        padding: "0.375rem 0.75rem",
-                        background: "transparent",
-                        color: "#dc2626",
-                        border: "1px solid #dc2626",
-                        borderRadius: "4px",
-                        cursor: disconnecting === account.account_id ? "not-allowed" : "pointer",
-                        fontSize: "0.75rem",
-                        fontWeight: 500,
-                        opacity: disconnecting === account.account_id ? 0.5 : 1,
-                      }}
-                    >
-                      {disconnecting === account.account_id ? "..." : "Disconnect"}
-                    </button>
+                    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                      {account.needs_reconnection && (
+                        <button
+                          onClick={handleConnectAccount}
+                          style={{
+                            padding: "0.375rem 0.75rem",
+                            background: "#0d6efd",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            fontSize: "0.75rem",
+                            fontWeight: 500,
+                          }}
+                        >
+                          Reconnect
+                        </button>
+                      )}
+                      <button
+                        onClick={() => disconnectAccount(account.account_id, account.email)}
+                        disabled={disconnecting === account.account_id}
+                        style={{
+                          padding: "0.375rem 0.75rem",
+                          background: "transparent",
+                          color: "#dc2626",
+                          border: "1px solid #dc2626",
+                          borderRadius: "4px",
+                          cursor: disconnecting === account.account_id ? "not-allowed" : "pointer",
+                          fontSize: "0.75rem",
+                          fontWeight: 500,
+                          opacity: disconnecting === account.account_id ? 0.5 : 1,
+                        }}
+                      >
+                        {disconnecting === account.account_id ? "..." : "Disconnect"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
