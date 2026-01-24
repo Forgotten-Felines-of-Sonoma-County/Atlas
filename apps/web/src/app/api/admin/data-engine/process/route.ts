@@ -61,7 +61,7 @@ export async function GET() {
         (SELECT COUNT(*) FROM trapper.data_engine_match_decisions) as total_decisions,
         (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'auto_match') as auto_matched,
         (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'new_entity') as new_entities,
-        (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'review_needed' AND resolved_at IS NULL) as reviews_pending,
+        (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'review_needed' AND reviewed_at IS NULL) as reviews_pending,
         (SELECT COUNT(*) FROM trapper.staged_records) as total_staged,
         (SELECT COUNT(*) FROM trapper.staged_records sr WHERE NOT is_processed) as remaining
     `, []);
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
               (SELECT COUNT(*) FROM trapper.data_engine_match_decisions) as total_decisions,
               (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'auto_match') as auto_matched,
               (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'new_entity') as new_entities,
-              (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'review_needed' AND resolved_at IS NULL) as reviews_pending,
+              (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'review_needed' AND reviewed_at IS NULL) as reviews_pending,
               (SELECT COUNT(*) FROM trapper.staged_records) as total_staged,
               (SELECT COUNT(*) FROM trapper.staged_records sr WHERE NOT is_processed) as remaining
           `, []);
@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
         (SELECT COUNT(*) FROM trapper.data_engine_match_decisions) as total_decisions,
         (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'auto_match') as auto_matched,
         (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'new_entity') as new_entities,
-        (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'review_needed' AND resolved_at IS NULL) as reviews_pending,
+        (SELECT COUNT(*) FROM trapper.data_engine_match_decisions WHERE decision_type = 'review_needed' AND reviewed_at IS NULL) as reviews_pending,
         (SELECT COUNT(*) FROM trapper.staged_records) as total_staged,
         (SELECT COUNT(*) FROM trapper.staged_records sr WHERE NOT is_processed) as remaining
     `, []);
