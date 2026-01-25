@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne, queryRows } from "@/lib/db";
-import { readFile, writeFile, mkdir, rm } from "fs/promises";
+import { readFile } from "fs/promises";
 import path from "path";
-import os from "os";
 import * as XLSX from "xlsx";
-import { createHash, randomUUID } from "crypto";
+import { createHash } from "crypto";
 import { parseStringPromise } from "xml2js";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+import JSZip from "jszip";
 
 interface FileUpload {
   upload_id: string;
@@ -911,15 +907,21 @@ async function processGoogleMapsFile(
 
   let kmlContent: string;
 
-  // For KMZ files, we need to extract the KML
+  // For KMZ files, we need to extract the KML using JSZip
   if (isKmz) {
-    const tmpDir = path.join(os.tmpdir(), `google-maps-ingest-${randomUUID()}`);
     try {
-      await mkdir(tmpDir, { recursive: true });
-      const kmzPath = path.join(tmpDir, "upload.kmz");
-      await writeFile(kmzPath, buffer);
-      await execAsync(`cd "${tmpDir}" && unzip -o upload.kmz`);
-      kmlContent = await readFile(path.join(tmpDir, "doc.kml"), "utf-8");
+      const zip = await JSZip.loadAsync(buffer);
+      const kmlFile = zip.file("doc.kml");
+      if (!kmlFile) {
+        // Try to find any .kml file
+        const kmlFiles = Object.keys(zip.files).filter(name => name.endsWith(".kml"));
+        if (kmlFiles.length === 0) {
+          throw new Error("No KML file found in KMZ archive");
+        }
+        kmlContent = await zip.file(kmlFiles[0])!.async("string");
+      } else {
+        kmlContent = await kmlFile.async("string");
+      }
     } catch (error) {
       await query(
         `UPDATE trapper.file_uploads SET status = 'failed', error_message = $2 WHERE upload_id = $1`,
@@ -929,13 +931,6 @@ async function processGoogleMapsFile(
         { error: "Failed to extract KMZ file" },
         { status: 500 }
       );
-    } finally {
-      // Cleanup
-      try {
-        await rm(tmpDir, { recursive: true });
-      } catch {
-        // Ignore cleanup errors
-      }
     }
   } else {
     kmlContent = buffer.toString("utf-8");

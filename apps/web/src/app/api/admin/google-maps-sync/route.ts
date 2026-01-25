@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { queryRows, queryOne, query } from "@/lib/db";
+import { queryRows, queryOne } from "@/lib/db";
 import { requireRole, AuthError, getCurrentUser } from "@/lib/auth";
 import { parseStringPromise } from "xml2js";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { writeFile, mkdir, readFile, rm } from "fs/promises";
-import { randomUUID } from "crypto";
-import path from "path";
-import os from "os";
-
-const execAsync = promisify(exec);
+import JSZip from "jszip";
 
 /**
  * Google Maps Sync API
@@ -202,10 +195,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create temp directory
-    const tmpDir = path.join(os.tmpdir(), `google-maps-sync-${randomUUID()}`);
-    await mkdir(tmpDir, { recursive: true });
-
     let kmlContent: string;
 
     try {
@@ -213,11 +202,22 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(bytes);
 
       if (isKmz) {
-        // Save KMZ and extract
-        const kmzPath = path.join(tmpDir, "upload.kmz");
-        await writeFile(kmzPath, buffer);
-        await execAsync(`cd "${tmpDir}" && unzip -o upload.kmz`);
-        kmlContent = await readFile(path.join(tmpDir, "doc.kml"), "utf-8");
+        // Extract KML from KMZ using JSZip
+        const zip = await JSZip.loadAsync(buffer);
+        const kmlFile = zip.file("doc.kml");
+        if (!kmlFile) {
+          // Try to find any .kml file
+          const kmlFiles = Object.keys(zip.files).filter(name => name.endsWith(".kml"));
+          if (kmlFiles.length === 0) {
+            return NextResponse.json(
+              { error: "No KML file found in KMZ archive" },
+              { status: 400 }
+            );
+          }
+          kmlContent = await zip.file(kmlFiles[0])!.async("string");
+        } else {
+          kmlContent = await kmlFile.async("string");
+        }
       } else {
         kmlContent = buffer.toString("utf-8");
       }
@@ -278,13 +278,12 @@ export async function POST(request: NextRequest) {
         },
         placemarksProcessed: placemarks.length,
       });
-    } finally {
-      // Cleanup temp directory
-      try {
-        await rm(tmpDir, { recursive: true });
-      } catch {
-        // Ignore cleanup errors
-      }
+    } catch (error) {
+      console.error("Error processing KMZ/KML:", error);
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Failed to process file" },
+        { status: 500 }
+      );
     }
   } catch (error) {
     if (error instanceof AuthError) {
