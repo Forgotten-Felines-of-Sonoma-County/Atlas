@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ColonySourcesBreakdown } from "./ColonySourcesBreakdown";
+import { EcologyMethodologyPanel } from "./EcologyMethodologyPanel";
 
 interface ColonyEstimate {
   estimate_id: string;
@@ -37,6 +38,9 @@ interface ColonyStatus {
 
 interface EcologyStats {
   a_known: number;
+  a_known_current: number;
+  a_known_effective: number;
+  cats_needing_tnr: number;
   n_recent_max: number;
   p_lower: number | null;
   p_lower_pct: number | null;
@@ -361,9 +365,18 @@ export function ColonyEstimates({ placeId }: ColonyEstimatesProps) {
           }}
         >
           <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: "var(--success-text)" }}>
-            {ecology?.a_known ?? status.verified_altered_count}
+            {isIndividualCats
+              ? (ecology?.a_known_current ?? ecology?.a_known ?? status.verified_altered_count)
+              : (ecology?.a_known ?? status.verified_altered_count)}
           </div>
-          <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>Verified Altered</div>
+          <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>
+            {isIndividualCats ? "Verified Altered (Current)" : "Verified Altered"}
+          </div>
+          {isIndividualCats && ecology && ecology.a_known > ecology.a_known_current && (
+            <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+              {ecology.a_known} total historical
+            </div>
+          )}
         </div>
 
         <div
@@ -799,6 +812,14 @@ export function ColonyEstimates({ placeId }: ColonyEstimatesProps) {
             </div>
           )}
         </div>
+      )}
+
+      {/* Methodology Panel - Transparent derivations */}
+      {ecology && (
+        <EcologyMethodologyPanel
+          ecology={ecology}
+          classification={classification?.type}
+        />
       )}
 
       {/* Confidence & Source Info */}

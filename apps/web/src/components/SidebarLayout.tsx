@@ -234,11 +234,13 @@ export function AdminSidebar({ children }: { children: React.ReactNode }) {
     {
       title: "Beacon Data",
       items: [
+        { label: "Beacon Map", href: "/admin/beacon-map", icon: "🗺️" },
         { label: "Colony Estimates", href: "/admin/beacon/colony-estimates", icon: "🐱" },
         { label: "Reproduction", href: "/admin/beacon/reproduction", icon: "🍼" },
         { label: "Mortality", href: "/admin/beacon/mortality", icon: "📋" },
         { label: "Seasonal Analysis", href: "/admin/beacon/seasonal", icon: "📆" },
         { label: "Forecasts", href: "/admin/beacon/forecasts", icon: "🔮" },
+        { label: "Google Maps Sync", href: "/admin/beacon-data/google-maps-sync", icon: "📍" },
       ],
     },
     {

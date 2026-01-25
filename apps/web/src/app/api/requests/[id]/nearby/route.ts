@@ -46,6 +46,23 @@ interface NearbyCat {
   altered_status: string | null;
 }
 
+interface PlaceContextFlags {
+  has_active_request: boolean;
+  has_recent_clinic: boolean;
+  has_google_history: boolean;
+  has_nearby_activity: boolean;
+}
+
+interface PlaceContext {
+  place_id: string;
+  address: string;
+  context_flags: PlaceContextFlags;
+  active_requests_count: number;
+  clinic_cats_6mo: number;
+  google_entries_nearby: number;
+  nearby_requests_count: number;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -67,8 +84,9 @@ export async function GET(
       lat: number | null;
       lng: number | null;
       place_id: string | null;
+      formatted_address: string | null;
     }>(
-      `SELECT p.lat, p.lng, r.place_id
+      `SELECT p.lat, p.lng, r.place_id, p.formatted_address
        FROM trapper.sot_requests r
        LEFT JOIN trapper.places p ON p.place_id = r.place_id
        WHERE r.request_id = $1`,
@@ -94,6 +112,33 @@ export async function GET(
         },
         message: "Request has no place with coordinates",
       });
+    }
+
+    // Fetch place context if we have a place_id
+    let placeContext: PlaceContext | null = null;
+    if (requestInfo.place_id) {
+      const contextResult = await queryOne<{ context: any }>(
+        `SELECT trapper.get_place_context($1) as context`,
+        [requestInfo.place_id]
+      );
+
+      if (contextResult?.context && !contextResult.context.error) {
+        const ctx = contextResult.context;
+        placeContext = {
+          place_id: requestInfo.place_id,
+          address: requestInfo.formatted_address || ctx.address || "",
+          context_flags: ctx.context_flags || {
+            has_active_request: false,
+            has_recent_clinic: false,
+            has_google_history: false,
+            has_nearby_activity: false,
+          },
+          active_requests_count: ctx.active_requests?.length || 0,
+          clinic_cats_6mo: ctx.clinic_activity?.total_cats_6mo || 0,
+          google_entries_nearby: ctx.google_context?.length || 0,
+          nearby_requests_count: ctx.nearby_requests?.length || 0,
+        };
+      }
     }
 
     // Fetch all nearby entities in parallel
@@ -221,6 +266,8 @@ export async function GET(
     return NextResponse.json({
       request_id: id,
       center: { lat: requestInfo.lat, lng: requestInfo.lng },
+      place_id: requestInfo.place_id,
+      context: placeContext,
       nearby: {
         requests: nearbyRequests,
         places: nearbyPlaces,
@@ -233,6 +280,10 @@ export async function GET(
         total_people: nearbyPeople.length,
         total_cats: nearbyCats.length,
         radius_meters: radius,
+        has_active_request: placeContext?.context_flags.has_active_request || false,
+        has_recent_clinic: placeContext?.context_flags.has_recent_clinic || false,
+        has_google_history: placeContext?.context_flags.has_google_history || false,
+        has_nearby_activity: placeContext?.context_flags.has_nearby_activity || false,
       },
     });
   } catch (error) {

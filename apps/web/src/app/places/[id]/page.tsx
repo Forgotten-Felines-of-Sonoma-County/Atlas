@@ -20,6 +20,7 @@ import { VerificationBadge, LastVerified } from "@/components/VerificationBadge"
 import { formatDateLocal } from "@/lib/formatters";
 import { MediaGallery } from "@/components/MediaGallery";
 import { QuickActions, usePlaceQuickActionState } from "@/components/QuickActions";
+import { CatPresenceReconciliation } from "@/components/CatPresenceReconciliation";
 
 interface Cat {
   cat_id: string;
@@ -754,6 +755,14 @@ export default function PlaceDetailPage() {
           allowedMediaTypes={["site_photo", "evidence"]}
         />
       </Section>
+
+      {/* Cat Presence Reconciliation Banner */}
+      {place.cats && place.cats.length > 0 && (
+        <CatPresenceReconciliation
+          placeId={place.place_id}
+          onUpdate={() => fetchPlace()}
+        />
+      )}
 
       {/* Cats - Clickable Links */}
       <Section title="Cats">

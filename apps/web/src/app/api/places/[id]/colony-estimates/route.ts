@@ -33,6 +33,9 @@ interface ColonyStatus {
 
 interface EcologyStats {
   a_known: number;
+  a_known_current: number;
+  a_known_effective: number;
+  cats_needing_tnr: number;
   n_recent_max: number;
   p_lower: number | null;
   p_lower_pct: number | null;
@@ -148,6 +151,9 @@ export async function GET(
       const ecologySql = `
         SELECT
           COALESCE(a_known, 0) as a_known,
+          COALESCE(a_known_current, 0) as a_known_current,
+          COALESCE(a_known_effective, 0) as a_known_effective,
+          COALESCE(cats_needing_tnr, 0) as cats_needing_tnr,
           COALESCE(n_recent_max, 0) as n_recent_max,
           p_lower,
           p_lower_pct,
@@ -203,6 +209,9 @@ export async function GET(
       // Ecology-based metrics (wildlife management best practices)
       ecology: ecology || {
         a_known: 0,
+        a_known_current: 0,
+        a_known_effective: 0,
+        cats_needing_tnr: 0,
         n_recent_max: 0,
         p_lower: null,
         p_lower_pct: null,
