@@ -15,6 +15,7 @@ interface SourceConfig {
   value: string;
   label: string;
   tables: string[];
+  accepts?: string[];
 }
 
 interface FileUpload {
@@ -131,7 +132,9 @@ export default function IngestPage() {
   }, [fetchData]);
 
   // Get available tables for selected source
-  const availableTables = sources.find((s) => s.value === selectedSource)?.tables || [];
+  const selectedSourceConfig = sources.find((s) => s.value === selectedSource);
+  const availableTables = selectedSourceConfig?.tables || [];
+  const acceptedFileTypes = selectedSourceConfig?.accepts?.join(",") || ".csv,.xlsx,.xls";
 
   // Handle file upload
   const handleUpload = async (e: React.FormEvent) => {
@@ -362,12 +365,12 @@ export default function IngestPage() {
             {/* File Input */}
             <div>
               <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
-                Data File (CSV or XLSX)
+                Data File {selectedSource === "google_maps" ? "(KMZ or KML)" : "(CSV or XLSX)"}
               </label>
               <input
                 id="file-input"
                 type="file"
-                accept=".csv,.xlsx,.xls"
+                accept={acceptedFileTypes}
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
               />
             </div>

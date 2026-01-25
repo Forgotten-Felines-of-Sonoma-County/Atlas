@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne, queryRows } from "@/lib/db";
-import { readFile } from "fs/promises";
+import { readFile, writeFile, mkdir, rm } from "fs/promises";
 import path from "path";
+import os from "os";
 import * as XLSX from "xlsx";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
+import { parseStringPromise } from "xml2js";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 interface FileUpload {
   upload_id: string;
@@ -117,6 +123,11 @@ export async function POST(
           { status: 404 }
         );
       }
+    }
+
+    // Handle Google Maps KMZ/KML files differently
+    if (upload.source_system === 'google_maps') {
+      return await processGoogleMapsFile(uploadId, upload, buffer);
     }
 
     // Parse file
@@ -817,4 +828,214 @@ async function runClinicHQPostProcessing(sourceTable: string): Promise<Record<st
   }
 
   return results;
+}
+
+// Process Google Maps KMZ/KML files
+interface Placemark {
+  name: string;
+  description: string;
+  lat: number;
+  lng: number;
+  styleUrl: string;
+  folder: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractPlacemarks(node: any, folderName = ""): Placemark[] {
+  const placemarks: Placemark[] = [];
+
+  if (!node) return placemarks;
+
+  // Handle Folder
+  if (node.Folder) {
+    const folders = Array.isArray(node.Folder) ? node.Folder : [node.Folder];
+    for (const folder of folders) {
+      const name = folder.name?.[0] || "";
+      placemarks.push(...extractPlacemarks(folder, name));
+    }
+  }
+
+  // Handle Placemark
+  if (node.Placemark) {
+    const pms = Array.isArray(node.Placemark) ? node.Placemark : [node.Placemark];
+    for (const pm of pms) {
+      const name = pm.name?.[0] || "";
+      const description = pm.description?.[0] || "";
+      const styleUrl = pm.styleUrl?.[0] || "";
+      const coords = pm.Point?.coordinates?.[0] || "";
+
+      const [lng, lat] = coords.split(",").map((s: string) => parseFloat(s.trim()));
+
+      if (lat && lng) {
+        placemarks.push({
+          name,
+          description,
+          lat,
+          lng,
+          styleUrl,
+          folder: folderName,
+        });
+      }
+    }
+  }
+
+  // Handle Document
+  if (node.Document) {
+    const docs = Array.isArray(node.Document) ? node.Document : [node.Document];
+    for (const doc of docs) {
+      placemarks.push(...extractPlacemarks(doc, folderName));
+    }
+  }
+
+  return placemarks;
+}
+
+async function processGoogleMapsFile(
+  uploadId: string,
+  upload: FileUpload,
+  buffer: Buffer
+): Promise<NextResponse> {
+  const isKmz = upload.stored_filename.endsWith(".kmz");
+  const isKml = upload.stored_filename.endsWith(".kml");
+
+  if (!isKmz && !isKml) {
+    await query(
+      `UPDATE trapper.file_uploads SET status = 'failed', error_message = $2 WHERE upload_id = $1`,
+      [uploadId, "Google Maps files must be .kmz or .kml"]
+    );
+    return NextResponse.json(
+      { error: "Google Maps files must be .kmz or .kml" },
+      { status: 400 }
+    );
+  }
+
+  let kmlContent: string;
+
+  // For KMZ files, we need to extract the KML
+  if (isKmz) {
+    const tmpDir = path.join(os.tmpdir(), `google-maps-ingest-${randomUUID()}`);
+    try {
+      await mkdir(tmpDir, { recursive: true });
+      const kmzPath = path.join(tmpDir, "upload.kmz");
+      await writeFile(kmzPath, buffer);
+      await execAsync(`cd "${tmpDir}" && unzip -o upload.kmz`);
+      kmlContent = await readFile(path.join(tmpDir, "doc.kml"), "utf-8");
+    } catch (error) {
+      await query(
+        `UPDATE trapper.file_uploads SET status = 'failed', error_message = $2 WHERE upload_id = $1`,
+        [uploadId, `Failed to extract KMZ: ${error instanceof Error ? error.message : "Unknown error"}`]
+      );
+      return NextResponse.json(
+        { error: "Failed to extract KMZ file" },
+        { status: 500 }
+      );
+    } finally {
+      // Cleanup
+      try {
+        await rm(tmpDir, { recursive: true });
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  } else {
+    kmlContent = buffer.toString("utf-8");
+  }
+
+  // Parse KML
+  let placemarks: Placemark[];
+  try {
+    const result = await parseStringPromise(kmlContent);
+    placemarks = extractPlacemarks(result.kml);
+  } catch (error) {
+    await query(
+      `UPDATE trapper.file_uploads SET status = 'failed', error_message = $2 WHERE upload_id = $1`,
+      [uploadId, `Failed to parse KML: ${error instanceof Error ? error.message : "Unknown error"}`]
+    );
+    return NextResponse.json(
+      { error: "Failed to parse KML file" },
+      { status: 500 }
+    );
+  }
+
+  if (placemarks.length === 0) {
+    await query(
+      `UPDATE trapper.file_uploads SET status = 'failed', error_message = $2 WHERE upload_id = $1`,
+      [uploadId, "No placemarks found. If using a link from Google Maps, download the full KMZ export instead."]
+    );
+    return NextResponse.json(
+      { error: "No placemarks found in the file. It may be a NetworkLink file - please download the full KMZ export." },
+      { status: 400 }
+    );
+  }
+
+  // Stage the import using the centralized pattern
+  const importResult = await queryOne<{ import_id: string }>(`
+    INSERT INTO trapper.staged_google_maps_imports (
+      filename,
+      upload_method,
+      placemarks,
+      placemark_count,
+      uploaded_by,
+      status
+    ) VALUES ($1, $2, $3, $4, $5, 'pending')
+    RETURNING import_id::text
+  `, [
+    upload.original_filename,
+    'data_ingest',
+    JSON.stringify(placemarks),
+    placemarks.length,
+    'ingest_upload',
+  ]);
+
+  if (!importResult) {
+    await query(
+      `UPDATE trapper.file_uploads SET status = 'failed', error_message = $2 WHERE upload_id = $1`,
+      [uploadId, "Failed to stage import"]
+    );
+    return NextResponse.json(
+      { error: "Failed to stage import" },
+      { status: 500 }
+    );
+  }
+
+  // Process the import through the centralized function
+  const processResult = await queryOne<{ result: { success: boolean; updated: number; inserted: number; not_matched: number; error?: string } }>(`
+    SELECT trapper.process_google_maps_import($1) as result
+  `, [importResult.import_id]);
+
+  if (!processResult?.result?.success) {
+    await query(
+      `UPDATE trapper.file_uploads SET status = 'failed', error_message = $2 WHERE upload_id = $1`,
+      [uploadId, processResult?.result?.error || "Processing failed"]
+    );
+    return NextResponse.json(
+      { error: processResult?.result?.error || "Processing failed" },
+      { status: 500 }
+    );
+  }
+
+  // Mark file upload as completed
+  await query(
+    `UPDATE trapper.file_uploads
+     SET status = 'completed', processed_at = NOW(),
+         rows_total = $2, rows_inserted = $3, rows_updated = $4, rows_skipped = $5
+     WHERE upload_id = $1`,
+    [
+      uploadId,
+      placemarks.length,
+      processResult.result.inserted,
+      processResult.result.updated,
+      processResult.result.not_matched,
+    ]
+  );
+
+  return NextResponse.json({
+    success: true,
+    upload_id: uploadId,
+    import_id: importResult.import_id,
+    rows_total: placemarks.length,
+    rows_inserted: processResult.result.inserted,
+    rows_updated: processResult.result.updated,
+    rows_skipped: processResult.result.not_matched,
+  });
 }

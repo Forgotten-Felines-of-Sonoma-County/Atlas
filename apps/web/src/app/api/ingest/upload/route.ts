@@ -5,7 +5,7 @@ import { createHash } from "crypto";
 import path from "path";
 
 // Supported source systems and their expected tables
-const SOURCE_CONFIGS: Record<string, { tables: string[]; label: string }> = {
+const SOURCE_CONFIGS: Record<string, { tables: string[]; label: string; accepts?: string[] }> = {
   clinichq: {
     label: "ClinicHQ",
     tables: ["cat_info", "owner_info", "appointment_info"],
@@ -26,6 +26,11 @@ const SOURCE_CONFIGS: Record<string, { tables: string[]; label: string }> = {
     label: "PetLink",
     tables: ["pets", "owners"],
   },
+  google_maps: {
+    label: "Google Maps",
+    tables: ["placemarks"],
+    accepts: [".kmz", ".kml"],
+  },
 };
 
 export async function GET() {
@@ -35,6 +40,7 @@ export async function GET() {
       value: key,
       label: config.label,
       tables: config.tables,
+      accepts: config.accepts || [".csv", ".xlsx", ".xls"],
     })),
   });
 }
@@ -117,7 +123,10 @@ export async function POST(request: NextRequest) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const hashPrefix = fileHash.substring(0, 8);
     const originalExt = file.name.split('.').pop()?.toLowerCase() || 'csv';
-    const ext = ['csv', 'xlsx', 'xls'].includes(originalExt) ? originalExt : 'csv';
+    const validExts = SOURCE_CONFIGS[sourceSystem].accepts
+      ? SOURCE_CONFIGS[sourceSystem].accepts.map(e => e.replace('.', ''))
+      : ['csv', 'xlsx', 'xls'];
+    const ext = validExts.includes(originalExt) ? originalExt : validExts[0];
     const storedFilename = `${sourceSystem}_${sourceTable}_${timestamp}_${hashPrefix}.${ext}`;
 
     // Skip filesystem on serverless - store in DB only
