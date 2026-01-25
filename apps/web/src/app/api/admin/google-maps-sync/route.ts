@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
         'web_ui',
         JSON.stringify(placemarks),
         placemarks.length,
-        user?.email || 'unknown',
+        user?.displayName || 'unknown',
       ]);
 
       if (!importResult) {
