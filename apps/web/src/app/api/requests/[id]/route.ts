@@ -127,6 +127,12 @@ interface RequestDetailRow {
   email_batch_id: string | null;
 }
 
+// Validate UUID format
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -137,6 +143,14 @@ export async function GET(
     return NextResponse.json(
       { error: "Request ID is required" },
       { status: 400 }
+    );
+  }
+
+  // Validate UUID format before querying - legacy Airtable IDs (recXXX) are not valid
+  if (!isValidUUID(id)) {
+    return NextResponse.json(
+      { error: "Request not found", details: "Invalid request ID format" },
+      { status: 404 }
     );
   }
 

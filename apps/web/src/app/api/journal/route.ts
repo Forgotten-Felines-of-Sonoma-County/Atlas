@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { queryRows, query, queryOne } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
+// Validate UUID format
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
 // Modern journal entry schema (MIG_140 + MIG_244 + MIG_276)
 interface JournalEntryRow {
   id: string;
@@ -59,30 +65,45 @@ export async function GET(request: NextRequest) {
   }
 
   if (catId) {
+    if (!isValidUUID(catId)) {
+      return NextResponse.json({ entries: [], total: 0 });
+    }
     conditions.push(`je.primary_cat_id = $${paramIndex}`);
     params.push(catId);
     paramIndex++;
   }
 
   if (personId) {
+    if (!isValidUUID(personId)) {
+      return NextResponse.json({ entries: [], total: 0 });
+    }
     conditions.push(`je.primary_person_id = $${paramIndex}`);
     params.push(personId);
     paramIndex++;
   }
 
   if (placeId) {
+    if (!isValidUUID(placeId)) {
+      return NextResponse.json({ entries: [], total: 0 });
+    }
     conditions.push(`je.primary_place_id = $${paramIndex}`);
     params.push(placeId);
     paramIndex++;
   }
 
   if (requestId) {
+    if (!isValidUUID(requestId)) {
+      return NextResponse.json({ entries: [], total: 0 });
+    }
     conditions.push(`je.primary_request_id = $${paramIndex}`);
     params.push(requestId);
     paramIndex++;
   }
 
   if (submissionId) {
+    if (!isValidUUID(submissionId)) {
+      return NextResponse.json({ entries: [], total: 0 });
+    }
     conditions.push(`je.primary_submission_id = $${paramIndex}`);
     params.push(submissionId);
     paramIndex++;
