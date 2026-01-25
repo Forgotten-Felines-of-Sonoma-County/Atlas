@@ -295,10 +295,12 @@ export function ColonyEstimates({ placeId }: ColonyEstimatesProps) {
   // Colony size: use authoritative count for individual_cats, otherwise ecology or status
   const colonySize = classificationAuthCount ?? ecology?.best_colony_estimate ?? status.colony_size_estimate;
 
-  // Alteration rate: for individual_cats, calculate directly; otherwise use ecology if available
+  // Alteration rate: for individual_cats, calculate directly (capped at 100%); otherwise use ecology if available
+  // For individual_cats, we cap at 100% because more verified cats than authoritative count
+  // likely means historical cats were linked that are no longer at the location
   const alterationRate = isIndividualCats
     ? (colonySize > 0
-        ? Math.round((status.verified_altered_count / colonySize) * 100)
+        ? Math.min(100, Math.round((status.verified_altered_count / colonySize) * 100))
         : null)
     : (ecology?.p_lower_pct ?? (
         status.colony_size_estimate > 0
