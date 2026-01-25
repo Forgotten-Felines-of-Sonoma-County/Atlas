@@ -2,17 +2,28 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+interface ImportHistory {
+  import_id: string;
+  filename: string;
+  status: string;
+  placemark_count: number;
+  updated_count: number | null;
+  inserted_count: number | null;
+  uploaded_at: string;
+  processed_at: string | null;
+}
+
 interface SyncStats {
   stats: Array<{ icon_meaning: string; count: number }>;
   totals: { total: number; with_icons: number; synced: number };
   lastSyncedAt: string | null;
+  history: ImportHistory[];
 }
 
 interface SyncResult {
   updated: number;
   inserted: number;
   notMatched: number;
-  iconDistribution: Record<string, number>;
 }
 
 const ICON_MEANING_COLORS: Record<string, string> = {
@@ -45,7 +56,6 @@ export default function GoogleMapsSyncPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<SyncResult | null>(null);
-  const [syncMode, setSyncMode] = useState<"update" | "sync">("update");
 
   const fetchStats = useCallback(async () => {
     try {
@@ -75,7 +85,6 @@ export default function GoogleMapsSyncPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("mode", syncMode);
 
       const response = await fetch("/api/admin/google-maps-sync", {
         method: "POST",
@@ -211,25 +220,6 @@ export default function GoogleMapsSyncPage() {
         <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
           <div>
             <label style={{ display: "block", fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>
-              Sync Mode
-            </label>
-            <select
-              value={syncMode}
-              onChange={(e) => setSyncMode(e.target.value as "update" | "sync")}
-              style={{
-                padding: "0.5rem",
-                border: "1px solid #d1d5db",
-                borderRadius: "0.375rem",
-                fontSize: "0.875rem",
-              }}
-            >
-              <option value="update">Update Only (entries missing icons)</option>
-              <option value="sync">Full Sync (update all + add new)</option>
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>
               File
             </label>
             <input
@@ -291,6 +281,57 @@ export default function GoogleMapsSyncPage() {
           </div>
         )}
       </div>
+
+      {/* Import History */}
+      {stats?.history && stats.history.length > 0 && (
+        <div
+          style={{
+            padding: "1.5rem",
+            backgroundColor: "white",
+            borderRadius: "0.5rem",
+            border: "1px solid #e5e7eb",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <h2 style={{ margin: "0 0 1rem", fontSize: "1rem", fontWeight: 600 }}>
+            Import History
+          </h2>
+          <table style={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+                <th style={{ textAlign: "left", padding: "0.5rem", color: "#6b7280" }}>File</th>
+                <th style={{ textAlign: "left", padding: "0.5rem", color: "#6b7280" }}>Status</th>
+                <th style={{ textAlign: "right", padding: "0.5rem", color: "#6b7280" }}>Placemarks</th>
+                <th style={{ textAlign: "right", padding: "0.5rem", color: "#6b7280" }}>Updated</th>
+                <th style={{ textAlign: "left", padding: "0.5rem", color: "#6b7280" }}>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.history.map((item) => (
+                <tr key={item.import_id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                  <td style={{ padding: "0.5rem" }}>{item.filename}</td>
+                  <td style={{ padding: "0.5rem" }}>
+                    <span
+                      style={{
+                        padding: "0.125rem 0.5rem",
+                        borderRadius: "9999px",
+                        fontSize: "0.75rem",
+                        backgroundColor: item.status === "completed" ? "#dcfce7" : item.status === "failed" ? "#fef2f2" : "#fef9c3",
+                        color: item.status === "completed" ? "#166534" : item.status === "failed" ? "#991b1b" : "#854d0e",
+                      }}
+                    >
+                      {item.status}
+                    </span>
+                  </td>
+                  <td style={{ padding: "0.5rem", textAlign: "right" }}>{item.placemark_count}</td>
+                  <td style={{ padding: "0.5rem", textAlign: "right" }}>{item.updated_count ?? "-"}</td>
+                  <td style={{ padding: "0.5rem", color: "#6b7280" }}>{formatDate(item.uploaded_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Icon Meaning Distribution */}
       <div
@@ -372,6 +413,8 @@ export default function GoogleMapsSyncPage() {
           color: "#4b5563",
         }}
       >
+        <strong>Ingest Pipeline:</strong> Uploads are staged in <code>staged_google_maps_imports</code> and processed through the centralized pipeline.
+        <br /><br />
         <strong>Icon Meanings:</strong>
         <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.5rem" }}>
           <li><strong>Black dots (icon-503-000000)</strong>: Difficult clients, watch list</li>

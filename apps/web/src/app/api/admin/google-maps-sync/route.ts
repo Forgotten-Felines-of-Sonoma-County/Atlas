@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { queryRows, query } from "@/lib/db";
-import { requireRole, AuthError } from "@/lib/auth";
+import { queryRows, queryOne, query } from "@/lib/db";
+import { requireRole, AuthError, getCurrentUser } from "@/lib/auth";
 import { parseStringPromise } from "xml2js";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -14,8 +14,13 @@ const execAsync = promisify(exec);
 /**
  * Google Maps Sync API
  *
- * GET: Get sync status and icon style stats
- * POST: Upload KMZ file to sync icon styles
+ * Follows the centralized ingest pipeline pattern:
+ * 1. Upload KMZ → Parse placemarks → Stage in staged_google_maps_imports
+ * 2. Enqueue for processing (or process immediately)
+ * 3. Processing updates google_map_entries with icon data
+ *
+ * GET: Get sync status, import history, and icon style stats
+ * POST: Upload KMZ file to stage for processing
  */
 
 interface IconStats {
@@ -23,11 +28,15 @@ interface IconStats {
   count: number;
 }
 
-interface SyncResult {
-  updated: number;
-  inserted: number;
-  notMatched: number;
-  iconDistribution: Record<string, number>;
+interface ImportHistory {
+  import_id: string;
+  filename: string;
+  status: string;
+  placemark_count: number;
+  updated_count: number | null;
+  inserted_count: number | null;
+  uploaded_at: string;
+  processed_at: string | null;
 }
 
 function parseStyleId(styleUrl: string): {
@@ -53,10 +62,8 @@ interface Placemark {
   description: string;
   lat: number;
   lng: number;
-  iconType: string | null;
-  iconColor: string | null;
-  styleId: string | null;
-  folderName: string;
+  styleUrl: string;
+  folder: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,16 +93,13 @@ function extractPlacemarks(node: any, folderName = ""): Placemark[] {
       const [lng, lat] = coords.split(",").map((s: string) => parseFloat(s.trim()));
 
       if (lat && lng) {
-        const { iconType, iconColor, styleId } = parseStyleId(styleUrl);
         placemarks.push({
           name,
           description,
           lat,
           lng,
-          iconType,
-          iconColor,
-          styleId,
-          folderName,
+          styleUrl,
+          folder: folderName,
         });
       }
     }
@@ -142,10 +146,27 @@ export async function GET(request: NextRequest) {
       WHERE synced_at IS NOT NULL
     `);
 
+    // Get import history (recent 10)
+    const history = await queryRows<ImportHistory>(`
+      SELECT
+        import_id::text,
+        filename,
+        status,
+        placemark_count,
+        updated_count,
+        inserted_count,
+        uploaded_at::text,
+        processed_at::text
+      FROM trapper.staged_google_maps_imports
+      ORDER BY uploaded_at DESC
+      LIMIT 10
+    `);
+
     return NextResponse.json({
       stats,
       totals: totals[0] || { total: 0, with_icons: 0, synced: 0 },
       lastSyncedAt: lastSync[0]?.last_synced_at || null,
+      history,
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -162,10 +183,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await requireRole(request, ["admin"]);
+    const user = await getCurrentUser(request);
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const mode = formData.get("mode") as string | null; // 'update' or 'sync'
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -212,99 +233,50 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Process placemarks
-      const syncMode = mode === "sync";
-      let updated = 0;
-      let inserted = 0;
-      let notMatched = 0;
-      const iconDistribution: Record<string, number> = {};
+      // Stage the import (centralized ingest pattern)
+      const importResult = await queryOne<{ import_id: string }>(`
+        INSERT INTO trapper.staged_google_maps_imports (
+          filename,
+          upload_method,
+          placemarks,
+          placemark_count,
+          uploaded_by,
+          status
+        ) VALUES ($1, $2, $3, $4, $5, 'pending')
+        RETURNING import_id::text
+      `, [
+        file.name,
+        'web_ui',
+        JSON.stringify(placemarks),
+        placemarks.length,
+        user?.email || 'unknown',
+      ]);
 
-      for (const pm of placemarks) {
-        // Track icon distribution
-        const key = `${pm.iconType}-${pm.iconColor}`;
-        iconDistribution[key] = (iconDistribution[key] || 0) + 1;
-
-        if (syncMode) {
-          // Sync mode: update existing or insert new
-          const updateResult = await query(
-            `UPDATE trapper.google_map_entries
-             SET
-               icon_type = $1,
-               icon_color = $2,
-               icon_style_id = $3,
-               kml_folder = COALESCE($4, kml_folder),
-               kml_name = COALESCE($5, kml_name),
-               original_content = COALESCE($6, original_content),
-               synced_at = NOW()
-             WHERE
-               ROUND(lat::numeric, 5) = ROUND($7::numeric, 5)
-               AND ROUND(lng::numeric, 5) = ROUND($8::numeric, 5)
-             RETURNING entry_id`,
-            [pm.iconType, pm.iconColor, pm.styleId, pm.folderName, pm.name, pm.description, pm.lat, pm.lng]
-          );
-
-          if (updateResult.rowCount && updateResult.rowCount > 0) {
-            updated += updateResult.rowCount;
-          } else {
-            // Insert new entry
-            try {
-              await query(
-                `INSERT INTO trapper.google_map_entries
-                 (kml_name, original_content, lat, lng, icon_type, icon_color, icon_style_id, kml_folder, synced_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-                [pm.name, pm.description, pm.lat, pm.lng, pm.iconType, pm.iconColor, pm.styleId, pm.folderName]
-              );
-              inserted++;
-            } catch {
-              notMatched++;
-            }
-          }
-        } else {
-          // Update mode: only update entries missing icon data
-          const result = await query(
-            `UPDATE trapper.google_map_entries
-             SET
-               icon_type = $1,
-               icon_color = $2,
-               icon_style_id = $3,
-               kml_folder = COALESCE(kml_folder, $4),
-               synced_at = NOW()
-             WHERE
-               ROUND(lat::numeric, 5) = ROUND($5::numeric, 5)
-               AND ROUND(lng::numeric, 5) = ROUND($6::numeric, 5)
-               AND icon_type IS NULL
-             RETURNING entry_id`,
-            [pm.iconType, pm.iconColor, pm.styleId, pm.folderName, pm.lat, pm.lng]
-          );
-
-          if (result.rowCount && result.rowCount > 0) {
-            updated += result.rowCount;
-          } else {
-            notMatched++;
-          }
-        }
+      if (!importResult) {
+        throw new Error("Failed to stage import");
       }
 
-      // Derive icon meanings for updated entries
-      const derivedResult = await query(`
-        UPDATE trapper.google_map_entries
-        SET icon_meaning = trapper.derive_icon_meaning(icon_type, icon_color)
-        WHERE icon_type IS NOT NULL AND icon_meaning IS NULL
-        RETURNING entry_id
-      `);
+      // Process the import (could be async via job queue, but processing immediately for now)
+      const processResult = await queryOne<{ result: { success: boolean; updated: number; inserted: number; not_matched: number; error?: string } }>(`
+        SELECT trapper.process_google_maps_import($1) as result
+      `, [importResult.import_id]);
 
-      const syncResult: SyncResult = {
-        updated,
-        inserted,
-        notMatched,
-        iconDistribution,
-      };
+      if (!processResult?.result?.success) {
+        return NextResponse.json(
+          { error: processResult?.result?.error || "Processing failed" },
+          { status: 500 }
+        );
+      }
 
       return NextResponse.json({
         success: true,
-        result: syncResult,
+        import_id: importResult.import_id,
+        result: {
+          updated: processResult.result.updated,
+          inserted: processResult.result.inserted,
+          notMatched: processResult.result.not_matched,
+        },
         placemarksProcessed: placemarks.length,
-        meaningsDerived: derivedResult.rowCount || 0,
       });
     } finally {
       // Cleanup temp directory
