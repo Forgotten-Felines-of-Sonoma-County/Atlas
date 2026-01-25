@@ -858,7 +858,7 @@ function extractPlacemarks(node: any, folderName = ""): Placemark[] {
       const name = pm.name?.[0] || "";
       const description = pm.description?.[0] || "";
       const styleUrl = pm.styleUrl?.[0] || "";
-      const coords = pm.Point?.coordinates?.[0] || "";
+      const coords = pm.Point?.[0]?.coordinates?.[0] || "";
 
       const [lng, lat] = coords.split(",").map((s: string) => parseFloat(s.trim()));
 
