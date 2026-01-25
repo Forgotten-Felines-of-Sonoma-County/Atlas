@@ -13,6 +13,7 @@ import LogSiteVisitModal from "@/components/LogSiteVisitModal";
 import CompleteRequestModal from "@/components/CompleteRequestModal";
 import HoldRequestModal from "@/components/HoldRequestModal";
 import { ColonyEstimates } from "@/components/ColonyEstimates";
+import { ClassificationSuggestionBanner } from "@/components/ClassificationSuggestionBanner";
 import { MediaGallery } from "@/components/MediaGallery";
 import { RedirectRequestModal } from "@/components/RedirectRequestModal";
 import { HandoffRequestModal } from "@/components/HandoffRequestModal";
@@ -131,6 +132,15 @@ interface RequestDetail {
   ready_to_email: boolean;
   email_summary: string | null;
   email_batch_id: string | null;
+  // Classification suggestion (MIG_622)
+  suggested_classification: string | null;
+  classification_confidence: number | null;
+  classification_signals: Record<string, { value: string | number | boolean; weight: number; toward: string; note?: string }> | null;
+  classification_disposition: string | null;
+  classification_suggested_at: string | null;
+  classification_reviewed_at: string | null;
+  classification_reviewed_by: string | null;
+  current_place_classification: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -1772,6 +1782,35 @@ export default function RequestDetailPage() {
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* Classification Suggestion Banner (MIG_622) */}
+              {request.suggested_classification && (
+                <ClassificationSuggestionBanner
+                  requestId={request.request_id}
+                  placeId={request.place_id}
+                  suggestion={{
+                    suggested_classification: request.suggested_classification,
+                    classification_confidence: request.classification_confidence,
+                    classification_signals: request.classification_signals,
+                    classification_disposition: request.classification_disposition,
+                    classification_reviewed_at: request.classification_reviewed_at,
+                    classification_reviewed_by: request.classification_reviewed_by,
+                  }}
+                  currentPlaceClassification={request.current_place_classification}
+                  onUpdate={async () => {
+                    // Refetch request after classification update
+                    try {
+                      const response = await fetch(`/api/requests/${request.request_id}`);
+                      if (response.ok) {
+                        const data = await response.json();
+                        setRequest(data);
+                      }
+                    } catch (err) {
+                      console.error("Failed to refetch request:", err);
+                    }
+                  }}
+                />
               )}
 
               <ColonyEstimates placeId={request.place_id} />

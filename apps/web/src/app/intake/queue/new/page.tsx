@@ -15,6 +15,8 @@ import {
   MOM_FIXED_OPTIONS,
   REFERRAL_SOURCE_OPTIONS,
   URGENT_SITUATION_EXAMPLES,
+  COUNT_CONFIDENCE_OPTIONS,
+  COLONY_DURATION_OPTIONS,
 } from "@/lib/intake-options";
 
 // Maps to paper form fields exactly
@@ -43,6 +45,8 @@ interface IntakeFormData {
   // Section 3: About the Cats
   ownership_status: string;
   cat_count_estimate: number | "";
+  count_confidence: string;  // MIG_534: Is count exact or estimate?
+  colony_duration: string;   // How long have cats been at location?
   fixed_status: string;
   has_kittens: boolean;
   kitten_count: number | "";
@@ -103,6 +107,8 @@ const initialFormData: IntakeFormData = {
   county: "sonoma",
   ownership_status: "",
   cat_count_estimate: "",
+  count_confidence: "",
+  colony_duration: "",
   fixed_status: "",
   has_kittens: false,
   kitten_count: "",
@@ -329,6 +335,8 @@ export default function NewIntakeEntryPage() {
           county: form.county || null,
           ownership_status: form.ownership_status,
           cat_count_estimate: form.cat_count_estimate || null,
+          count_confidence: form.count_confidence || null,
+          colony_duration: form.colony_duration || null,
           fixed_status: form.fixed_status,
           // Feeding behavior (MIG_236)
           feeds_cat: form.feeds_cat,
@@ -664,6 +672,23 @@ export default function NewIntakeEntryPage() {
                 style={{ width: "80px", marginLeft: "0.5rem" }}
               />
             </div>
+            {form.cat_count_estimate && (
+              <div>
+                <label className="text-sm" style={{ marginRight: "0.5rem" }}>Is this count...</label>
+                {COUNT_CONFIDENCE_OPTIONS.slice(0, 3).map(opt => (
+                  <label key={opt.value} style={{ marginRight: "0.5rem", cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="count_confidence"
+                      value={opt.value}
+                      checked={form.count_confidence === opt.value}
+                      onChange={() => updateForm({ count_confidence: opt.value })}
+                    />
+                    {" "}{opt.value === "exact" ? "Exact" : opt.value === "good_estimate" ? "Estimate" : "Guess"}
+                  </label>
+                ))}
+              </div>
+            )}
             <div>
               <label className="text-sm" style={{ marginRight: "0.5rem" }}>Fixed (ear-tip)? *</label>
               {FIXED_STATUS_OPTIONS.map(opt => (
@@ -741,6 +766,21 @@ export default function NewIntakeEntryPage() {
                       onChange={() => updateForm({ feeding_duration: opt.value })}
                     />
                     {" "}{opt.label}
+                  </label>
+                ))}
+              </div>
+              <div>
+                <label className="text-sm" style={{ marginRight: "0.5rem" }}>Cats here how long?</label>
+                {COLONY_DURATION_OPTIONS.slice(0, 4).map(opt => (
+                  <label key={opt.value} style={{ marginRight: "0.5rem", cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="colony_duration"
+                      value={opt.value}
+                      checked={form.colony_duration === opt.value}
+                      onChange={() => updateForm({ colony_duration: opt.value })}
+                    />
+                    {" "}{opt.value === "under_1_month" ? "<1 mo" : opt.value === "1_to_6_months" ? "1-6 mo" : opt.value === "6_to_24_months" ? "6mo-2yr" : "2+ yrs"}
                   </label>
                 ))}
               </div>

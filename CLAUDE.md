@@ -385,6 +385,7 @@ These scripts use Claude AI to extract quantitative data from informal notes:
 
 | Script | Purpose | Output Table |
 |--------|---------|--------------|
+| `ai_classification_backfill.mjs` | **REUSABLE PATTERN** - Multi-source classification suggestions | `sot_requests`, `places` |
 | `populate_birth_events_from_appointments.mjs` | Create birth events from lactating/pregnant appointments | `cat_birth_events` |
 | `populate_mortality_from_clinic.mjs` | Create mortality events from clinic euthanasia notes | `cat_mortality_events` |
 | `parse_quantitative_data.mjs` | AI extracts cat counts, colony sizes from notes | `place_colony_estimates` |
@@ -394,11 +395,37 @@ These scripts use Claude AI to extract quantitative data from informal notes:
 ```bash
 # Run with environment variables
 export $(grep -v '^#' .env | xargs)
+node scripts/jobs/ai_classification_backfill.mjs --limit 100 --dry-run
 node scripts/jobs/parse_quantitative_data.mjs --source google_maps --limit 100
 node scripts/jobs/populate_birth_events_from_appointments.mjs --dry-run
 ```
 
 **Cron Endpoint:** `/api/cron/beacon-enrich` runs daily at 10 AM PT
+
+### Reusable AI Enrichment Pattern
+
+The `ai_classification_backfill.mjs` script demonstrates a reusable pattern for AI-powered data enrichment:
+
+1. **Data Collection** - Gather all relevant data for an entity from multiple sources
+2. **Prompt Construction** - Build structured prompt with gathered data
+3. **AI Analysis** - Claude returns structured JSON with classification + confidence
+4. **Application** - Save results, auto-apply at high confidence thresholds
+
+**Extending for ClinicHQ API:**
+
+When ClinicHQ API access is available, add to `getPlaceContext()`:
+```javascript
+const clinicHQData = await fetchFromClinicHQ({ endpoint: '/appointments', address: place.formatted_address });
+return { ...context, clinicHQ: clinicHQData };
+```
+
+Then update the prompt to include this data. The pattern handles rate limiting, error recovery, and confidence thresholds.
+
+**Other Enrichment Use Cases:**
+- Person deduplication suggestions
+- Cat identity matching (same cat, different appointments)
+- Colony boundary estimation from cat sighting overlaps
+- Priority scoring for intake requests
 
 ## Environment Variables
 

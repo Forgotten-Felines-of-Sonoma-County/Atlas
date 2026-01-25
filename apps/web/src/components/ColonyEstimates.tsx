@@ -290,10 +290,10 @@ export function ColonyEstimates({ placeId }: ColonyEstimatesProps) {
 
   // For individual_cats classification, use authoritative count and skip ecology stats
   const isIndividualCats = classification?.type === "individual_cats";
-  const authoritativeCount = classification?.authoritative_cat_count;
+  const classificationAuthCount = classification?.authoritative_cat_count;
 
   // Colony size: use authoritative count for individual_cats, otherwise ecology or status
-  const colonySize = authoritativeCount ?? ecology?.best_colony_estimate ?? status.colony_size_estimate;
+  const colonySize = classificationAuthCount ?? ecology?.best_colony_estimate ?? status.colony_size_estimate;
 
   // Alteration rate: for individual_cats, calculate directly; otherwise use ecology if available
   const alterationRate = isIndividualCats

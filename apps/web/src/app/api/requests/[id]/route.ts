@@ -125,6 +125,15 @@ interface RequestDetailRow {
   ready_to_email: boolean;
   email_summary: string | null;
   email_batch_id: string | null;
+  // Classification suggestion (MIG_622)
+  suggested_classification: string | null;
+  classification_confidence: number | null;
+  classification_signals: Record<string, unknown> | null;
+  classification_disposition: string | null;
+  classification_suggested_at: string | null;
+  classification_reviewed_at: string | null;
+  classification_reviewed_by: string | null;
+  current_place_classification: string | null;
 }
 
 // Validate UUID format
@@ -293,7 +302,16 @@ export async function GET(
         -- Email batching (MIG_605)
         r.ready_to_email,
         r.email_summary,
-        r.email_batch_id
+        r.email_batch_id,
+        -- Classification suggestion (MIG_622)
+        r.suggested_classification::TEXT,
+        r.classification_confidence,
+        r.classification_signals,
+        r.classification_disposition,
+        r.classification_suggested_at,
+        r.classification_reviewed_at,
+        r.classification_reviewed_by,
+        p.colony_classification::TEXT AS current_place_classification
       FROM trapper.sot_requests r
       LEFT JOIN trapper.places p ON p.place_id = r.place_id
       LEFT JOIN trapper.sot_addresses sa ON sa.address_id = p.sot_address_id

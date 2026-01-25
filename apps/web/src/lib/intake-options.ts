@@ -222,6 +222,77 @@ export const MOM_FIXED_OPTIONS = [
 ] as const;
 
 // =============================================================================
+// COUNT CONFIDENCE - Is the cat count exact or an estimate? (MIG_534)
+// Critical for classification - exact counts suggest individual_cats
+// =============================================================================
+export const COUNT_CONFIDENCE_OPTIONS = [
+  {
+    value: "exact",
+    label: "Exact count - I've counted specific cats",
+    desc: "Caller knows exactly how many cats there are",
+  },
+  {
+    value: "good_estimate",
+    label: "Good estimate - pretty sure about the number",
+    desc: "Caller has a reliable estimate based on regular observation",
+  },
+  {
+    value: "rough_guess",
+    label: "Rough guess - could be more or fewer",
+    desc: "Caller is uncertain, number could vary significantly",
+  },
+  {
+    value: "unknown",
+    label: "Unknown - hard to count",
+    desc: "Caller can't estimate with any confidence",
+  },
+] as const;
+
+export type CountConfidence = (typeof COUNT_CONFIDENCE_OPTIONS)[number]["value"];
+
+export function getCountConfidenceLabel(value: string): string {
+  return COUNT_CONFIDENCE_OPTIONS.find((o) => o.value === value)?.label || value;
+}
+
+// =============================================================================
+// COLONY DURATION - How long have cats been at this location?
+// Critical for classification - established sites suggest colony
+// =============================================================================
+export const COLONY_DURATION_OPTIONS = [
+  {
+    value: "under_1_month",
+    label: "Less than a month",
+    desc: "New situation, cats recently appeared",
+  },
+  {
+    value: "1_to_6_months",
+    label: "1-6 months",
+    desc: "Relatively recent, cats have been around a while",
+  },
+  {
+    value: "6_to_24_months",
+    label: "6 months to 2 years",
+    desc: "Established situation",
+  },
+  {
+    value: "over_2_years",
+    label: "Over 2 years",
+    desc: "Long-established colony or ongoing situation",
+  },
+  {
+    value: "unknown",
+    label: "Unknown / Not sure",
+    desc: "Caller doesn't know how long cats have been there",
+  },
+] as const;
+
+export type ColonyDuration = (typeof COLONY_DURATION_OPTIONS)[number]["value"];
+
+export function getColonyDurationLabel(value: string): string {
+  return COLONY_DURATION_OPTIONS.find((o) => o.value === value)?.label || value;
+}
+
+// =============================================================================
 // REFERRAL SOURCES - How did caller hear about FFSC?
 // =============================================================================
 export const REFERRAL_SOURCE_OPTIONS = [

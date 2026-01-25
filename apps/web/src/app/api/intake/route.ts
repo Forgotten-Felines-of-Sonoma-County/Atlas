@@ -37,6 +37,8 @@ interface IntakeSubmission {
   ownership_status?: "unknown_stray" | "community_colony" | "newcomer" | "my_cat" | "neighbors_cat" | "unsure";
   cat_count_estimate?: number;
   cat_count_text?: string;
+  count_confidence?: "exact" | "good_estimate" | "rough_guess" | "unknown";  // MIG_534: Is count exact or estimate?
+  colony_duration?: "under_1_month" | "1_to_6_months" | "6_to_24_months" | "over_2_years" | "unknown";  // How long cats at location
   cats_needing_tnr?: number;  // Cats still needing spay/neuter (distinct from total count)
   peak_count?: number;
   eartip_count_observed?: number;
@@ -225,7 +227,12 @@ export async function POST(request: NextRequest) {
         body.foster_readiness || null,
         body.kitten_urgency_factors || null,
         body.reviewed_by || null,
-        body.custom_fields ? JSON.stringify(body.custom_fields) : null,
+        // Merge count_confidence and colony_duration into custom_fields (MIG_622 classification support)
+        JSON.stringify({
+          ...(body.custom_fields || {}),
+          ...(body.count_confidence ? { count_confidence: body.count_confidence } : {}),
+          ...(body.colony_duration ? { colony_duration: body.colony_duration } : {}),
+        }),
         body.is_test || false,
         isStaffEntry ? "reviewed" : "new", // Legacy status field
         isStaffEntry ? new Date().toISOString() : null,
