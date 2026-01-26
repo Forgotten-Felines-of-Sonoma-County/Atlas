@@ -69,10 +69,11 @@ export async function GET(
 
     // Get available relationship types
     const relationshipTypes = await queryRows<RelationshipType>(`
-      SELECT id, code, label, description
+      SELECT id::text, code, label, description
       FROM trapper.relationship_types
-      WHERE entity_type = 'place'
-      ORDER BY label
+      WHERE domain = 'place_place'
+        AND active = true
+      ORDER BY sort_order, label
     `);
 
     return NextResponse.json({
@@ -128,8 +129,8 @@ export async function POST(
   try {
     // Get relationship type ID
     const relType = await queryOne<{ id: string }>(`
-      SELECT id FROM trapper.relationship_types
-      WHERE code = $1 AND entity_type = 'place'
+      SELECT id::text FROM trapper.relationship_types
+      WHERE code = $1 AND domain = 'place_place'
     `, [body.relationship_type]);
 
     if (!relType) {
