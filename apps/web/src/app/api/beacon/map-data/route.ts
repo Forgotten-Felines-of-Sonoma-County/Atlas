@@ -254,7 +254,7 @@ export async function GET(req: NextRequest) {
             ELSE 5
           END,
           cat_count DESC
-        LIMIT 10000
+        LIMIT 3000
       `);
 
       // Parse JSONB columns
@@ -301,7 +301,7 @@ export async function GET(req: NextRequest) {
           CASE WHEN disease_risk THEN 0 ELSE 1 END,
           CASE WHEN watch_list THEN 0 ELSE 1 END,
           imported_at DESC
-        LIMIT 5000
+        LIMIT 2000
       `);
       result.historical_pins = historicalPins;
     }

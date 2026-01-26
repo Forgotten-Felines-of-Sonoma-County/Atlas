@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "@/styles/beacon-map.css";
 import {
   createPinMarker,
   createCircleMarker,
@@ -209,20 +210,26 @@ interface LayerConfig {
   defaultEnabled: boolean;
 }
 
-const LAYER_CONFIGS: LayerConfig[] = [
-  // NEW simplified layers - recommended
-  { id: "atlas_pins", label: "Atlas Data", icon: "📍", color: "#3b82f6", description: "Consolidated places, people, cats, and history", defaultEnabled: true },
-  { id: "historical_pins", label: "Historical Context", icon: "⚪", color: "#9ca3af", description: "Unlinked Google Maps notes (historical only)", defaultEnabled: true },
-  // Legacy layers - for advanced filtering
-  { id: "places", label: "Cat Locations (Legacy)", icon: "🐱", color: "#3b82f6", description: "Places with verified cat activity", defaultEnabled: false },
-  { id: "google_pins", label: "All Google Pins (Legacy)", icon: "📍", color: "#f59e0b", description: "Google Maps historical data (AI classified)", defaultEnabled: false },
+// Primary layers (shown by default)
+const PRIMARY_LAYER_CONFIGS: LayerConfig[] = [
+  { id: "atlas_pins", label: "Atlas Data", icon: "📍", color: "#3b82f6", description: "Places, people, cats, and history", defaultEnabled: true },
+  { id: "historical_pins", label: "Historical Notes", icon: "⚪", color: "#9ca3af", description: "Unlinked Google Maps notes", defaultEnabled: true },
+];
+
+// Legacy layers (hidden by default, advanced users only)
+const LEGACY_LAYER_CONFIGS: LayerConfig[] = [
+  { id: "places", label: "Cat Locations", icon: "🐱", color: "#3b82f6", description: "Places with verified cat activity", defaultEnabled: false },
+  { id: "google_pins", label: "All Google Pins", icon: "📍", color: "#f59e0b", description: "Google Maps historical data (AI classified)", defaultEnabled: false },
   { id: "tnr_priority", label: "TNR Priority", icon: "🎯", color: "#dc2626", description: "Targeted TNR priority areas", defaultEnabled: false },
   { id: "zones", label: "Observation Zones", icon: "📊", color: "#10b981", description: "Mark-recapture sampling zones", defaultEnabled: false },
   { id: "volunteers", label: "Volunteers", icon: "⭐", color: "#FFD700", description: "FFSC trappers and volunteers", defaultEnabled: false },
   { id: "clinic_clients", label: "Clinic Clients", icon: "🏥", color: "#8b5cf6", description: "Recent spay/neuter clients", defaultEnabled: false },
-  { id: "historical_sources", label: "Historical Sources", icon: "📜", color: "#9333ea", description: "Places that were significant cat sources historically", defaultEnabled: false },
-  { id: "data_coverage", label: "Data Coverage", icon: "📊", color: "#059669", description: "Areas with rich vs sparse historical data", defaultEnabled: false },
+  { id: "historical_sources", label: "Historical Sources", icon: "📜", color: "#9333ea", description: "Significant historical sources", defaultEnabled: false },
+  { id: "data_coverage", label: "Data Coverage", icon: "📊", color: "#059669", description: "Data density by zone", defaultEnabled: false },
 ];
+
+// Combined for state initialization
+const LAYER_CONFIGS: LayerConfig[] = [...PRIMARY_LAYER_CONFIGS, ...LEGACY_LAYER_CONFIGS];
 
 // Map branding
 const MAP_TITLE = "Atlas Map";
@@ -273,6 +280,9 @@ export default function BeaconMapModern() {
   // Filters for atlas_pins layer
   const [riskFilter, setRiskFilter] = useState<"all" | "disease" | "watch_list" | "needs_tnr">("all");
   const [dataFilter, setDataFilter] = useState<"all" | "has_atlas" | "has_google" | "has_people">("all");
+
+  // Show legacy layers toggle
+  const [showLegacyLayers, setShowLegacyLayers] = useState(false);
 
   // Search suggestions
   const [searchResults, setSearchResults] = useState<Array<{ type: string; item: Place | GooglePin | Volunteer; label: string }>>([]);
@@ -760,6 +770,7 @@ export default function BeaconMapModern() {
 
   // =========================================================================
   // NEW: Atlas Pins layer (consolidated places + people + cats + history)
+  // Uses CircleMarker for better performance with large datasets
   // =========================================================================
   useEffect(() => {
     if (!mapRef.current) return;
@@ -773,67 +784,40 @@ export default function BeaconMapModern() {
     atlasPins.forEach((pin) => {
       if (!pin.lat || !pin.lng) return;
 
-      // Determine pin color based on style
+      // Determine pin color and size based on style
       let color: string;
-      let size: number;
-      let label: string;
+      let radius: number;
 
       switch (pin.pin_style) {
         case "disease":
           color = "#ea580c"; // Orange for disease
-          size = 32;
-          label = "⚠️";
+          radius = 10;
           break;
         case "watch_list":
           color = "#eab308"; // Yellow for watch list
-          size = 28;
-          label = "👁️";
+          radius = 9;
           break;
         case "active":
           color = "#22c55e"; // Green for active colony
-          size = 24;
-          label = "🐱";
+          radius = 8;
           break;
         case "has_history":
           color = "#6366f1"; // Indigo for has history
-          size = 22;
-          label = "📜";
+          radius = 7;
           break;
         default:
           color = "#3b82f6"; // Blue default
-          size = 20;
-          label = "📍";
+          radius = 6;
       }
 
-      // Create Google-style pin marker
-      const marker = L.marker([pin.lat, pin.lng], {
-        icon: L.divIcon({
-          className: "atlas-pin-marker",
-          html: `<div style="
-            position: relative;
-            width: ${size}px;
-            height: ${size + 8}px;
-          ">
-            <div style="
-              width: ${size}px;
-              height: ${size}px;
-              background: ${color};
-              border: 3px solid white;
-              border-radius: 50% 50% 50% 0;
-              transform: rotate(-45deg);
-              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-              display: flex;
-              align-items: center;
-              justify-content: center;
-            ">
-              <span style="transform: rotate(45deg); font-size: ${size * 0.45}px;">${label}</span>
-            </div>
-          </div>`,
-          iconSize: [size, size + 8],
-          iconAnchor: [size / 2, size + 8],
-          popupAnchor: [0, -(size + 4)]
-        }),
-        zIndexOffset: pin.pin_style === "disease" ? 1000 : pin.pin_style === "watch_list" ? 500 : 0
+      // Use CircleMarker for better performance
+      const marker = L.circleMarker([pin.lat, pin.lng], {
+        radius,
+        fillColor: color,
+        color: "white",
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.9,
       });
 
       // Build consolidated popup
@@ -921,6 +905,7 @@ export default function BeaconMapModern() {
 
   // =========================================================================
   // NEW: Historical Pins layer (unlinked Google Maps entries)
+  // Uses CircleMarker for better performance
   // =========================================================================
   useEffect(() => {
     if (!mapRef.current) return;
@@ -938,24 +923,16 @@ export default function BeaconMapModern() {
       const isDisease = pin.disease_risk;
       const isWatchList = pin.watch_list;
       const color = isDisease ? "#ea580c" : isWatchList ? "#eab308" : "#9ca3af";
-      const size = isDisease || isWatchList ? 12 : 8;
+      const radius = isDisease || isWatchList ? 5 : 4;
 
-      const marker = L.marker([pin.lat, pin.lng], {
-        icon: L.divIcon({
-          className: "historical-pin-marker",
-          html: `<div style="
-            width: ${size}px;
-            height: ${size}px;
-            background: ${color};
-            border: 2px solid white;
-            border-radius: 50%;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-            opacity: ${isDisease || isWatchList ? 1 : 0.7};
-          "></div>`,
-          iconSize: [size, size],
-          iconAnchor: [size / 2, size / 2],
-        }),
-        zIndexOffset: isDisease ? 100 : isWatchList ? 50 : -100
+      // Use CircleMarker for better performance
+      const marker = L.circleMarker([pin.lat, pin.lng], {
+        radius,
+        fillColor: color,
+        color: "white",
+        weight: 1,
+        opacity: isDisease || isWatchList ? 1 : 0.7,
+        fillOpacity: isDisease || isWatchList ? 0.9 : 0.6,
       });
 
       marker.bindPopup(`
@@ -1303,28 +1280,10 @@ export default function BeaconMapModern() {
           handleMyLocation();
           break;
         case "1":
-          toggleLayer("places");
+          toggleLayer("atlas_pins");
           break;
         case "2":
-          toggleLayer("google_pins");
-          break;
-        case "3":
-          toggleLayer("tnr_priority");
-          break;
-        case "4":
-          toggleLayer("zones");
-          break;
-        case "5":
-          toggleLayer("volunteers");
-          break;
-        case "6":
-          toggleLayer("clinic_clients");
-          break;
-        case "7":
-          toggleLayer("historical_sources");
-          break;
-        case "8":
-          toggleLayer("data_coverage");
+          toggleLayer("historical_pins");
           break;
       }
     };
@@ -1769,19 +1728,11 @@ export default function BeaconMapModern() {
             </div>
           )}
 
-          {/* Layer toggles */}
+          {/* Primary Layer toggles */}
           <div style={{ padding: "8px 0" }}>
-            {LAYER_CONFIGS.map((layer) => {
+            {PRIMARY_LAYER_CONFIGS.map((layer) => {
               const count = layer.id === "atlas_pins" ? atlasPins.length :
-                layer.id === "historical_pins" ? historicalPins.length :
-                layer.id === "places" ? places.length :
-                layer.id === "google_pins" ? googlePins.length :
-                layer.id === "tnr_priority" ? tnrPriority.length :
-                layer.id === "zones" ? zones.length :
-                layer.id === "volunteers" ? volunteers.length :
-                layer.id === "clinic_clients" ? clinicClients.length :
-                layer.id === "historical_sources" ? historicalSources.length :
-                layer.id === "data_coverage" ? dataCoverage.length : 0;
+                layer.id === "historical_pins" ? historicalPins.length : 0;
 
               return (
                 <div
@@ -1824,6 +1775,88 @@ export default function BeaconMapModern() {
                     justifyContent: "center",
                     color: "white",
                     fontSize: 12,
+                  }}>
+                    {enabledLayers[layer.id] && "✓"}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Legacy layers toggle */}
+            <div
+              onClick={() => setShowLegacyLayers(!showLegacyLayers)}
+              style={{
+                padding: "10px 16px",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                cursor: "pointer",
+                borderTop: "1px solid #e5e7eb",
+                marginTop: 8,
+              }}
+            >
+              <span style={{ fontSize: 12, color: "#6b7280" }}>
+                {showLegacyLayers ? "▼" : "▶"}
+              </span>
+              <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>
+                Advanced Layers ({LEGACY_LAYER_CONFIGS.length})
+              </span>
+            </div>
+
+            {/* Legacy layer toggles (hidden by default) */}
+            {showLegacyLayers && LEGACY_LAYER_CONFIGS.map((layer) => {
+              const count = layer.id === "places" ? places.length :
+                layer.id === "google_pins" ? googlePins.length :
+                layer.id === "tnr_priority" ? tnrPriority.length :
+                layer.id === "zones" ? zones.length :
+                layer.id === "volunteers" ? volunteers.length :
+                layer.id === "clinic_clients" ? clinicClients.length :
+                layer.id === "historical_sources" ? historicalSources.length :
+                layer.id === "data_coverage" ? dataCoverage.length : 0;
+
+              return (
+                <div
+                  key={layer.id}
+                  onClick={() => toggleLayer(layer.id)}
+                  style={{
+                    padding: "10px 16px 10px 32px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    cursor: "pointer",
+                    background: enabledLayers[layer.id] ? `${layer.color}10` : "#f9fafb",
+                    borderLeft: enabledLayers[layer.id] ? `3px solid ${layer.color}` : "3px solid transparent",
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{layer.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                      {layer.label}
+                      {enabledLayers[layer.id] && count > 0 && (
+                        <span style={{
+                          background: "#f3f4f6",
+                          padding: "1px 5px",
+                          borderRadius: 8,
+                          fontSize: 10,
+                          color: "#6b7280",
+                        }}>
+                          {count}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#9ca3af" }}>{layer.description}</div>
+                  </div>
+                  <div style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 4,
+                    border: `2px solid ${enabledLayers[layer.id] ? layer.color : "#d1d5db"}`,
+                    background: enabledLayers[layer.id] ? layer.color : "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "white",
+                    fontSize: 11,
                   }}>
                     {enabledLayers[layer.id] && "✓"}
                   </div>
@@ -2015,31 +2048,9 @@ export default function BeaconMapModern() {
 
       {/* Loading overlay */}
       {loading && (
-        <div style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          background: "white",
-          padding: "16px 24px",
-          borderRadius: 12,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-          zIndex: 1001,
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}>
-          <div style={{
-            width: 20,
-            height: 20,
-            border: "2px solid #e5e7eb",
-            borderTopColor: "#3b82f6",
-            borderRadius: "50%",
-            animation: "spin 1s linear infinite",
-          }} />
-          <span style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-            Loading map data...
-          </span>
+        <div className="map-loading-overlay">
+          <div className="map-loading-spinner" />
+          <span className="map-loading-text">Loading map data...</span>
         </div>
       )}
 
@@ -2060,29 +2071,25 @@ export default function BeaconMapModern() {
         </div>
       )}
 
-      {/* Keyboard shortcuts help */}
+      {/* Keyboard shortcuts help - minimal */}
       <div style={{
         position: "absolute",
         bottom: 24,
         right: 16,
         zIndex: 999,
-        background: "rgba(255,255,255,0.95)",
-        borderRadius: 8,
-        boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-        padding: "8px 12px",
-        fontSize: 11,
-        color: "#6b7280",
+        background: "rgba(255,255,255,0.9)",
+        borderRadius: 6,
+        boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+        padding: "6px 10px",
+        fontSize: 10,
+        color: "#9ca3af",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>Keyboard Shortcuts</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 12px" }}>
-          <span><kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>/</kbd> Search</span>
-          <span><kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>L</kbd> Layers</span>
-          <span><kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>M</kbd> My Location</span>
-          <span><kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>+/-</kbd> Zoom</span>
-          <span><kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>1-8</kbd> Toggle layers</span>
-          <span><kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>Esc</kbd> Close</span>
-        </div>
+        <kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>/</kbd> search
+        <span style={{ margin: "0 6px" }}>·</span>
+        <kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>L</kbd> layers
+        <span style={{ margin: "0 6px" }}>·</span>
+        <kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>M</kbd> location
       </div>
 
       {/* CSS animations are in beacon-map.css */}
