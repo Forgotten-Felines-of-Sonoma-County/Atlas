@@ -112,20 +112,30 @@
 
 /* Reset default leaflet-div-icon styling */
 .leaflet-div-icon {
-  background: transparent;
-  border: none;
+  background: transparent !important;
+  border: none !important;
 }
 
+/* Don't transform the marker container itself - Leaflet uses inline transforms for positioning */
 .leaflet-marker-icon {
+  /* No transform on the container */
+}
+
+/* Apply hover effects to the inner content, not the positioned container */
+.leaflet-marker-icon > div,
+.leaflet-marker-icon > svg {
   transition: transform var(--map-transition-fast),
               filter var(--map-transition-fast);
-  /* Ensure transform happens from the anchor point */
-  transform-origin: center bottom;
 }
 
+.leaflet-marker-icon:hover > div,
+.leaflet-marker-icon:hover > svg {
+  transform: scale(1.15);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+/* Ensure the marker stays on top when hovered */
 .leaflet-marker-icon:hover {
-  transform: scale(1.1);
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.25));
   z-index: 10000 !important;
 }
 
