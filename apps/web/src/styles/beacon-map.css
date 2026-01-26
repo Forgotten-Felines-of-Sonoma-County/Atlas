@@ -110,14 +110,22 @@
    Leaflet Marker Overrides
    ============================================================ */
 
+/* Reset default leaflet-div-icon styling */
+.leaflet-div-icon {
+  background: transparent;
+  border: none;
+}
+
 .leaflet-marker-icon {
   transition: transform var(--map-transition-fast),
               filter var(--map-transition-fast);
+  /* Ensure transform happens from the anchor point */
+  transform-origin: center bottom;
 }
 
 .leaflet-marker-icon:hover {
-  transform: scale(1.15) translateY(-4px) !important;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.25));
+  transform: scale(1.1);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.25));
   z-index: 10000 !important;
 }
 
