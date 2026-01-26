@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
       priority: string;
       has_observation: boolean;
       service_zone: string;
+      primary_person_name: string | null;
+      person_count: number;
     }>;
     google_pins?: Array<{
       id: string;
@@ -41,16 +43,13 @@ export async function GET(req: NextRequest) {
       lng: number;
       notes: string;
       entry_type: string;
-      signals: string[];
       cat_count: number | null;
-      // AI classification fields
       ai_meaning: string | null;
       display_label: string;
       display_color: string;
       staff_alert: boolean;
       ai_confidence: number | null;
-      disease_mentions: string[] | null;
-      safety_concerns: string[] | null;
+      classification_description: string | null;
     }>;
     tnr_priority?: Array<{
       id: string;
@@ -141,6 +140,8 @@ export async function GET(req: NextRequest) {
         priority: string;
         has_observation: boolean;
         service_zone: string;
+        primary_person_name: string | null;
+        person_count: number;
       }>(`
         WITH place_stats AS (
           SELECT
@@ -158,7 +159,21 @@ export async function GET(req: NextRequest) {
               SELECT 1 FROM trapper.place_colony_estimates pce
               WHERE pce.place_id = p.place_id AND pce.eartip_count_observed > 0
             ) as has_observation,
-            COALESCE(p.service_zone, 'Unknown') as service_zone
+            COALESCE(p.service_zone, 'Unknown') as service_zone,
+            -- Get primary person at this place
+            (
+              SELECT per.display_name
+              FROM trapper.person_place_relationships ppr
+              JOIN trapper.sot_people per ON per.person_id = ppr.person_id
+              WHERE ppr.place_id = p.place_id
+              ORDER BY ppr.is_primary DESC NULLS LAST, ppr.created_at ASC
+              LIMIT 1
+            ) as primary_person_name,
+            (
+              SELECT COUNT(DISTINCT ppr.person_id)::int
+              FROM trapper.person_place_relationships ppr
+              WHERE ppr.place_id = p.place_id
+            ) as person_count
           FROM trapper.places p
           LEFT JOIN (
             SELECT place_id, COUNT(DISTINCT cat_id) as cat_count
@@ -186,15 +201,13 @@ export async function GET(req: NextRequest) {
         lng: number;
         notes: string;
         entry_type: string;
-        signals: string[];
         cat_count: number | null;
         ai_meaning: string | null;
         display_label: string;
         display_color: string;
         staff_alert: boolean;
         ai_confidence: number | null;
-        disease_mentions: string[] | null;
-        safety_concerns: string[] | null;
+        classification_description: string | null;
       }>(`
         SELECT
           entry_id::text as id,
@@ -202,45 +215,18 @@ export async function GET(req: NextRequest) {
           lat,
           lng,
           COALESCE(ai_summary, original_content, '') as notes,
-          -- Use AI meaning if available, otherwise fall back to parsed signals
-          COALESCE(
-            ai_meaning,
-            CASE
-              WHEN parsed_signals->>'signals' IS NOT NULL
-                AND jsonb_array_length(parsed_signals->'signals') > 0
-              THEN (parsed_signals->'signals'->>0)
-              ELSE 'general'
-            END
-          ) as entry_type,
-          COALESCE(
-            ARRAY(SELECT jsonb_array_elements_text(parsed_signals->'signals')),
-            ARRAY[]::text[]
-          ) as signals,
-          COALESCE(
-            (ai_classification->'signals'->>'cat_count')::int,
-            parsed_cat_count
-          ) as cat_count,
-          -- AI classification fields
+          COALESCE(ai_meaning, 'general') as entry_type,
+          parsed_cat_count as cat_count,
           ai_meaning,
           COALESCE(display_label, 'Unknown') as display_label,
           COALESCE(display_color, '#CCCCCC') as display_color,
           COALESCE(staff_alert, false) as staff_alert,
           (ai_classification->>'confidence')::numeric as ai_confidence,
-          CASE
-            WHEN ai_classification->'signals'->'disease_mentions' IS NOT NULL
-            THEN ARRAY(SELECT jsonb_array_elements_text(ai_classification->'signals'->'disease_mentions'))
-            ELSE NULL
-          END as disease_mentions,
-          CASE
-            WHEN ai_classification->'signals'->'safety_concerns' IS NOT NULL
-            THEN ARRAY(SELECT jsonb_array_elements_text(ai_classification->'signals'->'safety_concerns'))
-            ELSE NULL
-          END as safety_concerns
+          classification_description
         FROM trapper.v_google_map_entries_classified
         WHERE lat IS NOT NULL
           AND lng IS NOT NULL
         ORDER BY
-          -- Prioritize entries with staff alerts
           CASE WHEN staff_alert THEN 0 ELSE 1 END,
           priority,
           synced_at DESC NULLS LAST

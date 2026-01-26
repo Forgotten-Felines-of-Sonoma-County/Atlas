@@ -140,7 +140,7 @@ interface LayerConfig {
 }
 
 const LAYER_CONFIGS: LayerConfig[] = [
-  { id: "places", label: "Colony Sites", icon: "🐱", color: "#3b82f6", description: "Places with known cat activity", defaultEnabled: true },
+  { id: "places", label: "Cat Locations", icon: "🐱", color: "#3b82f6", description: "Places with verified cat activity", defaultEnabled: true },
   { id: "google_pins", label: "Historical Pins", icon: "📍", color: "#f59e0b", description: "Google Maps historical data (AI classified)", defaultEnabled: false },
   { id: "tnr_priority", label: "TNR Priority", icon: "🎯", color: "#dc2626", description: "Targeted TNR priority areas", defaultEnabled: false },
   { id: "zones", label: "Observation Zones", icon: "📊", color: "#10b981", description: "Mark-recapture sampling zones", defaultEnabled: false },
@@ -299,6 +299,8 @@ export default function BeaconMapModern() {
         priority: place.priority,
         service_zone: place.service_zone,
         has_observation: place.has_observation,
+        primary_person_name: place.primary_person_name,
+        person_count: place.person_count,
       }));
       layer.addLayer(marker);
     });

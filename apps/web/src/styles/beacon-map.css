@@ -269,6 +269,15 @@
   border-radius: 50%;
 }
 
+.map-popup__person {
+  font-size: 13px;
+  color: var(--map-popup-secondary);
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: 6px;
+}
+
 .map-popup__content {
   padding: 12px 0;
   border-top: 1px solid var(--map-popup-border);

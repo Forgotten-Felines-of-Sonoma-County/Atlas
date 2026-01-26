@@ -25,6 +25,8 @@ interface PlaceData {
   priority?: string;
   service_zone?: string;
   has_observation?: boolean;
+  primary_person_name?: string | null;
+  person_count?: number;
 }
 
 /**
@@ -32,6 +34,21 @@ interface PlaceData {
  */
 export function buildPlacePopup(place: PlaceData): string {
   const priorityClass = getPriorityBadgeClass(place.priority || 'low');
+
+  // Build person info line if available
+  let personInfo = '';
+  if (place.primary_person_name) {
+    const catText = place.cat_count && place.cat_count > 0
+      ? ` brought in ${place.cat_count} cat${place.cat_count !== 1 ? 's' : ''}`
+      : '';
+    personInfo = `
+      <div class="map-popup__person">
+        <span style="color: #6366f1; font-weight: 500;">
+          ${escapeHtml(place.primary_person_name)}
+        </span>${catText}
+      </div>
+    `;
+  }
 
   return `
     <div class="map-popup map-popup--place">
@@ -43,6 +60,7 @@ export function buildPlacePopup(place: PlaceData): string {
           </span>
         ` : ''}
       </header>
+      ${personInfo}
       <div class="map-popup__meta">
         ${place.service_zone ? `
           <span class="map-popup__zone">${place.service_zone}</span>
