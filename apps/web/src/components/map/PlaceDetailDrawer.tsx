@@ -74,8 +74,13 @@ export function PlaceDetailDrawer({ placeId, onClose, onWatchlistChange }: Place
       return;
     }
 
+    // Reset state immediately when placeId changes to show loading
+    setPlace(null);
     setLoading(true);
     setError(null);
+    setActiveTab("original");
+    setShowWatchlistForm(false);
+    setWatchlistReason("");
 
     fetch(`/api/places/${placeId}/map-details`)
       .then((res) => {

@@ -97,9 +97,15 @@ export async function GET(
         GROUP BY place_id
       ) cc ON cc.place_id = p.place_id
       LEFT JOIN (
-        SELECT place_id, COUNT(DISTINCT person_id) AS person_count
-        FROM trapper.person_place_relationships
-        GROUP BY place_id
+        SELECT ppr.place_id, COUNT(DISTINCT ppr.person_id) AS person_count
+        FROM trapper.person_place_relationships ppr
+        JOIN trapper.sot_people per ON per.person_id = ppr.person_id
+        WHERE per.merged_into_person_id IS NULL
+          AND per.display_name IS NOT NULL
+          AND per.display_name !~ ', CA[ ,]'
+          AND per.display_name !~ '\\d{5}'
+          AND per.display_name !~* '^\\d+\\s+\\w+\\s+(st|rd|ave|blvd|dr|ln|ct|way|pl)\\b'
+        GROUP BY ppr.place_id
       ) ppl ON ppl.place_id = p.place_id
       LEFT JOIN (
         SELECT
@@ -123,6 +129,7 @@ export async function GET(
     }
 
     // Get people linked to this place
+    // Filter out entries that look like addresses (have state abbreviations or zip codes)
     const people = await queryRows<PersonLink>(
       `SELECT
         per.person_id,
@@ -131,6 +138,11 @@ export async function GET(
       JOIN trapper.sot_people per ON per.person_id = ppr.person_id
       WHERE ppr.place_id = $1
         AND per.merged_into_person_id IS NULL
+        -- Exclude entries that look like addresses
+        AND per.display_name IS NOT NULL
+        AND per.display_name !~ ', CA[ ,]'  -- Contains ", CA " or ", CA,"
+        AND per.display_name !~ '\\d{5}'     -- Contains 5-digit zip code
+        AND per.display_name !~* '^\\d+\\s+\\w+\\s+(st|rd|ave|blvd|dr|ln|ct|way|pl)\\b'  -- Starts with street address
       ORDER BY per.display_name`,
       [placeId]
     );

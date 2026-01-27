@@ -1002,12 +1002,46 @@ export default function AtlasMap() {
       });
 
       // Build consolidated popup
-      const peopleList = Array.isArray(pin.people) && pin.people.length > 0
-        ? pin.people.slice(0, 3).map((name: string) => `<div style="font-size: 12px;">• ${name}</div>`).join("")
+      // Filter out names that look like addresses (contain ", CA" or match the place address)
+      const isLikelyAddress = (name: string): boolean => {
+        if (!name) return true;
+        const lowerName = name.toLowerCase();
+        // Check for address patterns
+        if (lowerName.includes(", ca ") || lowerName.includes(", ca,") || lowerName.endsWith(", ca")) return true;
+        if (/\d{5}/.test(name)) return true; // Contains 5-digit zip
+        if (/^\d+\s+\w+\s+(st|rd|ave|blvd|dr|ln|ct|way|pl)\b/i.test(name)) return true; // Starts with street address
+        // Check if it matches the pin's address (ignoring case)
+        if (pin.address && lowerName === pin.address.toLowerCase()) return true;
+        return false;
+      };
+      const filteredPeople = Array.isArray(pin.people)
+        ? pin.people.filter((name: string) => !isLikelyAddress(name))
+        : [];
+      const peopleList = filteredPeople.length > 0
+        ? filteredPeople.slice(0, 3).map((name: string) => `<div style="font-size: 12px;">• ${name}</div>`).join("")
         : "";
 
-      const historySummaries = Array.isArray(pin.google_summaries) && pin.google_summaries.length > 0
-        ? pin.google_summaries.slice(0, 2).map((s: { summary: string; meaning: string | null; date: string | null }) =>
+      // Helper to check for AI refusal messages in summaries
+      const isRefusalSummary = (text: string | null | undefined): boolean => {
+        if (!text) return true; // Skip null/empty
+        const lowerText = text.toLowerCase();
+        return lowerText.includes("i can't paraphrase") ||
+               lowerText.includes("i cannot paraphrase") ||
+               lowerText.includes("i appreciate the question") ||
+               lowerText.includes("i need to clarify my role") ||
+               lowerText.includes("violate my instructions") ||
+               lowerText.includes("here's the original") ||
+               lowerText.includes("here's the cleaned version") ||
+               lowerText.includes("no changes needed");
+      };
+
+      const validSummaries = Array.isArray(pin.google_summaries)
+        ? pin.google_summaries.filter((s: { summary: string; meaning: string | null; date: string | null }) =>
+            s.summary && !isRefusalSummary(s.summary))
+        : [];
+
+      const historySummaries = validSummaries.length > 0
+        ? validSummaries.slice(0, 2).map((s: { summary: string; meaning: string | null; date: string | null }) =>
             `<div style="font-size: 11px; color: #6b7280; margin-top: 4px; padding: 4px; background: #f9fafb; border-radius: 4px;">
               ${s.summary?.substring(0, 120) || ""}${s.summary && s.summary.length > 120 ? "..." : ""}
               ${s.date ? `<span style="color: #9ca3af;"> (${s.date})</span>` : ""}
@@ -1053,7 +1087,7 @@ export default function AtlasMap() {
               <div style="font-size: 10px; color: #6b7280;">Cats${pin.is_clustered ? " (total)" : ""}</div>
             </div>
             <div style="background: #f3f4f6; padding: 8px; border-radius: 6px; text-align: center;">
-              <div style="font-size: 18px; font-weight: 700; color: #374151;">${pin.person_count}</div>
+              <div style="font-size: 18px; font-weight: 700; color: #374151;">${filteredPeople.length}</div>
               <div style="font-size: 10px; color: #6b7280;">People${pin.is_clustered ? " (total)" : ""}</div>
             </div>
             <div style="background: #f3f4f6; padding: 8px; border-radius: 6px; text-align: center;">
@@ -1062,15 +1096,15 @@ export default function AtlasMap() {
             </div>
           </div>
 
-          ${pin.person_count > 0 ? `
+          ${filteredPeople.length > 0 ? `
             <div style="margin-top: 8px;">
               <div style="font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">People:</div>
               ${peopleList}
-              ${pin.person_count > 3 ? `<div style="font-size: 11px; color: #9ca3af;">+${pin.person_count - 3} more</div>` : ""}
+              ${filteredPeople.length > 3 ? `<div style="font-size: 11px; color: #9ca3af;">+${filteredPeople.length - 3} more</div>` : ""}
             </div>
           ` : ""}
 
-          ${pin.google_entry_count > 0 ? `
+          ${validSummaries.length > 0 ? `
             <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
               <div style="font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">
                 📜 Historical Notes (${pin.google_entry_count})
@@ -1136,6 +1170,32 @@ export default function AtlasMap() {
         }),
       });
 
+      // Check if AI summary is a refusal message (don't show those)
+      const isAiRefusal = (text: string | null | undefined): boolean => {
+        if (!text) return false;
+        const lowerText = text.toLowerCase();
+        return lowerText.includes("i can't paraphrase") ||
+               lowerText.includes("i cannot paraphrase") ||
+               lowerText.includes("i appreciate the question") ||
+               lowerText.includes("i need to clarify my role") ||
+               lowerText.includes("violate my instructions") ||
+               lowerText.includes("here's the original") ||
+               lowerText.includes("here's the cleaned version") ||
+               lowerText.includes("no changes needed");
+      };
+
+      // Get the best available note text - prefer original, skip AI refusals
+      const getNoteText = (): string => {
+        // If AI summary exists and is not a refusal, use it
+        if (pin.ai_summary && !isAiRefusal(pin.ai_summary)) {
+          return pin.ai_summary;
+        }
+        // Otherwise use original notes
+        if (pin.notes) return pin.notes;
+        return "No notes available";
+      };
+      const noteText = getNoteText();
+
       // Build nearest place info for popup
       const nearestInfo = pin.nearest_place_id && pin.nearest_place_distance_m !== null
         ? `<div style="font-size: 11px; color: #6b7280; margin-top: 8px; padding: 8px; background: #f0f9ff; border-radius: 4px; border: 1px solid #bae6fd;">
@@ -1172,7 +1232,7 @@ export default function AtlasMap() {
           ` : ""}
 
           <div style="font-size: 12px; color: #374151; background: #f9fafb; padding: 8px; border-radius: 6px; max-height: 100px; overflow-y: auto;">
-            ${pin.ai_summary || pin.notes || "No notes available"}
+            ${noteText}
           </div>
 
           ${pin.parsed_date ? `
