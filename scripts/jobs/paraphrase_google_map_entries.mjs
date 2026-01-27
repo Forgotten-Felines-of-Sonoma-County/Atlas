@@ -34,6 +34,44 @@ const dim = '\x1b[2m';
 const bold = '\x1b[1m';
 const reset = '\x1b[0m';
 
+/**
+ * Light Redaction
+ * ===============
+ * Keeps original text verbatim with minimal cleanup:
+ * - Explicit profanity → [***]
+ * - SSN patterns → [SSN]
+ *
+ * PRESERVES: phone numbers, initials, informal language, sentiment
+ */
+const PROFANITY_PATTERNS = [
+  /\b(fuck|fucking|fucked|fucker)\b/gi,
+  /\b(shit|shitting|shitty)\b/gi,
+  /\b(damn|damned|goddamn)\b/gi,
+  /\b(ass|asshole)\b/gi,
+  /\b(bitch|bitches)\b/gi,
+  /\b(cunt|cunts)\b/gi,
+  /\b(cock|cocks)\b/gi,
+  /\b(dick|dicks)\b/gi,
+];
+
+const SSN_PATTERN = /\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g;
+
+function lightRedact(text) {
+  if (!text) return null;
+
+  let redacted = text;
+
+  // Redact profanity
+  for (const pattern of PROFANITY_PATTERNS) {
+    redacted = redacted.replace(pattern, '[***]');
+  }
+
+  // Redact SSNs
+  redacted = redacted.replace(SSN_PATTERN, '[SSN]');
+
+  return redacted;
+}
+
 const SYSTEM_PROMPT = `You are a light editor for Forgotten Felines of Sonoma County (FFSC), a cat TNR (Trap-Neuter-Return) organization.
 
 CONTEXT - How TNR Works:
@@ -170,11 +208,11 @@ Environment:
   const anthropic = new Anthropic();
 
   try {
-    // Get entries needing paraphrasing
+    // Get entries needing processing (either paraphrasing or light redaction)
     const result = await pool.query(`
-      SELECT entry_id, original_content, kml_name
+      SELECT entry_id, original_content, kml_name, original_redacted
       FROM trapper.google_map_entries
-      WHERE ai_processed_at IS NULL
+      WHERE (ai_processed_at IS NULL OR original_redacted IS NULL)
         AND original_content IS NOT NULL
         AND LENGTH(original_content) >= 20
       ORDER BY
@@ -197,6 +235,7 @@ Environment:
     const stats = {
       processed: 0,
       paraphrased: 0,
+      redactedOnly: 0,
       skipped: 0,
       errors: 0,
     };
@@ -205,9 +244,18 @@ Environment:
       stats.processed++;
       process.stdout.write(`  [${stats.processed}/${result.rows.length}] `);
 
-      const paraphrased = await paraphraseContent(anthropic, row.original_content);
+      // Always create light-redacted version
+      const redacted = lightRedact(row.original_content);
 
-      if (!paraphrased) {
+      // Check if AI paraphrasing is needed (only if not already done)
+      const needsParaphrase = !row.original_redacted;  // Using original_redacted as proxy for "processed"
+      let paraphrased = null;
+
+      if (needsParaphrase) {
+        paraphrased = await paraphraseContent(anthropic, row.original_content);
+      }
+
+      if (!redacted && !paraphrased) {
         console.log(`${yellow}skipped${reset} (too short or error)`);
         stats.skipped++;
         continue;
@@ -216,38 +264,64 @@ Environment:
       if (options.dryRun) {
         console.log(`${green}would save${reset}`);
         console.log(`${dim}    Original: ${row.original_content.substring(0, 60)}...${reset}`);
-        console.log(`${dim}    Paraphrased: ${paraphrased.substring(0, 60)}...${reset}`);
+        if (redacted) {
+          console.log(`${dim}    Redacted: ${redacted.substring(0, 60)}...${reset}`);
+        }
+        if (paraphrased) {
+          console.log(`${dim}    Paraphrased: ${paraphrased.substring(0, 60)}...${reset}`);
+        }
       } else {
-        // Save to database
-        await pool.query(`
-          SELECT trapper.update_google_map_ai_summary($1, $2, $3)
-        `, [row.entry_id, paraphrased, 0.85]);
-
-        console.log(`${green}saved${reset}`);
+        // Save both fields to database
+        if (paraphrased) {
+          await pool.query(`
+            UPDATE trapper.google_map_entries
+            SET
+              original_redacted = $2,
+              ai_summary = $3,
+              ai_processed_at = NOW(),
+              ai_confidence = 0.85
+            WHERE entry_id = $1
+          `, [row.entry_id, redacted, paraphrased]);
+          stats.paraphrased++;
+          console.log(`${green}saved (redacted + paraphrased)${reset}`);
+        } else if (redacted && !row.original_redacted) {
+          // Only update redacted field if not already set
+          await pool.query(`
+            UPDATE trapper.google_map_entries
+            SET original_redacted = $2
+            WHERE entry_id = $1
+          `, [row.entry_id, redacted]);
+          stats.redactedOnly++;
+          console.log(`${green}saved (redacted only)${reset}`);
+        } else {
+          console.log(`${yellow}skipped${reset} (already processed)`);
+          stats.skipped++;
+        }
       }
 
-      stats.paraphrased++;
-
-      // Rate limit - be nice to the API
-      await new Promise(r => setTimeout(r, 200));
+      // Rate limit - be nice to the API (only if we made an API call)
+      if (paraphrased) {
+        await new Promise(r => setTimeout(r, 200));
+      }
     }
 
     // Summary
     console.log(`\n${'═'.repeat(50)}`);
     console.log(`${bold}Summary${reset}`);
     console.log(`${'═'.repeat(50)}`);
-    console.log(`${cyan}Processed:${reset}    ${stats.processed}`);
-    console.log(`${green}Paraphrased:${reset}  ${stats.paraphrased}`);
-    console.log(`${yellow}Skipped:${reset}      ${stats.skipped}`);
+    console.log(`${cyan}Processed:${reset}      ${stats.processed}`);
+    console.log(`${green}Paraphrased:${reset}    ${stats.paraphrased}`);
+    console.log(`${green}Redacted only:${reset}  ${stats.redactedOnly}`);
+    console.log(`${yellow}Skipped:${reset}        ${stats.skipped}`);
     if (stats.errors > 0) {
-      console.log(`${red}Errors:${reset}       ${stats.errors}`);
+      console.log(`${red}Errors:${reset}         ${stats.errors}`);
     }
 
     // Check remaining
     const remaining = await pool.query(`
       SELECT COUNT(*) as count
       FROM trapper.google_map_entries
-      WHERE ai_processed_at IS NULL
+      WHERE (ai_processed_at IS NULL OR original_redacted IS NULL)
         AND original_content IS NOT NULL
         AND LENGTH(original_content) >= 20
     `);

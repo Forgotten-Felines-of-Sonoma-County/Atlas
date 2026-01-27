@@ -20,6 +20,7 @@ import {
   buildClinicClientPopup,
   buildZonePopup,
 } from "@/components/map/MapPopup";
+import { PlaceDetailDrawer } from "@/components/map/PlaceDetailDrawer";
 
 // Types for map data
 interface Place {
@@ -302,6 +303,19 @@ export default function AtlasMap() {
 
   // Zoom level for clustering behavior
   const [currentZoom, setCurrentZoom] = useState(10);
+
+  // Drawer state for place details
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+
+  // Expose setSelectedPlaceId globally for popup buttons
+  useEffect(() => {
+    (window as unknown as { atlasMapExpandPlace: (id: string) => void }).atlasMapExpandPlace = (id: string) => {
+      setSelectedPlaceId(id);
+    };
+    return () => {
+      delete (window as unknown as { atlasMapExpandPlace?: (id: string) => void }).atlasMapExpandPlace;
+    };
+  }, []);
 
   // Fetch map data
   const fetchMapData = useCallback(async () => {
@@ -884,7 +898,7 @@ export default function AtlasMap() {
           radius = pin.is_clustered ? 14 : 10;
           break;
         case "watch_list":
-          color = "#eab308"; // Yellow for watch list
+          color = "#8b5cf6"; // Purple for watch list (distinct from disease orange)
           radius = pin.is_clustered ? 13 : 9;
           break;
         case "active":
@@ -951,8 +965,8 @@ export default function AtlasMap() {
           ` : ""}
 
           ${pin.watch_list && !pin.disease_risk ? `
-            <div style="background: #fefce8; border: 1px solid #fef08a; padding: 8px; margin: 8px 0; border-radius: 6px;">
-              <div style="color: #ca8a04; font-weight: 600; font-size: 13px;">👁️ Watch List${pin.is_clustered ? " (in building)" : ""}</div>
+            <div style="background: #f5f3ff; border: 1px solid #c4b5fd; padding: 8px; margin: 8px 0; border-radius: 6px;">
+              <div style="color: #7c3aed; font-weight: 600; font-size: 13px;">👁️ Watch List${pin.is_clustered ? " (in building)" : ""}</div>
             </div>
           ` : ""}
 
@@ -994,10 +1008,16 @@ export default function AtlasMap() {
             </div>
           ` : ""}
 
-          <a href="/places/${pin.id}"
-             style="display: block; margin-top: 12px; padding: 8px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; text-align: center; font-size: 13px; font-weight: 500;">
-            ${pin.is_clustered ? "View Building Details →" : "View Full Details →"}
-          </a>
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button onclick="window.atlasMapExpandPlace('${pin.id}')"
+                    style="flex: 1; padding: 8px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;">
+              Expand Details
+            </button>
+            <a href="/places/${pin.id}" target="_blank"
+               style="flex: 1; padding: 8px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; text-align: center; font-size: 13px; font-weight: 500;">
+              ${pin.is_clustered ? "Open Page →" : "Open Page →"}
+            </a>
+          </div>
         </div>
       `);
 
@@ -1027,7 +1047,7 @@ export default function AtlasMap() {
       // Small dot for historical context
       const isDisease = pin.disease_risk;
       const isWatchList = pin.watch_list;
-      const color = isDisease ? "#ea580c" : isWatchList ? "#eab308" : "#9ca3af";
+      const color = isDisease ? "#ea580c" : isWatchList ? "#8b5cf6" : "#9ca3af";
       const radius = isDisease || isWatchList ? 5 : 4;
 
       // Use CircleMarker for better performance
@@ -1070,7 +1090,7 @@ export default function AtlasMap() {
           ` : ""}
 
           ${isWatchList && !isDisease ? `
-            <div style="background: #fefce8; border: 1px solid #fef08a; padding: 6px 8px; margin-bottom: 8px; border-radius: 4px; color: #ca8a04; font-size: 12px; font-weight: 600;">
+            <div style="background: #f5f3ff; border: 1px solid #c4b5fd; padding: 6px 8px; margin-bottom: 8px; border-radius: 4px; color: #7c3aed; font-size: 12px; font-weight: 600;">
               👁️ Watch List
             </div>
           ` : ""}
@@ -1797,7 +1817,7 @@ export default function AtlasMap() {
                   {[
                     { value: "all", label: "All", color: "#6b7280" },
                     { value: "disease", label: "Disease Risk", color: "#ea580c" },
-                    { value: "watch_list", label: "Watch List", color: "#eab308" },
+                    { value: "watch_list", label: "Watch List", color: "#8b5cf6" },
                     { value: "needs_tnr", label: "Needs TNR", color: "#dc2626" },
                   ].map(({ value, label, color }) => (
                     <button
@@ -2004,7 +2024,7 @@ export default function AtlasMap() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {[
                       { label: "Disease Risk", color: "#ea580c" },
-                      { label: "Watch List", color: "#eab308" },
+                      { label: "Watch List", color: "#8b5cf6" },
                       { label: "Active Colony", color: "#22c55e" },
                       { label: "Has History", color: "#6366f1" },
                       { label: "Minimal Data", color: "#3b82f6" },
@@ -2032,7 +2052,7 @@ export default function AtlasMap() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {[
                       { label: "Disease Mentioned", color: "#ea580c" },
-                      { label: "Watch List", color: "#eab308" },
+                      { label: "Watch List", color: "#8b5cf6" },
                       { label: "General Note", color: "#9ca3af" },
                     ].map(({ label, color }) => (
                       <span key={label} style={{
@@ -2219,6 +2239,15 @@ export default function AtlasMap() {
       </div>
 
       {/* CSS animations are in atlas-map.css */}
+
+      {/* Place Detail Drawer */}
+      {selectedPlaceId && (
+        <PlaceDetailDrawer
+          placeId={selectedPlaceId}
+          onClose={() => setSelectedPlaceId(null)}
+          onWatchlistChange={fetchMapData}
+        />
+      )}
     </div>
   );
 }
