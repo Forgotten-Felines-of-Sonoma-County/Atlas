@@ -20,6 +20,7 @@ import { HandoffRequestModal } from "@/components/HandoffRequestModal";
 import { NearbyEntities } from "@/components/NearbyEntities";
 import { QuickActions, useRequestQuickActionState } from "@/components/QuickActions";
 import { SendEmailModal } from "@/components/SendEmailModal";
+import { CreateColonyModal } from "@/components/CreateColonyModal";
 
 interface RequestDetail {
   request_id: string;
@@ -307,6 +308,7 @@ export default function RequestDetailPage() {
   const [completionTargetStatus, setCompletionTargetStatus] = useState<"completed" | "cancelled">("completed");
   const [showHoldModal, setShowHoldModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showColonyModal, setShowColonyModal] = useState(false);
 
   // Session/Staff info for auto-fill
   const [currentStaffId, setCurrentStaffId] = useState<string | null>(null);
@@ -1058,6 +1060,20 @@ export default function RequestDetailPage() {
                   Hand Off
                 </button>
               </>
+            )}
+            {request.place_id && (
+              <button
+                onClick={() => setShowColonyModal(true)}
+                style={{
+                  padding: "0.5rem 1rem",
+                  background: "transparent",
+                  color: "#059669",
+                  border: "1px solid #059669",
+                }}
+                title="Create a colony from this request location"
+              >
+                Create Colony
+              </button>
             )}
           </div>
         )}
@@ -2891,6 +2907,22 @@ export default function RequestDetailPage() {
         placeholders={{
           first_name: request.requester_name?.split(" ")[0] || "",
           address: request.place_address || "",
+        }}
+      />
+
+      {/* Create Colony Modal */}
+      <CreateColonyModal
+        isOpen={showColonyModal}
+        onClose={() => setShowColonyModal(false)}
+        requestId={request.request_id}
+        placeId={request.place_id || undefined}
+        staffName={undefined} // TODO: Get from session
+        onSuccess={(result) => {
+          setShowColonyModal(false);
+          // Show success notification
+          alert(`Colony "${result.colony_name}" created successfully!`);
+          // Optionally navigate to colony page
+          // router.push(`/colonies/${result.colony_id}`);
         }}
       />
     </div>

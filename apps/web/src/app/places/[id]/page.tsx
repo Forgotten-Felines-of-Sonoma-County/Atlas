@@ -21,6 +21,7 @@ import { formatDateLocal } from "@/lib/formatters";
 import { MediaGallery } from "@/components/MediaGallery";
 import { QuickActions, usePlaceQuickActionState } from "@/components/QuickActions";
 import { CatPresenceReconciliation } from "@/components/CatPresenceReconciliation";
+import { CreateColonyModal } from "@/components/CreateColonyModal";
 
 interface Cat {
   cat_id: string;
@@ -178,6 +179,7 @@ export default function PlaceDetailPage() {
 
   // Edit history panel
   const [showHistory, setShowHistory] = useState(false);
+  const [showColonyModal, setShowColonyModal] = useState(false);
 
   // Place kind options
   const PLACE_KINDS = [
@@ -478,6 +480,20 @@ export default function PlaceDetailPage() {
               }}
             >
               History
+            </button>
+            <button
+              onClick={() => setShowColonyModal(true)}
+              style={{
+                padding: "0.25rem 0.75rem",
+                fontSize: "0.875rem",
+                background: "transparent",
+                color: "#059669",
+                border: "1px solid #059669",
+                borderRadius: "4px",
+              }}
+              title="Create a colony from this location"
+            >
+              Create Colony
             </button>
           </div>
         </h1>
@@ -975,6 +991,18 @@ export default function PlaceDetailPage() {
           />
         </div>
       )}
+
+      {/* Create Colony Modal */}
+      <CreateColonyModal
+        isOpen={showColonyModal}
+        onClose={() => setShowColonyModal(false)}
+        placeId={place.place_id}
+        staffName={undefined} // TODO: Get from session
+        onSuccess={(result) => {
+          setShowColonyModal(false);
+          alert(`Colony "${result.colony_name}" created successfully!`);
+        }}
+      />
     </div>
   );
 }
