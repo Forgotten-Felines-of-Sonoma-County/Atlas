@@ -241,6 +241,10 @@ async function main() {
       }
     }
 
+    // Calculate metrics
+    const duration = (Date.now() - startTime) / 1000;
+    const sonnetPct = recordsProcessed > 0 ? ((sonnetCount / recordsProcessed) * 100).toFixed(1) : 0;
+
     // Log job
     if (!dryRun && recordsProcessed > 0) {
       const jobId = await logExtractionJob({
@@ -258,8 +262,6 @@ async function main() {
     }
 
     // Summary
-    const duration = (Date.now() - startTime) / 1000;
-    const sonnetPct = recordsProcessed > 0 ? ((sonnetCount / recordsProcessed) * 100).toFixed(1) : 0;
     console.log("\n" + "=".repeat(60));
     console.log("SUMMARY");
     console.log("=".repeat(60));
