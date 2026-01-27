@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 interface GoogleNote {
   entry_id: string;
@@ -96,6 +96,17 @@ export function PlaceDetailDrawer({ placeId, onClose, onWatchlistChange }: Place
         setLoading(false);
       });
   }, [placeId]);
+
+  // Deduplicate people by person_id (safety net in case API returns duplicates)
+  const uniquePeople = useMemo(() => {
+    if (!place?.people) return [];
+    const seen = new Set<string>();
+    return place.people.filter((person) => {
+      if (seen.has(person.person_id)) return false;
+      seen.add(person.person_id);
+      return true;
+    });
+  }, [place?.people]);
 
   // Handle watchlist toggle
   const handleWatchlistToggle = async () => {
@@ -233,11 +244,11 @@ export function PlaceDetailDrawer({ placeId, onClose, onWatchlistChange }: Place
             </div>
 
             {/* People Section */}
-            {place.people.length > 0 && (
+            {uniquePeople.length > 0 && (
               <div className="section">
                 <h3>People Linked</h3>
                 <div className="people-list">
-                  {place.people.map((person) => (
+                  {uniquePeople.map((person) => (
                     <a
                       key={person.person_id}
                       href={`/people/${person.person_id}`}

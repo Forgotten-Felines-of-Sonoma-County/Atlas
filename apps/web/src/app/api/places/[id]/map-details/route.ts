@@ -129,9 +129,10 @@ export async function GET(
     }
 
     // Get people linked to this place
+    // Use DISTINCT ON to deduplicate when a person has multiple roles (resident, owner, contact)
     // Filter out entries that look like addresses (have state abbreviations or zip codes)
     const people = await queryRows<PersonLink>(
-      `SELECT
+      `SELECT DISTINCT ON (per.person_id)
         per.person_id,
         per.display_name
       FROM trapper.person_place_relationships ppr
@@ -143,7 +144,7 @@ export async function GET(
         AND per.display_name !~ ', CA[ ,]'  -- Contains ", CA " or ", CA,"
         AND per.display_name !~ '\\d{5}'     -- Contains 5-digit zip code
         AND per.display_name !~* '^\\d+\\s+\\w+\\s+(st|rd|ave|blvd|dr|ln|ct|way|pl)\\b'  -- Starts with street address
-      ORDER BY per.display_name`,
+      ORDER BY per.person_id, per.display_name`,
       [placeId]
     );
 
