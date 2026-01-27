@@ -139,7 +139,7 @@ async function paraphraseContent(anthropic, content) {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-20250514',  // Haiku 4 - fast with better quality
+      model: 'claude-haiku-4-5-20251001',  // Haiku 4.5 - fast and capable
       max_tokens: 500,
       system: SYSTEM_PROMPT,
       messages: [
@@ -210,7 +210,7 @@ Environment:
   try {
     // Get entries needing processing (either paraphrasing or light redaction)
     const result = await pool.query(`
-      SELECT entry_id, original_content, kml_name, original_redacted
+      SELECT entry_id, original_content, kml_name, original_redacted, ai_processed_at
       FROM trapper.google_map_entries
       WHERE (ai_processed_at IS NULL OR original_redacted IS NULL)
         AND original_content IS NOT NULL
@@ -244,13 +244,22 @@ Environment:
       stats.processed++;
       process.stdout.write(`  [${stats.processed}/${result.rows.length}] `);
 
-      // Always create light-redacted version
-      const redacted = lightRedact(row.original_content);
+      // Check what needs to be done
+      const needsRedaction = !row.original_redacted;
+      const needsParaphrase = !row.ai_processed_at;
 
-      // Check if AI paraphrasing is needed (only if not already done)
-      const needsParaphrase = !row.original_redacted;  // Using original_redacted as proxy for "processed"
+      // Skip if both are already done
+      if (!needsRedaction && !needsParaphrase) {
+        console.log(`${yellow}skipped${reset} (already processed)`);
+        stats.skipped++;
+        continue;
+      }
+
+      // Create light-redacted version if needed
+      const redacted = needsRedaction ? lightRedact(row.original_content) : row.original_redacted;
+
+      // Run AI paraphrasing if needed
       let paraphrased = null;
-
       if (needsParaphrase) {
         paraphrased = await paraphraseContent(anthropic, row.original_content);
       }
@@ -271,8 +280,9 @@ Environment:
           console.log(`${dim}    Paraphrased: ${paraphrased.substring(0, 60)}...${reset}`);
         }
       } else {
-        // Save both fields to database
-        if (paraphrased) {
+        // Save to database based on what we have
+        if (paraphrased && needsRedaction) {
+          // Both paraphrase and redaction needed
           await pool.query(`
             UPDATE trapper.google_map_entries
             SET
@@ -284,8 +294,20 @@ Environment:
           `, [row.entry_id, redacted, paraphrased]);
           stats.paraphrased++;
           console.log(`${green}saved (redacted + paraphrased)${reset}`);
-        } else if (redacted && !row.original_redacted) {
-          // Only update redacted field if not already set
+        } else if (paraphrased && !needsRedaction) {
+          // Only paraphrase needed (redaction already done)
+          await pool.query(`
+            UPDATE trapper.google_map_entries
+            SET
+              ai_summary = $2,
+              ai_processed_at = NOW(),
+              ai_confidence = 0.85
+            WHERE entry_id = $1
+          `, [row.entry_id, paraphrased]);
+          stats.paraphrased++;
+          console.log(`${green}saved (paraphrased only)${reset}`);
+        } else if (needsRedaction && redacted) {
+          // Only redaction needed (API call failed or not needed)
           await pool.query(`
             UPDATE trapper.google_map_entries
             SET original_redacted = $2
@@ -294,7 +316,7 @@ Environment:
           stats.redactedOnly++;
           console.log(`${green}saved (redacted only)${reset}`);
         } else {
-          console.log(`${yellow}skipped${reset} (already processed)`);
+          console.log(`${yellow}skipped${reset} (nothing to save)`);
           stats.skipped++;
         }
       }
