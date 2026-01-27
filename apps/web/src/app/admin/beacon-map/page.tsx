@@ -2,8 +2,8 @@
 
 import dynamic from "next/dynamic";
 
-// Dynamically import the modern map component to avoid SSR issues with Leaflet
-const BeaconMapModern = dynamic(() => import("@/components/BeaconMapModern"), {
+// Dynamically import the AtlasMap component to avoid SSR issues with Leaflet
+const AtlasMap = dynamic(() => import("@/components/AtlasMap"), {
   ssr: false,
   loading: () => (
     <div
@@ -36,14 +36,14 @@ const BeaconMapModern = dynamic(() => import("@/components/BeaconMapModern"), {
   ),
 });
 
-export default function AdminBeaconMapPage() {
+export default function AdminAtlasMapPage() {
   return (
     <div>
       <div style={{ marginBottom: "1rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 600 }}>
-              Beacon Map
+              Atlas Map
             </h1>
             <p style={{ margin: "0.25rem 0 0", color: "#6b7280", fontSize: "0.875rem" }}>
               Visualize cat activity, historical data, and TNR priorities
@@ -68,7 +68,7 @@ export default function AdminBeaconMapPage() {
 
       {/* Full-featured map with built-in search, layers, and controls */}
       <div style={{ height: "calc(100vh - 180px)", minHeight: "500px" }}>
-        <BeaconMapModern />
+        <AtlasMap />
       </div>
     </div>
   );

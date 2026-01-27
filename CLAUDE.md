@@ -386,6 +386,7 @@ These scripts use Claude AI to extract quantitative data from informal notes:
 | Script | Purpose | Output Table |
 |--------|---------|--------------|
 | `ai_classification_backfill.mjs` | **REUSABLE PATTERN** - Multi-source classification suggestions | `sot_requests`, `places` |
+| `classify_place_types.mjs` | AI classifies place types (apt, mobile home, ranch) for linking/display | `places.place_kind` |
 | `populate_birth_events_from_appointments.mjs` | Create birth events from lactating/pregnant appointments | `cat_birth_events` |
 | `populate_mortality_from_clinic.mjs` | Create mortality events from clinic euthanasia notes | `cat_mortality_events` |
 | `parse_quantitative_data.mjs` | AI extracts cat counts, colony sizes from notes | `place_colony_estimates` |
@@ -486,6 +487,7 @@ See `docs/TIPPY_VIEWS_AND_SCHEMA.md` for full documentation.
 | `v_shelterluv_sync_status` | ShelterLuv API sync health and pending records |
 | `v_cat_field_sources_summary` | Multi-source field values per cat |
 | `v_cat_field_conflicts` | Cats where sources disagree on field values |
+| `v_map_atlas_pins` | Consolidated map pins with cat counts, people, disease risk, clustering fields |
 
 ## Key Tables
 
@@ -843,6 +845,156 @@ Cats from clinic appointments are linked to places via owner contact info:
 4. Create `cat_place_relationships` with type `'appointment_site'`
 
 Run to re-link: `SELECT * FROM trapper.link_appointment_cats_to_places();`
+
+## Google Maps Entry Linking (MIG_733-736)
+
+Historical Google Maps pins are linked to Atlas places through a tiered, safety-conscious system integrated into the entity linking pipeline.
+
+### Design Principles
+
+| Principle | Implementation |
+|-----------|----------------|
+| **Never wrongly merge** | Conservative distance thresholds, multi-unit places never auto-link |
+| **Pipeline integrated** | Runs automatically after each data ingest via `run_all_entity_linking()` |
+| **Confidence-weighted** | Combines distance, AI signals, place type, and recency decay |
+| **Re-evaluates on new places** | Trigger updates nearby unlinked entries when places are created |
+
+### Tiered Distance Thresholds
+
+Different place types have different auto-link thresholds:
+
+| Place Type | Auto-Link Threshold | Rationale |
+|------------|---------------------|-----------|
+| Residential (single_family) | ≤15m | Same property |
+| Business/commercial | ≤20m | Larger footprint |
+| Rural/outdoor_site | ≤30m | Large properties |
+| Multi-unit (apartment, mobile home) | NEVER auto-link | Requires unit selection |
+| Unknown | ≤10m | Extra conservative |
+
+### Multi-Unit Safety
+
+**Multi-unit places (apartments, mobile home parks) NEVER auto-link.** They are flagged with `requires_unit_selection = TRUE` for manual review.
+
+Functions:
+- `is_multi_unit_place(place_id)` - Returns TRUE for apartments/mobile homes
+- `flag_multi_unit_candidates()` - Flags entries near multi-unit places
+
+### Pipeline Integration
+
+The entity linking chain (`run_all_entity_linking()`) now includes Google Maps linking as steps 10 & 11:
+
+```sql
+-- Step 10: Link Google Maps entries to places
+SELECT trapper.link_google_entries_incremental(500);
+
+-- Step 11: Flag multi-unit candidates for manual review
+SELECT trapper.flag_multi_unit_candidates();
+```
+
+### New Place Trigger
+
+When a new Atlas place is created, nearby unlinked Google entries automatically re-evaluate their `nearest_place_id`:
+
+```sql
+-- Trigger: trg_place_created_check_google
+-- Function: on_place_created_check_google_entries()
+-- Action: Updates nearest_place for entries within 50m of new place
+```
+
+### Key Functions
+
+| Function | Purpose |
+|----------|---------|
+| `link_google_entries_incremental(limit)` | Runs after each ingest, applies tiered thresholds |
+| `link_google_entries_tiered(limit, dry_run)` | Batch tiered linking for cron |
+| `link_google_entries_from_ai(limit, dry_run)` | Links high-confidence AI suggestions |
+| `calculate_link_confidence(distance, ai_conf, ai_same, place_type, date)` | Confidence scoring |
+| `manual_link_google_entry(entry_id, place_id)` | Staff manual linking |
+| `unlink_google_entry(entry_id)` | Undo incorrect links |
+
+### Key Columns on google_map_entries
+
+| Column | Purpose |
+|--------|---------|
+| `linked_place_id` | The place this entry is linked to |
+| `link_confidence` | 0.0-1.0 confidence score |
+| `link_method` | How linked: 'coordinate_exact', 'ai_entity_link', 'manual', etc. |
+| `linked_at` | When the link was created |
+| `requires_unit_selection` | TRUE if near multi-unit place (needs manual unit selection) |
+| `nearest_place_id` | Closest Atlas place (for UI suggestions) |
+| `nearest_place_distance_m` | Distance to nearest place |
+
+### Daily Cron Re-Evaluation
+
+The `/api/cron/google-entry-linking` endpoint runs daily at 9 AM UTC:
+
+1. Updates `nearest_place_id` for all unlinked entries
+2. Runs tiered auto-linking for eligible entries
+3. Processes high-confidence AI suggestions
+4. Flags multi-unit candidates for review
+5. Logs metrics
+
+### Audit Trail
+
+All linking decisions are logged in `google_entry_link_audit`:
+
+| Column | Purpose |
+|--------|---------|
+| `action` | 'linked', 'unlinked', 'rejected' |
+| `link_method` | How the decision was made |
+| `confidence` | Confidence score at time of decision |
+| `performed_by` | 'system:entity_linking' or staff name |
+
+## Place Type Classification (MIG_734)
+
+AI classifies place types (apartment, mobile home park, ranch, etc.) to improve linking decisions and map display.
+
+### Classification Types
+
+| Type | Description | Linking Behavior |
+|------|-------------|------------------|
+| `single_family` | Standard house | 15m threshold |
+| `apartment_building` | Multi-unit apartment (parent) | Never auto-link |
+| `apartment_unit` | Individual apartment unit | Never auto-link |
+| `mobile_home_park` | Park with multiple spaces (parent) | Never auto-link |
+| `mobile_home_space` | Individual mobile home | Never auto-link |
+| `ranch_property` | Large rural property | 30m threshold |
+| `commercial` | Business/storefront | 20m threshold |
+| `outdoor_site` | Park, field, outdoor area | 30m threshold |
+| `unknown` | Needs classification | 10m threshold |
+
+### Running Classification
+
+```bash
+# Dry run
+node scripts/jobs/classify_place_types.mjs --limit 100 --dry-run
+
+# Production run
+node scripts/jobs/classify_place_types.mjs --limit 500
+
+# Reclassify already-processed places
+node scripts/jobs/classify_place_types.mjs --reclassify-all --limit 100
+```
+
+### Key Fields on Places
+
+| Field | Purpose |
+|-------|---------|
+| `place_kind` | Classified type (enum matching types above) |
+| `ai_classification` | JSONB with full classification details |
+| `ai_classified_at` | When last classified |
+
+### Map Clustering (v_map_atlas_pins)
+
+The map view includes clustering fields for zoom-based display:
+
+| Field | Purpose |
+|-------|---------|
+| `parent_place_id` | Links apartment units to their building |
+| `place_kind` | Type for display/filtering |
+| `unit_identifier` | Unit designation ("Apt 5", "Space 12") |
+
+**Frontend behavior:** When zoom < 16, cluster apartment units into their parent building. When zoomed in, show individual units.
 
 ## Trapper-Appointment Linking (MIG_238)
 

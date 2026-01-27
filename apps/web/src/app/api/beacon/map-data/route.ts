@@ -42,6 +42,9 @@ export async function GET(req: NextRequest) {
       lat: number;
       lng: number;
       service_zone: string | null;
+      parent_place_id: string | null;
+      place_kind: string | null;
+      unit_identifier: string | null;
       cat_count: number;
       people: string[];
       person_count: number;
@@ -209,6 +212,9 @@ export async function GET(req: NextRequest) {
         lat: number;
         lng: number;
         service_zone: string | null;
+        parent_place_id: string | null;
+        place_kind: string | null;
+        unit_identifier: string | null;
         cat_count: number;
         people: string[];
         person_count: number;
@@ -230,6 +236,9 @@ export async function GET(req: NextRequest) {
           lat,
           lng,
           service_zone,
+          parent_place_id::text,
+          place_kind,
+          unit_identifier,
           cat_count::int,
           COALESCE(people, '[]')::jsonb as people,
           person_count::int,

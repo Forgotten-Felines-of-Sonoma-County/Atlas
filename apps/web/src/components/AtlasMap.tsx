@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import "@/styles/beacon-map.css";
+import "@/styles/atlas-map.css";
 import {
   createPinMarker,
   createCircleMarker,
@@ -163,6 +163,10 @@ interface AtlasPin {
   lat: number;
   lng: number;
   service_zone: string | null;
+  // For multi-unit clustering
+  parent_place_id: string | null;
+  place_kind: string | null;
+  unit_identifier: string | null;
   cat_count: number;
   people: string[];
   person_count: number;
@@ -250,7 +254,7 @@ const SERVICE_ZONES = [
 
 // Colors now imported from map-colors.ts
 
-export default function BeaconMapModern() {
+export default function AtlasMap() {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<Record<string, L.LayerGroup>>({});
@@ -295,6 +299,9 @@ export default function BeaconMapModern() {
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [navigatedLocation, setNavigatedLocation] = useState<NavigatedLocation | null>(null);
   const navigatedMarkerRef = useRef<L.Marker | null>(null);
+
+  // Zoom level for clustering behavior
+  const [currentZoom, setCurrentZoom] = useState(10);
 
   // Fetch map data
   const fetchMapData = useCallback(async () => {
@@ -373,6 +380,11 @@ export default function BeaconMapModern() {
 
     // Custom zoom control position
     L.control.zoom({ position: "bottomright" }).addTo(map);
+
+    // Track zoom level for clustering behavior
+    map.on("zoomend", () => {
+      setCurrentZoom(map.getZoom());
+    });
 
     mapRef.current = map;
 
@@ -774,6 +786,7 @@ export default function BeaconMapModern() {
   // =========================================================================
   // NEW: Atlas Pins layer (consolidated places + people + cats + history)
   // Uses CircleMarker for better performance with large datasets
+  // Clusters multi-unit places (apartments/mobile homes) when zoomed out
   // =========================================================================
   useEffect(() => {
     if (!mapRef.current) return;
@@ -784,7 +797,81 @@ export default function BeaconMapModern() {
 
     const layer = L.layerGroup();
 
-    atlasPins.forEach((pin) => {
+    // Determine if we should cluster multi-unit places
+    const shouldCluster = currentZoom < 16;
+
+    // Type for clustered pins
+    interface ClusteredPin extends AtlasPin {
+      unit_count: number;
+      is_clustered: boolean;
+    }
+
+    // Process pins - cluster if zoomed out
+    let pinsToRender: ClusteredPin[];
+
+    if (shouldCluster) {
+      // Group pins by parent_place_id (or by themselves if no parent)
+      const groups = new Map<string, AtlasPin[]>();
+
+      atlasPins.forEach((pin) => {
+        // If pin has a parent, group it under parent; otherwise, use its own ID
+        const groupKey = pin.parent_place_id || pin.id;
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, []);
+        }
+        groups.get(groupKey)!.push(pin);
+      });
+
+      // Create clustered pins
+      pinsToRender = [];
+      groups.forEach((pins, groupKey) => {
+        if (pins.length === 1) {
+          // Single pin, no clustering needed
+          pinsToRender.push({ ...pins[0], unit_count: 1, is_clustered: false });
+        } else {
+          // Multiple pins - aggregate stats
+          // Find the parent building (the one without a parent_place_id) or use first pin
+          const parentPin = pins.find((p) => !p.parent_place_id) || pins[0];
+
+          // Aggregate stats from all units
+          const aggregated: ClusteredPin = {
+            ...parentPin,
+            // Keep parent's basic info but aggregate counts
+            cat_count: pins.reduce((sum, p) => sum + p.cat_count, 0),
+            person_count: pins.reduce((sum, p) => sum + p.person_count, 0),
+            people: Array.from(new Set(pins.flatMap((p) => p.people || []))).slice(0, 5),
+            request_count: pins.reduce((sum, p) => sum + p.request_count, 0),
+            active_request_count: pins.reduce((sum, p) => sum + p.active_request_count, 0),
+            google_entry_count: pins.reduce((sum, p) => sum + p.google_entry_count, 0),
+            google_summaries: pins.flatMap((p) => p.google_summaries || []).slice(0, 3),
+            total_altered: pins.reduce((sum, p) => sum + p.total_altered, 0),
+            // Disease risk if ANY unit has it
+            disease_risk: pins.some((p) => p.disease_risk),
+            disease_risk_notes: pins.find((p) => p.disease_risk_notes)?.disease_risk_notes || null,
+            watch_list: pins.some((p) => p.watch_list),
+            // Keep the most severe pin_style
+            pin_style: pins.some((p) => p.pin_style === "disease")
+              ? "disease"
+              : pins.some((p) => p.pin_style === "watch_list")
+              ? "watch_list"
+              : pins.some((p) => p.pin_style === "active")
+              ? "active"
+              : pins.some((p) => p.pin_style === "has_history")
+              ? "has_history"
+              : "minimal",
+            unit_count: pins.length,
+            is_clustered: true,
+          };
+
+          pinsToRender.push(aggregated);
+        }
+      });
+    } else {
+      // Zoomed in - show all individual pins
+      pinsToRender = atlasPins.map((pin) => ({ ...pin, unit_count: 1, is_clustered: false }));
+    }
+
+    pinsToRender.forEach((pin) => {
       if (!pin.lat || !pin.lng) return;
 
       // Determine pin color and size based on style
@@ -794,31 +881,31 @@ export default function BeaconMapModern() {
       switch (pin.pin_style) {
         case "disease":
           color = "#ea580c"; // Orange for disease
-          radius = 10;
+          radius = pin.is_clustered ? 14 : 10;
           break;
         case "watch_list":
           color = "#eab308"; // Yellow for watch list
-          radius = 9;
+          radius = pin.is_clustered ? 13 : 9;
           break;
         case "active":
           color = "#22c55e"; // Green for active colony
-          radius = 8;
+          radius = pin.is_clustered ? 12 : 8;
           break;
         case "has_history":
           color = "#6366f1"; // Indigo for has history
-          radius = 7;
+          radius = pin.is_clustered ? 11 : 7;
           break;
         default:
           color = "#3b82f6"; // Blue default
-          radius = 6;
+          radius = pin.is_clustered ? 10 : 6;
       }
 
       // Use CircleMarker for better performance
       const marker = L.circleMarker([pin.lat, pin.lng], {
         radius,
         fillColor: color,
-        color: "white",
-        weight: 2,
+        color: pin.is_clustered ? "#1e3a8a" : "white", // Darker border for clustered
+        weight: pin.is_clustered ? 3 : 2,
         opacity: 1,
         fillOpacity: 0.9,
       });
@@ -837,35 +924,50 @@ export default function BeaconMapModern() {
           ).join("")
         : "";
 
+      // Clustered building header
+      const clusterHeader = pin.is_clustered
+        ? `<div style="background: #dbeafe; border: 1px solid #93c5fd; padding: 6px 8px; margin-bottom: 8px; border-radius: 6px; font-size: 12px;">
+            <strong>🏢 ${pin.unit_count} Units</strong>
+            <span style="color: #3b82f6;"> • Zoom in to see individual units</span>
+          </div>`
+        : "";
+
+      // Unit identifier for individual apartment units
+      const unitLabel = pin.unit_identifier && !pin.is_clustered
+        ? `<div style="font-size: 12px; color: #6b7280; margin-top: 2px;">Unit: ${pin.unit_identifier}</div>`
+        : "";
+
       marker.bindPopup(`
         <div style="min-width: 280px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-          <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">${pin.address}</div>
+          ${clusterHeader}
+          <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${pin.address}</div>
+          ${unitLabel}
 
           ${pin.disease_risk ? `
             <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 8px; margin: 8px 0; border-radius: 6px;">
-              <div style="color: #dc2626; font-weight: 600; font-size: 13px;">⚠️ Disease Risk</div>
+              <div style="color: #dc2626; font-weight: 600; font-size: 13px;">⚠️ Disease Risk${pin.is_clustered ? " (in building)" : ""}</div>
               ${pin.disease_risk_notes ? `<div style="font-size: 12px; color: #7f1d1d; margin-top: 4px;">${pin.disease_risk_notes}</div>` : ""}
             </div>
           ` : ""}
 
           ${pin.watch_list && !pin.disease_risk ? `
             <div style="background: #fefce8; border: 1px solid #fef08a; padding: 8px; margin: 8px 0; border-radius: 6px;">
-              <div style="color: #ca8a04; font-weight: 600; font-size: 13px;">👁️ Watch List</div>
+              <div style="color: #ca8a04; font-weight: 600; font-size: 13px;">👁️ Watch List${pin.is_clustered ? " (in building)" : ""}</div>
             </div>
           ` : ""}
 
           <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0;">
             <div style="background: #f3f4f6; padding: 8px; border-radius: 6px; text-align: center;">
               <div style="font-size: 18px; font-weight: 700; color: #374151;">${pin.cat_count}</div>
-              <div style="font-size: 10px; color: #6b7280;">Cats</div>
+              <div style="font-size: 10px; color: #6b7280;">Cats${pin.is_clustered ? " (total)" : ""}</div>
             </div>
             <div style="background: #f3f4f6; padding: 8px; border-radius: 6px; text-align: center;">
               <div style="font-size: 18px; font-weight: 700; color: #374151;">${pin.person_count}</div>
-              <div style="font-size: 10px; color: #6b7280;">People</div>
+              <div style="font-size: 10px; color: #6b7280;">People${pin.is_clustered ? " (total)" : ""}</div>
             </div>
             <div style="background: #f3f4f6; padding: 8px; border-radius: 6px; text-align: center;">
               <div style="font-size: 18px; font-weight: 700; color: ${pin.active_request_count > 0 ? "#dc2626" : "#374151"};">${pin.request_count}</div>
-              <div style="font-size: 10px; color: #6b7280;">Requests</div>
+              <div style="font-size: 10px; color: #6b7280;">Requests${pin.is_clustered ? " (total)" : ""}</div>
             </div>
           </div>
 
@@ -894,7 +996,7 @@ export default function BeaconMapModern() {
 
           <a href="/places/${pin.id}"
              style="display: block; margin-top: 12px; padding: 8px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; text-align: center; font-size: 13px; font-weight: 500;">
-            View Full Details →
+            ${pin.is_clustered ? "View Building Details →" : "View Full Details →"}
           </a>
         </div>
       `);
@@ -904,7 +1006,7 @@ export default function BeaconMapModern() {
 
     layer.addTo(mapRef.current);
     layersRef.current.atlas_pins = layer;
-  }, [atlasPins, enabledLayers.atlas_pins]);
+  }, [atlasPins, enabledLayers.atlas_pins, currentZoom]);
 
   // =========================================================================
   // NEW: Historical Pins layer (unlinked Google Maps entries)
@@ -2116,7 +2218,7 @@ export default function BeaconMapModern() {
         <kbd style={{ background: "#f3f4f6", padding: "1px 4px", borderRadius: 3 }}>M</kbd> location
       </div>
 
-      {/* CSS animations are in beacon-map.css */}
+      {/* CSS animations are in atlas-map.css */}
     </div>
   );
 }

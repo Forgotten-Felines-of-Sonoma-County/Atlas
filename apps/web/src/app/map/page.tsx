@@ -2,8 +2,8 @@
 
 import dynamic from "next/dynamic";
 
-// Dynamically import the modern map component to avoid SSR issues with Leaflet
-const BeaconMapModern = dynamic(() => import("@/components/BeaconMapModern"), {
+// Dynamically import the AtlasMap component to avoid SSR issues with Leaflet
+const AtlasMap = dynamic(() => import("@/components/AtlasMap"), {
   ssr: false,
   loading: () => (
     <div
@@ -36,5 +36,5 @@ const BeaconMapModern = dynamic(() => import("@/components/BeaconMapModern"), {
 });
 
 export default function AtlasMapPage() {
-  return <BeaconMapModern />;
+  return <AtlasMap />;
 }
