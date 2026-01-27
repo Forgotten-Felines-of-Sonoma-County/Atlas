@@ -99,14 +99,14 @@ BEGIN
 
       -- Add email identifier
       IF v_norm_email IS NOT NULL THEN
-        INSERT INTO trapper.person_identifiers (person_id, id_type, id_value, id_value_norm, source_system)
+        INSERT INTO trapper.person_identifiers (person_id, id_type, id_value_raw, id_value_norm, source_system)
         VALUES (v_person_id, 'email', v_sub.email, v_norm_email, 'web_intake')
         ON CONFLICT (id_type, id_value_norm) DO NOTHING;
       END IF;
 
       -- Add phone identifier
       IF v_norm_phone IS NOT NULL THEN
-        INSERT INTO trapper.person_identifiers (person_id, id_type, id_value, id_value_norm, source_system)
+        INSERT INTO trapper.person_identifiers (person_id, id_type, id_value_raw, id_value_norm, source_system)
         VALUES (v_person_id, 'phone', v_sub.phone, v_norm_phone, 'web_intake')
         ON CONFLICT (id_type, id_value_norm) DO NOTHING;
       END IF;
