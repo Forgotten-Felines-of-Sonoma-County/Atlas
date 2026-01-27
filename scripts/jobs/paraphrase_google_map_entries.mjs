@@ -339,6 +339,19 @@ Environment:
           `, [row.entry_id, redacted]);
           stats.redactedOnly++;
           console.log(`${green}saved (redacted only)${reset}`);
+        } else if (needsParaphrase && !paraphrased && redacted) {
+          // AI returned null (refusal or error) but we have redacted content
+          // Mark as processed so it doesn't keep appearing, use redacted as summary
+          await pool.query(`
+            UPDATE trapper.google_map_entries
+            SET
+              ai_summary = $2,
+              ai_processed_at = NOW(),
+              ai_confidence = 0.50
+            WHERE entry_id = $1
+          `, [row.entry_id, redacted]);
+          stats.redactedOnly++;
+          console.log(`${green}saved (AI skipped, using redacted)${reset}`);
         } else {
           console.log(`${yellow}skipped${reset} (nothing to save)`);
           stats.skipped++;
