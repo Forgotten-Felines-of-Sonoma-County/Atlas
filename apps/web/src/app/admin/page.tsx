@@ -88,6 +88,13 @@ export default function AdminPage() {
               <h2 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", color: "var(--text-muted)" }}>Operations</h2>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem" }}>
                 <AdminCard
+                  href="/admin/intake/call"
+                  title="Phone Intake"
+                  description="Enter phone call information"
+                  icon="📞"
+                  accent="#ecfdf5"
+                />
+                <AdminCard
                   href="/intake/queue"
                   title="Intake Queue"
                   description="Review and triage submissions"
@@ -112,6 +119,13 @@ export default function AdminPage() {
                   description="Ingest trapper field updates"
                   icon="📧"
                   accent="#eff6ff"
+                />
+                <AdminCard
+                  href="/admin/colonies"
+                  title="Verified Colonies"
+                  description="Staff-verified colony data"
+                  icon="🐱"
+                  accent="#f0fdf4"
                 />
               </div>
             </section>
