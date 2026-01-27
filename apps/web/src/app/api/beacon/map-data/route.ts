@@ -69,6 +69,9 @@ export async function GET(req: NextRequest) {
       watch_list: boolean;
       icon_type: string | null;
       icon_color: string | null;
+      nearest_place_id: string | null;
+      nearest_place_distance_m: number | null;
+      requires_unit_selection: boolean;
     }>;
     // LEGACY layers (still supported)
     places?: Array<{
@@ -282,25 +285,32 @@ export async function GET(req: NextRequest) {
         watch_list: boolean;
         icon_type: string | null;
         icon_color: string | null;
+        nearest_place_id: string | null;
+        nearest_place_distance_m: number | null;
+        requires_unit_selection: boolean;
       }>(`
         SELECT
-          id::text,
-          name,
-          lat,
-          lng,
-          notes,
-          ai_summary,
-          ai_meaning,
-          parsed_date::text,
-          disease_risk,
-          watch_list,
-          icon_type,
-          icon_color
-        FROM trapper.v_map_historical_pins
+          v.id::text,
+          v.name,
+          v.lat,
+          v.lng,
+          v.notes,
+          v.ai_summary,
+          v.ai_meaning,
+          v.parsed_date::text,
+          v.disease_risk,
+          v.watch_list,
+          v.icon_type,
+          v.icon_color,
+          v.nearest_place_id::text,
+          v.nearest_place_distance_m,
+          COALESCE(e.requires_unit_selection, FALSE) as requires_unit_selection
+        FROM trapper.v_map_historical_pins v
+        LEFT JOIN trapper.google_map_entries e ON e.entry_id = v.id
         ORDER BY
-          CASE WHEN disease_risk THEN 0 ELSE 1 END,
-          CASE WHEN watch_list THEN 0 ELSE 1 END,
-          imported_at DESC
+          CASE WHEN v.disease_risk THEN 0 ELSE 1 END,
+          CASE WHEN v.watch_list THEN 0 ELSE 1 END,
+          v.imported_at DESC
         LIMIT 2000
       `);
       result.historical_pins = historicalPins;

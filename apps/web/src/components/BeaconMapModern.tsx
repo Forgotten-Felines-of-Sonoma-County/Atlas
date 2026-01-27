@@ -192,6 +192,9 @@ interface HistoricalPin {
   watch_list: boolean;
   icon_type: string | null;
   icon_color: string | null;
+  nearest_place_id: string | null;
+  nearest_place_distance_m: number | null;
+  requires_unit_selection: boolean;
 }
 
 interface MapSummary {
@@ -935,8 +938,27 @@ export default function BeaconMapModern() {
         fillOpacity: isDisease || isWatchList ? 0.9 : 0.6,
       });
 
+      // Build nearest place info for popup
+      const nearestInfo = pin.nearest_place_id && pin.nearest_place_distance_m !== null
+        ? `<div style="font-size: 11px; color: #6b7280; margin-top: 8px; padding: 8px; background: #f0f9ff; border-radius: 4px; border: 1px solid #bae6fd;">
+            📍 Nearest Atlas place: <strong>${Math.round(pin.nearest_place_distance_m)}m away</strong>
+            ${pin.requires_unit_selection
+              ? `<div style="color: #ea580c; font-size: 10px; margin-top: 4px;">🏢 Multi-unit building - unit selection required</div>`
+              : ``
+            }
+            <div style="margin-top: 6px;">
+              <a href="/admin/google-map-entries/${pin.id}/link"
+                 style="display: inline-block; padding: 4px 10px; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-size: 11px; font-weight: 500;">
+                ${pin.requires_unit_selection ? "Select Unit & Link" : "Link to Place"}
+              </a>
+            </div>
+          </div>`
+        : `<div style="font-size: 11px; color: #9ca3af; margin-top: 8px;">
+            No nearby Atlas place found
+          </div>`;
+
       marker.bindPopup(`
-        <div style="min-width: 240px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="min-width: 260px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
           <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">${pin.name || "Historical Note"}</div>
 
           ${isDisease ? `
@@ -960,6 +982,8 @@ export default function BeaconMapModern() {
               📅 Date: ${pin.parsed_date}
             </div>
           ` : ""}
+
+          ${nearestInfo}
 
           <div style="font-size: 10px; color: #9ca3af; margin-top: 8px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
             ⚪ Unlinked historical data from Google Maps
