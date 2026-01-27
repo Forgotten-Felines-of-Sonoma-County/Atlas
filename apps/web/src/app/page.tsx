@@ -711,6 +711,12 @@ export default function Home() {
             description="Addresses & colonies"
           />
           <QuickAction
+            icon="🗺️"
+            label="Map"
+            href="/map"
+            description="Atlas geographic view"
+          />
+          <QuickAction
             icon="🎓"
             label="Trappers"
             href="/trappers"

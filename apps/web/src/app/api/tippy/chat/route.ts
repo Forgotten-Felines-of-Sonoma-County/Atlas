@@ -140,10 +140,25 @@ interface ChatMessage {
   content: string;
 }
 
+interface MapContext {
+  center?: { lat: number; lng: number };
+  zoom?: number;
+  bounds?: { north: number; south: number; east: number; west: number };
+  selectedPlace?: { place_id: string; address: string };
+  navigatedLocation?: { lat: number; lng: number; address: string };
+}
+
+interface PageContext {
+  path: string;
+  params?: Record<string, string>;
+  mapState?: MapContext | null;
+}
+
 interface ChatRequest {
   message: string;
   history?: ChatMessage[];
   conversationId?: string;
+  pageContext?: PageContext;
 }
 
 // Tools that require write access (read_write or full)
@@ -313,7 +328,7 @@ async function updateConversationTools(
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
-    const { message, history = [], conversationId: clientConversationId } = body;
+    const { message, history = [], conversationId: clientConversationId, pageContext } = body;
 
     if (!message || typeof message !== "string") {
       return NextResponse.json(
@@ -404,6 +419,30 @@ export async function POST(request: NextRequest) {
         "- Log field events: Use log_field_event when they report observations like 'I saw 5 cats at Oak St today'\n" +
         "- Log site observations: Use log_site_observation for colony observations with estimated counts\n" +
         "Their reminders and lookups appear on their personal dashboard at /me.";
+    }
+
+    // Add map context awareness when user is on the map page
+    if (pageContext?.path === "/map" && pageContext?.mapState) {
+      const mapState = pageContext.mapState;
+      let mapContextStr = "\n\n**MAP CONTEXT**: The user is currently viewing the Atlas Map.";
+
+      if (mapState.center) {
+        mapContextStr += `\n- Map center: ${mapState.center.lat.toFixed(5)}, ${mapState.center.lng.toFixed(5)}`;
+      }
+      if (mapState.zoom) {
+        mapContextStr += `\n- Zoom level: ${mapState.zoom}`;
+      }
+      if (mapState.selectedPlace) {
+        mapContextStr += `\n- Selected place: ${mapState.selectedPlace.address} (ID: ${mapState.selectedPlace.place_id})`;
+        mapContextStr += "\n- The user is looking at this specific location. Prioritize information about this place when answering.";
+      }
+      if (mapState.navigatedLocation) {
+        mapContextStr += `\n- User navigated to: ${mapState.navigatedLocation.address} (${mapState.navigatedLocation.lat.toFixed(5)}, ${mapState.navigatedLocation.lng.toFixed(5)})`;
+      }
+
+      mapContextStr += "\n\nWhen the user asks spatial questions like 'what's nearby?', 'any colonies in this area?', or 'are there feeders around here?', use the map context to understand what they're looking at. If a place is selected, use comprehensive_place_lookup to get details about that location.";
+
+      systemPrompt += mapContextStr;
     }
 
     // Build messages array

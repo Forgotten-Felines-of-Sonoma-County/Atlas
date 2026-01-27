@@ -91,6 +91,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <a href="/requests" className="nav-link">
                   Requests
                 </a>
+                <a href="/map" className="nav-link">
+                  Map
+                </a>
                 <a href="/beacon" className="nav-link">
                   Beacon
                 </a>
@@ -108,6 +111,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </a>
                 <a href="/places" className="nav-link">
                   Places
+                </a>
+                <a href="/map" className="nav-link">
+                  Map
                 </a>
                 <a href="/intake/queue" className="nav-link">
                   Intake

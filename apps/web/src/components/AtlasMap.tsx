@@ -319,6 +319,57 @@ export default function AtlasMap() {
     };
   }, []);
 
+  // Emit map context events for Tippy integration
+  useEffect(() => {
+    const emitMapContext = () => {
+      if (!mapRef.current) return;
+
+      const center = mapRef.current.getCenter();
+      const bounds = mapRef.current.getBounds();
+      const zoom = mapRef.current.getZoom();
+
+      // Find selected place data if any
+      const selectedPlace = selectedPlaceId
+        ? atlasPins.find(p => p.id === selectedPlaceId) ||
+          places.find(p => p.id === selectedPlaceId)
+        : null;
+
+      window.dispatchEvent(new CustomEvent('tippy-map-context', {
+        detail: {
+          center: { lat: center.lat, lng: center.lng },
+          zoom,
+          bounds: {
+            north: bounds.getNorth(),
+            south: bounds.getSouth(),
+            east: bounds.getEast(),
+            west: bounds.getWest(),
+          },
+          selectedPlace: selectedPlace ? {
+            place_id: selectedPlace.id,
+            address: selectedPlace.address,
+          } : null,
+          navigatedLocation: navigatedLocation,
+        }
+      }));
+    };
+
+    // Emit on map move end
+    if (mapRef.current) {
+      mapRef.current.on('moveend', emitMapContext);
+      mapRef.current.on('zoomend', emitMapContext);
+    }
+
+    // Emit initially and when selection changes
+    emitMapContext();
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.off('moveend', emitMapContext);
+        mapRef.current.off('zoomend', emitMapContext);
+      }
+    };
+  }, [selectedPlaceId, atlasPins, places, navigatedLocation]);
+
   // Fetch map data
   const fetchMapData = useCallback(async () => {
     const layers = Object.entries(enabledLayers)
@@ -403,6 +454,29 @@ export default function AtlasMap() {
     });
 
     mapRef.current = map;
+
+    // Handle URL parameters for deep linking (e.g., /map?lat=38.5&lng=-122.7&zoom=16 or /map?search=address)
+    const searchParams = new URLSearchParams(window.location.search);
+    const urlLat = searchParams.get('lat');
+    const urlLng = searchParams.get('lng');
+    const urlZoom = searchParams.get('zoom');
+    const urlSearch = searchParams.get('search');
+
+    if (urlLat && urlLng) {
+      const lat = parseFloat(urlLat);
+      const lng = parseFloat(urlLng);
+      const zoom = urlZoom ? parseInt(urlZoom, 10) : 16;
+
+      if (!isNaN(lat) && !isNaN(lng)) {
+        map.setView([lat, lng], zoom);
+        // Set navigated location to show a marker at this point
+        setNavigatedLocation({ lat, lng, address: 'Selected location' });
+      }
+    } else if (urlSearch) {
+      // Pre-populate search query from URL and trigger search
+      setSearchQuery(urlSearch);
+      setShowSearchResults(true);
+    }
 
     return () => {
       map.remove();

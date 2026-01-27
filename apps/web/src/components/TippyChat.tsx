@@ -23,6 +23,15 @@ const QUICK_ACTIONS = [
   { label: "What is TNR?", icon: "❓" },
 ];
 
+// Map context from AtlasMap events
+interface MapContext {
+  center?: { lat: number; lng: number };
+  zoom?: number;
+  bounds?: { north: number; south: number; east: number; west: number };
+  selectedPlace?: { place_id: string; address: string };
+  navigatedLocation?: { lat: number; lng: number; address: string };
+}
+
 export function TippyChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -31,6 +40,7 @@ export function TippyChat() {
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>();
+  const [mapContext, setMapContext] = useState<MapContext | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,6 +48,18 @@ export function TippyChat() {
     setSelectedMessage(message);
     setFeedbackModalOpen(true);
   };
+
+  // Listen for map context events from AtlasMap
+  useEffect(() => {
+    const handleMapContext = (event: CustomEvent<MapContext>) => {
+      setMapContext(event.detail);
+    };
+
+    window.addEventListener('tippy-map-context', handleMapContext as EventListener);
+    return () => {
+      window.removeEventListener('tippy-map-context', handleMapContext as EventListener);
+    };
+  }, []);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -79,6 +101,11 @@ export function TippyChat() {
             role: m.role,
             content: m.content,
           })),
+          pageContext: {
+            path: window.location.pathname,
+            params: Object.fromEntries(new URLSearchParams(window.location.search)),
+            mapState: mapContext,
+          },
         }),
       });
 

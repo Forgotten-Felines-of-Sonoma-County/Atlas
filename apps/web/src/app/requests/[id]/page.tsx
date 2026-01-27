@@ -1714,6 +1714,22 @@ export default function RequestDetailPage() {
                       >
                         View in Google Maps
                       </a>
+                      <a
+                        href={`/map?lat=${request.place_coordinates.lat}&lng=${request.place_coordinates.lng}&zoom=17`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          padding: "0.5rem 1rem",
+                          background: "#6366f1",
+                          color: "#fff",
+                          borderRadius: "6px",
+                          textDecoration: "none",
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        View on Atlas Map
+                      </a>
                       <button
                         onClick={() => setShowObservationModal(true)}
                         style={{

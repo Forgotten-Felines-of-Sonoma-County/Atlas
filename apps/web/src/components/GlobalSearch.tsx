@@ -106,6 +106,14 @@ export default function GlobalSearch() {
     }
   };
 
+  const navigateToMap = (result: SearchResult, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(false);
+    setQuery("");
+    // Navigate to map with search query to center on this location
+    router.push(`/map?search=${encodeURIComponent(result.display_name)}`);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen || suggestions.length === 0) {
       if (e.key === "Enter" && query.trim()) {
@@ -273,6 +281,15 @@ export default function GlobalSearch() {
                         {matchBadge && (
                           <span className="search-match-badge">{matchBadge}</span>
                         )}
+                        {suggestion.entity_type === "place" && (
+                          <button
+                            className="search-map-btn"
+                            onClick={(e) => navigateToMap(suggestion, e)}
+                            title="View on Map"
+                          >
+                            🗺️
+                          </button>
+                        )}
                       </div>
                       {suggestion.subtitle && (
                         <div className="search-suggestion-subtitle">
@@ -414,6 +431,21 @@ export default function GlobalSearch() {
           color: var(--muted);
           text-align: center;
           border-top: 1px solid var(--border);
+        }
+
+        .search-map-btn {
+          margin-left: auto;
+          padding: 0.25rem 0.5rem;
+          background: #6366f1;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 0.75rem;
+          transition: background 0.15s;
+        }
+
+        .search-map-btn:hover {
+          background: #4f46e5;
         }
       `}</style>
     </div>

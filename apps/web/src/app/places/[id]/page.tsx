@@ -469,6 +469,24 @@ export default function PlaceDetailPage() {
             >
               Print
             </a>
+            {place.coordinates && (
+              <a
+                href={`/map?lat=${place.coordinates.lat}&lng=${place.coordinates.lng}&zoom=17`}
+                style={{
+                  padding: "0.25rem 0.75rem",
+                  fontSize: "0.875rem",
+                  background: "#6366f1",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                }}
+              >
+                View on Map
+              </a>
+            )}
             <button
               onClick={() => setShowHistory(!showHistory)}
               style={{
