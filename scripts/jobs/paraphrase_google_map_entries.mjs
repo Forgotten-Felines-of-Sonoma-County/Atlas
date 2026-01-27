@@ -108,7 +108,12 @@ EXAMPLES:
 - Input: "MP called, no answer, left vm about scheduling"
   Output: "MP called, no answer, left voicemail about scheduling"
 
-Output ONLY the cleaned text, nothing else.`;
+CRITICAL OUTPUT RULES:
+1. Output ONLY the edited text itself - nothing else
+2. If the text needs NO changes, output the EXACT ORIGINAL TEXT
+3. NEVER output commentary like "I can't paraphrase", "no changes needed", "here's the cleaned version", etc.
+4. NEVER explain what you did or didn't change
+5. Just output the text, period.`;
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -154,6 +159,25 @@ async function paraphraseContent(anthropic, content) {
 
     // Validate output - should preserve key elements
     if (!paraphrased || paraphrased.length < 10) {
+      return null;
+    }
+
+    // Detect AI refusal messages and return null (will fall back to redacted original)
+    const lowerText = paraphrased.toLowerCase();
+    const isRefusal =
+      lowerText.includes("i can't paraphrase") ||
+      lowerText.includes("i cannot paraphrase") ||
+      lowerText.includes("i appreciate the question") ||
+      lowerText.includes("i need to clarify my role") ||
+      lowerText.includes("violate my instructions") ||
+      lowerText.includes("here's the original") ||
+      lowerText.includes("here's the cleaned version") ||
+      lowerText.includes("no changes needed") ||
+      lowerText.startsWith("i ") || // AI talking about itself
+      lowerText.includes("this note is already");
+
+    if (isRefusal) {
+      // AI refused to just output the text - skip the paraphrase and use redacted original
       return null;
     }
 
