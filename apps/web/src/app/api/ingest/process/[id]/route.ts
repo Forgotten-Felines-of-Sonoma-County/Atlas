@@ -1,3 +1,4 @@
+// Process uploaded files for ClinicHQ, Airtable, and Google Maps data
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne, queryRows } from "@/lib/db";
 import { readFile } from "fs/promises";
