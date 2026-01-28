@@ -347,10 +347,10 @@ async function processQueueItem(
       targetEntityId = personId;
     }
 
-    // Supersede existing attribute
+    // Supersede existing attribute (superseded_by is UUID, use NULL for system updates)
     await execute(`
       UPDATE trapper.entity_attributes
-      SET superseded_at = NOW(), superseded_by = 'ai_extract_cron'
+      SET superseded_at = NOW(), superseded_by = NULL
       WHERE entity_type = $1
         AND entity_id = $2
         AND attribute_key = $3
