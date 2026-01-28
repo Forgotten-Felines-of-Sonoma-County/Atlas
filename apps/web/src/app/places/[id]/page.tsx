@@ -22,6 +22,7 @@ import { MediaGallery } from "@/components/MediaGallery";
 import { QuickActions, usePlaceQuickActionState } from "@/components/QuickActions";
 import { CatPresenceReconciliation } from "@/components/CatPresenceReconciliation";
 import { CreateColonyModal } from "@/components/CreateColonyModal";
+import { PlaceContextEditor } from "@/components/PlaceContextEditor";
 
 interface Cat {
   cat_id: string;
@@ -754,6 +755,15 @@ export default function PlaceDetailPage() {
 
       {/* Site Stats Card (shows if place is part of a linked site) */}
       <SiteStatsCard placeId={place.place_id} />
+
+      {/* Place Classifications (Classification Engine) */}
+      <div style={{ marginBottom: "1.5rem" }}>
+        <PlaceContextEditor
+          placeId={place.place_id}
+          address={place.formatted_address || undefined}
+          onContextChange={() => fetchPlace()}
+        />
+      </div>
 
       {/* Activity Summary */}
       <Section title="Activity">

@@ -102,7 +102,7 @@ async function main() {
     }
 
     // Query appointments with notes that haven't been processed
-    // Join to get cat_id for cat-level extraction
+    // Uses extraction_status to track ALL processed records (not just those with extractions)
     const query = `
       SELECT
         a.appointment_id,
@@ -116,11 +116,11 @@ async function main() {
       LEFT JOIN trapper.cat_place_relationships cpr ON cpr.cat_id = a.cat_id
         AND cpr.relationship_type = 'appointment_site'
       WHERE a.medical_notes IS NOT NULL AND a.medical_notes != ''
-      -- Skip already-processed records (check if any attribute exists)
+      -- Skip already-processed records (check extraction_status)
       AND NOT EXISTS (
-        SELECT 1 FROM trapper.entity_attributes ea
-        WHERE ea.source_system = 'clinichq'
-          AND ea.source_record_id = a.appointment_id::TEXT
+        SELECT 1 FROM trapper.extraction_status es
+        WHERE es.source_table = 'sot_appointments'
+          AND es.source_record_id = a.appointment_id::TEXT
       )
       ORDER BY a.appointment_date DESC
       LIMIT $1
@@ -244,6 +244,29 @@ async function main() {
 
       if (hasExtractions) {
         recordsWithExtractions++;
+      }
+
+      // Mark record as processed in extraction_status (even if no extractions)
+      // This prevents re-processing records that have no extractable content
+      if (!dryRun) {
+        try {
+          await pool.query(`
+            INSERT INTO trapper.extraction_status (
+              source_table, source_record_id, last_extracted_at,
+              attributes_extracted, extraction_hash
+            ) VALUES (
+              'sot_appointments', $1, NOW(), $2,
+              md5($3)
+            )
+            ON CONFLICT (source_table, source_record_id)
+            DO UPDATE SET
+              last_extracted_at = NOW(),
+              attributes_extracted = $2,
+              needs_reextraction = false
+          `, [appt.appointment_id, hasExtractions ? 1 : 0, combinedNotes]);
+        } catch (err) {
+          // Ignore status update errors
+        }
       }
 
       // Progress update every 50 records

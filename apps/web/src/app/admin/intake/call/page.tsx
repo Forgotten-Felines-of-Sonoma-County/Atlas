@@ -25,6 +25,13 @@ interface PhoneIntakeForm {
   has_property_access: boolean;
   access_notes: string;
 
+  // Step 3: Place Classification (Classification Engine)
+  is_organization: boolean;
+  organization_name: string;
+  known_org_id: string | null;
+  property_type: string;
+  link_to_colony_id: string | null;
+
   // Step 4: Cat Details
   cat_count_estimate: string;
   count_confidence: string;
@@ -62,6 +69,12 @@ const INITIAL_FORM: PhoneIntakeForm = {
   selected_place_id: null,
   has_property_access: true,
   access_notes: "",
+  // Classification Engine fields
+  is_organization: false,
+  organization_name: "",
+  known_org_id: null,
+  property_type: "",
+  link_to_colony_id: null,
   cat_count_estimate: "",
   count_confidence: "good_estimate",
   fixed_status: "unknown",
@@ -281,6 +294,21 @@ export default function PhoneIntakePage() {
         // Access
         has_property_access: form.has_property_access,
         access_notes: form.access_notes || null,
+
+        // Place Classification (Classification Engine)
+        property_type: form.property_type || null,
+        place_contexts: [
+          // Add organization context if marked as org
+          ...(form.is_organization ? [{
+            context_type: "organization",
+            organization_name: form.organization_name || null,
+            known_org_id: form.known_org_id || null,
+          }] : []),
+          // Add property type as context if specified
+          ...(form.property_type && form.property_type !== "residential" ? [{
+            context_type: form.property_type,
+          }] : []),
+        ].filter(c => c.context_type), // Filter out empty contexts
 
         // Cat details
         ownership_status: form.ownership_status,
@@ -663,6 +691,88 @@ export default function PhoneIntakePage() {
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #d1d5db", resize: "vertical" }}
                 />
               </FormField>
+            )}
+
+            {/* Place Classification - visible when address is entered */}
+            {form.cats_address && (
+              <div
+                style={{
+                  marginTop: "1.5rem",
+                  padding: "1rem",
+                  background: "#f0f9ff",
+                  borderRadius: 8,
+                  border: "1px solid #bae6fd",
+                }}
+              >
+                <h3 style={{ margin: "0 0 0.5rem 0", fontSize: 14, color: "#0369a1" }}>
+                  Place Classification
+                </h3>
+                <p style={{ margin: "0 0 1rem 0", fontSize: 13, color: "#6b7280" }}>
+                  Multiple options can be selected (e.g., a business can also be a colony site)
+                </p>
+
+                {/* Is this an organization/business? */}
+                <FormField label="Is this an organization or business?">
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => updateForm({ is_organization: true })}
+                      style={{
+                        flex: 1,
+                        padding: "10px",
+                        border: form.is_organization ? "2px solid #3b82f6" : "1px solid #d1d5db",
+                        borderRadius: 8,
+                        background: form.is_organization ? "#eff6ff" : "white",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateForm({ is_organization: false, organization_name: "", known_org_id: null })}
+                      style={{
+                        flex: 1,
+                        padding: "10px",
+                        border: !form.is_organization ? "2px solid #3b82f6" : "1px solid #d1d5db",
+                        borderRadius: 8,
+                        background: !form.is_organization ? "#eff6ff" : "white",
+                        cursor: "pointer",
+                      }}
+                    >
+                      No (Residential)
+                    </button>
+                  </div>
+                </FormField>
+
+                {form.is_organization && (
+                  <FormField label="Organization name" hint="e.g., SMART Park N Ride, Costco, City Hall">
+                    <input
+                      type="text"
+                      value={form.organization_name}
+                      onChange={(e) => updateForm({ organization_name: e.target.value })}
+                      placeholder="Enter organization name..."
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #d1d5db" }}
+                    />
+                  </FormField>
+                )}
+
+                {/* Property type */}
+                <FormField label="Property type">
+                  <select
+                    value={form.property_type}
+                    onChange={(e) => updateForm({ property_type: e.target.value })}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #d1d5db" }}
+                  >
+                    <option value="">Not specified</option>
+                    <option value="residential">Residential (single home)</option>
+                    <option value="multi_unit">Multi-unit (apartments, mobile home park)</option>
+                    <option value="business">Business / Commercial</option>
+                    <option value="public_space">Public space (park, parking lot)</option>
+                    <option value="farm_ranch">Farm / Ranch</option>
+                  </select>
+                </FormField>
+              </div>
             )}
           </>
         )}
