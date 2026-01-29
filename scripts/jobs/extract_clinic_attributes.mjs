@@ -264,6 +264,15 @@ async function main() {
               attributes_extracted = $2,
               needs_reextraction = false
           `, [appt.appointment_id, hasExtractions ? 1 : 0, combinedNotes]);
+
+          // Mark queue item completed if it exists
+          await pool.query(`
+            UPDATE trapper.extraction_queue
+            SET completed_at = NOW()
+            WHERE source_table = 'sot_appointments'
+              AND source_record_id = $1
+              AND completed_at IS NULL
+          `, [appt.appointment_id]);
         } catch (err) {
           // Ignore status update errors
         }

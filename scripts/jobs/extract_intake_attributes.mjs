@@ -171,6 +171,15 @@ async function main() {
           ON CONFLICT (source_table, source_record_id)
           DO UPDATE SET last_extracted_at = NOW(), attributes_extracted = $2
         `, [row.submission_id, attributesExtracted]);
+
+        // Mark queue item completed if it exists
+        await pool.query(`
+          UPDATE trapper.extraction_queue
+          SET completed_at = NOW()
+          WHERE source_table = 'web_intake_submissions'
+            AND source_record_id = $1
+            AND completed_at IS NULL
+        `, [row.submission_id]);
       }
     }
 

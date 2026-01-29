@@ -83,11 +83,11 @@ async function main() {
         OR r.internal_notes IS NOT NULL AND r.internal_notes != ''
         OR r.hold_reason_notes IS NOT NULL AND r.hold_reason_notes != ''
       )
-      -- Skip already-processed records
+      -- Skip already-processed records (use extraction_status for consistent tracking)
       AND NOT EXISTS (
-        SELECT 1 FROM trapper.entity_attributes ea
-        WHERE ea.source_system = 'request_notes'
-          AND ea.source_record_id = r.request_id::TEXT
+        SELECT 1 FROM trapper.extraction_status es
+        WHERE es.source_table = 'sot_requests'
+          AND es.source_record_id = r.request_id::TEXT
       )
       ORDER BY r.created_at DESC
       LIMIT $1
@@ -238,6 +238,36 @@ async function main() {
 
       if (hasExtractions) {
         recordsWithExtractions++;
+      }
+
+      // Mark record as processed in extraction_status (even if no extractions)
+      if (!dryRun) {
+        try {
+          await pool.query(`
+            INSERT INTO trapper.extraction_status (
+              source_table, source_record_id, last_extracted_at,
+              attributes_extracted, extraction_hash
+            ) VALUES (
+              'sot_requests', $1, NOW(), $2, md5($3)
+            )
+            ON CONFLICT (source_table, source_record_id)
+            DO UPDATE SET
+              last_extracted_at = NOW(),
+              attributes_extracted = $2,
+              needs_reextraction = false
+          `, [req.request_id, hasExtractions ? 1 : 0, combinedNotes]);
+
+          // Mark queue item completed if it exists
+          await pool.query(`
+            UPDATE trapper.extraction_queue
+            SET completed_at = NOW()
+            WHERE source_table = 'sot_requests'
+              AND source_record_id = $1
+              AND completed_at IS NULL
+          `, [req.request_id]);
+        } catch (err) {
+          // Ignore status update errors
+        }
       }
 
       // Progress update every 50 records
